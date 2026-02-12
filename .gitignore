@@ -41,3 +41,7 @@ k8s/*/secret.yaml
 
 # Build artifacts
 *.pyc
+
+# Development environment files
+.env.development
+.env.local
