@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-
-from app.api import auth
+from app.api import auth, publications
 
 app = FastAPI(
     title="Flipbook SaaS API",
@@ -26,6 +25,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(publications.router, prefix="/api/publications", tags=["Publications"])
 
 @app.get("/health")
 async def health():

@@ -5,6 +5,7 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import Navbar from './components/common/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Publications from './pages/Publications';
 
 function App() {
   return (
@@ -24,7 +25,19 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
+          <Route
+            path="/publications"
+            element={
+              <ProtectedRoute>
+                <>
+                  <Navbar />
+                  <Publications />
+                </>
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
