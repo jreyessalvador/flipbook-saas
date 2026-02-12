@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: flipbook-prod
+data:
+  VITE_API_URL: "https://api.miflipbook.duckdns.org"
