@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"annotations":{},"name":"redis","namespace":"flipbook-prod"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"redis"}},"serviceName":"redis","template":{"metadata":{"labels":{"app":"redis"}},"spec":{"containers":[{"command":["redis-server","--appendonly","yes"],"image":"redis:7-alpine","name":"redis","ports":[{"containerPort":6379}],"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"volumeMounts":[{"mountPath":"/data","name":"redis-storage"}]}],"volumes":[{"name":"redis-storage","persistentVolumeClaim":{"claimName":"redis-pvc"}}]}}}}
+  creationTimestamp: "2026-02-11T16:54:55Z"
+  generation: 1
+  name: redis
+  namespace: flipbook-prod
+  resourceVersion: "912"
+  uid: 0373b724-1fde-4deb-9e53-507119324f80
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: redis
+  serviceName: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - command:
+        - redis-server
+        - --appendonly
+        - "yes"
+        image: redis:7-alpine
+        imagePullPolicy: IfNotPresent
+        name: redis
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: redis-storage
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+status:
+  availableReplicas: 1
+  collisionCount: 0
+  currentReplicas: 1
+  currentRevision: redis-6ff4c789b8
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  updateRevision: redis-6ff4c789b8
+  updatedReplicas: 1

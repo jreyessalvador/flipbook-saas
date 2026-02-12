@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"annotations":{},"name":"postgresql","namespace":"flipbook-prod"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"postgresql"}},"serviceName":"postgresql","template":{"metadata":{"labels":{"app":"postgresql"}},"spec":{"containers":[{"envFrom":[{"secretRef":{"name":"postgresql-secret"}}],"image":"postgres:15-alpine","name":"postgresql","ports":[{"containerPort":5432}],"resources":{"limits":{"cpu":"1000m","memory":"1Gi"},"requests":{"cpu":"250m","memory":"256Mi"}},"volumeMounts":[{"mountPath":"/var/lib/postgresql/data","name":"postgresql-storage"}]}],"volumes":[{"name":"postgresql-storage","persistentVolumeClaim":{"claimName":"postgresql-pvc"}}]}}}}
+  creationTimestamp: "2026-02-11T16:54:55Z"
+  generation: 1
+  name: postgresql
+  namespace: flipbook-prod
+  resourceVersion: "926"
+  uid: 9085bd6b-a332-48e4-9ea3-23ce7e6f1099
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: postgresql
+  serviceName: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+      - envFrom:
+        - secretRef:
+            name: postgresql-secret
+        image: postgres:15-alpine
+        imagePullPolicy: IfNotPresent
+        name: postgresql
+        ports:
+        - containerPort: 5432
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgresql-storage
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: postgresql-storage
+        persistentVolumeClaim:
+          claimName: postgresql-pvc
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+status:
+  availableReplicas: 1
+  collisionCount: 0
+  currentReplicas: 1
+  currentRevision: postgresql-79c774f7c
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  updateRevision: postgresql-79c774f7c
+  updatedReplicas: 1
