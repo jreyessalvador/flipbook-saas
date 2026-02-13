@@ -7,11 +7,28 @@ const Publications = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showConfigStep, setShowConfigStep] = useState(false);
+  
   const [newPublication, setNewPublication] = useState({
     title: '',
     description: '',
-    is_public: false
+    is_public: false,
+    // Configuración
+    page_size: 'A4',
+    page_width: 210,
+    page_height: 297,
+    orientation: 'portrait',
+    creation_type: 'blank',
+    total_pages: 10
   });
+
+  // Presets de tamaños
+  const pageSizePresets = {
+    'A4': { width: 210, height: 297 },
+    'Letter': { width: 216, height: 279 },
+    'Legal': { width: 216, height: 356 },
+    'Custom': { width: 210, height: 297 }
+  };
 
   useEffect(() => {
     loadPublications();
@@ -31,12 +48,51 @@ const Publications = () => {
     }
   };
 
+  const handlePageSizeChange = (size) => {
+    const preset = pageSizePresets[size];
+    setNewPublication({
+      ...newPublication,
+      page_size: size,
+      page_width: preset.width,
+      page_height: preset.height
+    });
+  };
+
+  const handleOrientationChange = (orientation) => {
+    const { page_width, page_height } = newPublication;
+    setNewPublication({
+      ...newPublication,
+      orientation,
+      page_width: orientation === 'landscape' ? page_height : page_width,
+      page_height: orientation === 'landscape' ? page_width : page_height
+    });
+  };
+
+  const handleNextStep = () => {
+    if (!newPublication.title) {
+      alert('Por favor ingresa un título');
+      return;
+    }
+    setShowConfigStep(true);
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
       await publicationAPI.create(newPublication);
       setShowCreateModal(false);
-      setNewPublication({ title: '', description: '', is_public: false });
+      setShowConfigStep(false);
+      setNewPublication({
+        title: '',
+        description: '',
+        is_public: false,
+        page_size: 'A4',
+        page_width: 210,
+        page_height: 297,
+        orientation: 'portrait',
+        creation_type: 'blank',
+        total_pages: 10
+      });
       loadPublications();
     } catch (err) {
       console.error('Error creating publication:', err);
@@ -64,6 +120,22 @@ const Publications = () => {
     };
     const badge = badges[status] || badges.draft;
     return <span className={`badge ${badge.class}`}>{badge.text}</span>;
+  };
+
+  const closeModal = () => {
+    setShowCreateModal(false);
+    setShowConfigStep(false);
+    setNewPublication({
+      title: '',
+      description: '',
+      is_public: false,
+      page_size: 'A4',
+      page_width: 210,
+      page_height: 297,
+      orientation: 'portrait',
+      creation_type: 'blank',
+      total_pages: 10
+    });
   };
 
   if (loading) {
@@ -118,6 +190,9 @@ const Publications = () => {
                   <span>📄 {pub.total_pages} páginas</span>
                   <span>👁️ {pub.views_count} vistas</span>
                 </div>
+                <div className="card-meta">
+                  <span className="card-size">{pub.page_size} • {pub.orientation}</span>
+                </div>
                 <div className="card-footer">
                   {getStatusBadge(pub.status)}
                   <div className="card-actions">
@@ -138,63 +213,192 @@ const Publications = () => {
 
       {/* Modal Crear Publicación */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Nueva Publicación</h3>
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label>Título *</label>
-                <input
-                  type="text"
-                  required
-                  maxLength="200"
-                  value={newPublication.title}
-                  onChange={(e) => setNewPublication({
-                    ...newPublication,
-                    title: e.target.value
-                  })}
-                  placeholder="Ej: Revista Mensual - Enero 2026"
-                />
-              </div>
-              <div className="form-group">
-                <label>Descripción</label>
-                <textarea
-                  maxLength="500"
-                  value={newPublication.description}
-                  onChange={(e) => setNewPublication({
-                    ...newPublication,
-                    description: e.target.value
-                  })}
-                  placeholder="Describe brevemente el contenido..."
-                  rows="4"
-                />
-              </div>
-              <div className="form-group">
-                <label>
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+            <h3>{!showConfigStep ? 'Nueva Publicación' : 'Configurar Revista'}</h3>
+            
+            {!showConfigStep ? (
+              // Paso 1: Información básica
+              <form onSubmit={(e) => { e.preventDefault(); handleNextStep(); }}>
+                <div className="form-group">
+                  <label>Título *</label>
                   <input
-                    type="checkbox"
-                    checked={newPublication.is_public}
+                    type="text"
+                    required
+                    maxLength="200"
+                    value={newPublication.title}
                     onChange={(e) => setNewPublication({
                       ...newPublication,
-                      is_public: e.target.checked
+                      title: e.target.value
                     })}
+                    placeholder="Ej: Revista Mensual - Enero 2026"
                   />
-                  {' '}Publicación pública
-                </label>
-              </div>
-              <div className="modal-actions">
-                <button 
-                  type="button" 
-                  className="btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Crear
-                </button>
-              </div>
-            </form>
+                </div>
+                <div className="form-group">
+                  <label>Descripción</label>
+                  <textarea
+                    maxLength="500"
+                    value={newPublication.description}
+                    onChange={(e) => setNewPublication({
+                      ...newPublication,
+                      description: e.target.value
+                    })}
+                    placeholder="Describe brevemente el contenido..."
+                    rows="4"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={newPublication.is_public}
+                      onChange={(e) => setNewPublication({
+                        ...newPublication,
+                        is_public: e.target.checked
+                      })}
+                    />
+                    {' '}Publicación pública
+                  </label>
+                </div>
+                <div className="modal-actions">
+                  <button 
+                    type="button" 
+                    className="btn-secondary"
+                    onClick={closeModal}
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Siguiente →
+                  </button>
+                </div>
+              </form>
+            ) : (
+              // Paso 2: Configuración de revista
+              <form onSubmit={handleCreate}>
+                <div className="config-grid">
+                  <div className="form-group">
+                    <label>Tamaño de Página</label>
+                    <select
+                      value={newPublication.page_size}
+                      onChange={(e) => handlePageSizeChange(e.target.value)}
+                    >
+                      <option value="A4">A4 (210 x 297 mm)</option>
+                      <option value="Letter">Carta (216 x 279 mm)</option>
+                      <option value="Legal">Oficio (216 x 356 mm)</option>
+                      <option value="Custom">Personalizado</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Orientación</label>
+                    <div className="radio-group">
+                      <label>
+                        <input
+                          type="radio"
+                          value="portrait"
+                          checked={newPublication.orientation === 'portrait'}
+                          onChange={(e) => handleOrientationChange(e.target.value)}
+                        />
+                        {' '}Vertical
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          value="landscape"
+                          checked={newPublication.orientation === 'landscape'}
+                          onChange={(e) => handleOrientationChange(e.target.value)}
+                        />
+                        {' '}Horizontal
+                      </label>
+                    </div>
+                  </div>
+
+                  {newPublication.page_size === 'Custom' && (
+                    <>
+                      <div className="form-group">
+                        <label>Ancho (mm)</label>
+                        <input
+                          type="number"
+                          min="50"
+                          max="500"
+                          value={newPublication.page_width}
+                          onChange={(e) => setNewPublication({
+                            ...newPublication,
+                            page_width: parseInt(e.target.value)
+                          })}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Alto (mm)</label>
+                        <input
+                          type="number"
+                          min="50"
+                          max="1000"
+                          value={newPublication.page_height}
+                          onChange={(e) => setNewPublication({
+                            ...newPublication,
+                            page_height: parseInt(e.target.value)
+                          })}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="form-group">
+                    <label>Tipo de Creación</label>
+                    <select
+                      value={newPublication.creation_type}
+                      onChange={(e) => setNewPublication({
+                        ...newPublication,
+                        creation_type: e.target.value
+                      })}
+                    >
+                      <option value="blank">En Blanco</option>
+                      <option value="pdf">Desde PDF</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Número de Páginas</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="500"
+                      value={newPublication.total_pages}
+                      onChange={(e) => setNewPublication({
+                        ...newPublication,
+                        total_pages: parseInt(e.target.value)
+                      })}
+                    />
+                    <small>Mínimo 2 (portada + contraportada)</small>
+                  </div>
+                </div>
+
+                <div className="config-preview">
+                  <h4>Vista Previa</h4>
+                  <div className="preview-info">
+                    <p><strong>Tamaño:</strong> {newPublication.page_size}</p>
+                    <p><strong>Dimensiones:</strong> {newPublication.page_width} x {newPublication.page_height} mm</p>
+                    <p><strong>Orientación:</strong> {newPublication.orientation === 'portrait' ? 'Vertical' : 'Horizontal'}</p>
+                    <p><strong>Total de páginas:</strong> {newPublication.total_pages}</p>
+                  </div>
+                </div>
+
+                <div className="modal-actions">
+                  <button 
+                    type="button" 
+                    className="btn-secondary"
+                    onClick={() => setShowConfigStep(false)}
+                  >
+                    ← Anterior
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Crear Revista
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

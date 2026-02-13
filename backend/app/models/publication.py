@@ -19,6 +19,13 @@ class Publication(Base):
     views_count = Column(Integer, default=0)
     is_public = Column(Boolean, default=False)
 
+    # Configuración de revista
+    page_size = Column(String(20), default="A4")  # A4, Letter, Legal, Custom
+    page_width = Column(Integer, default=210)  # mm
+    page_height = Column(Integer, default=297)  # mm
+    orientation = Column(String(20), default="portrait")  # portrait, landscape
+    creation_type = Column(String(20), default="blank")  # blank, pdf
+
     # Relaciones
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -30,3 +37,4 @@ class Publication(Base):
     # Relaciones ORM
     tenant = relationship("Tenant", back_populates="publications")
     creator = relationship("User", back_populates="publications")
+    pages = relationship("Page", back_populates="publication", cascade="all, delete-orphan")
