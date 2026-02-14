@@ -6,6 +6,7 @@ import Navbar from './components/common/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
+import PageViewer from './components/editor/PageViewer';
 
 function App() {
   return (
@@ -34,6 +35,15 @@ function App() {
                   <Navbar />
                   <Publications />
                 </>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/publications/:id/view"
+            element={
+              <ProtectedRoute>
+                <PageViewer />
               </ProtectedRoute>
             }
           />

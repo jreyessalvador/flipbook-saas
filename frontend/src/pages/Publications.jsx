@@ -196,7 +196,7 @@ const Publications = () => {
                 <div className="card-footer">
                   {getStatusBadge(pub.status)}
                   <div className="card-actions">
-                    <button className="btn-secondary">Editar</button>
+                    <button className="btn-secondary" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver Páginas</button>
                     <button 
                       className="btn-danger"
                       onClick={() => handleDelete(pub.id)}
