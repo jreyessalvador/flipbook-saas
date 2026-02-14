@@ -346,20 +346,6 @@ const Publications = () => {
                   )}
 
                   <div className="form-group">
-                    <label>Tipo de Creación</label>
-                    <select
-                      value={newPublication.creation_type}
-                      onChange={(e) => setNewPublication({
-                        ...newPublication,
-                        creation_type: e.target.value
-                      })}
-                    >
-                      <option value="blank">En Blanco</option>
-                      <option value="pdf">Desde PDF</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
                     <label>Número de Páginas</label>
                     <input
                       type="number"
@@ -382,6 +368,10 @@ const Publications = () => {
                     <p><strong>Dimensiones:</strong> {newPublication.page_width} x {newPublication.page_height} mm</p>
                     <p><strong>Orientación:</strong> {newPublication.orientation === 'portrait' ? 'Vertical' : 'Horizontal'}</p>
                     <p><strong>Total de páginas:</strong> {newPublication.total_pages}</p>
+                    <p><strong>Tipo:</strong> Revista en blanco</p>
+                  </div>
+                  <div className="preview-note">
+                    <small>💡 La importación desde PDF estará disponible en la próxima versión</small>
                   </div>
                 </div>
 

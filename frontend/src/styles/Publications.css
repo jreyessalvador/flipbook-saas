@@ -362,3 +362,17 @@
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
 }
+
+/* Nota informativa */
+.preview-note {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  border-radius: 4px;
+}
+
+.preview-note small {
+  color: #856404;
+  font-size: 0.9rem;
+}
