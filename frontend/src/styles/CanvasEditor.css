@@ -1,0 +1,235 @@
+.canvas-editor-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #2c3e50;
+  overflow: hidden;
+}
+
+/* Header */
+.editor-header {
+  background: #34495e;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-left h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: white;
+}
+
+.page-info {
+  color: #bdc3c7;
+  font-size: 0.9rem;
+}
+
+.btn-back {
+  background: #95a5a6;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-back:hover {
+  background: #7f8c8d;
+}
+
+.btn-save {
+  background: #27ae60;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.btn-save:hover {
+  background: #229954;
+}
+
+/* Layout principal */
+.canvas-editor-container {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+.editor-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.editor-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  background: #34495e;
+  padding: 1rem;
+  overflow-y: auto;
+  box-shadow: 2px 0 4px rgba(0,0,0,0.2);
+}
+
+.editor-canvas-area {
+  grid-column: 2;
+  grid-row: 2;
+  background: #2c3e50;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  padding: 2rem;
+}
+
+.editor-pages-bar {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  background: #34495e;
+  padding: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.2);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toolbar h3 {
+  color: white;
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toolbar hr {
+  border: none;
+  border-top: 1px solid #4a5f7f;
+  margin: 0.5rem 0;
+}
+
+.tool-btn {
+  background: #4a5f7f;
+  color: white;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.2s;
+}
+
+.tool-btn:hover {
+  background: #5a6f8f;
+  transform: translateX(2px);
+}
+
+.tool-btn-danger {
+  background: #e74c3c;
+}
+
+.tool-btn-danger:hover {
+  background: #c0392b;
+}
+
+.tool-icon {
+  font-size: 1.5rem;
+  width: 24px;
+  text-align: center;
+}
+
+.tool-label {
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+/* Canvas */
+.canvas-wrapper {
+  background: white;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#fabric-canvas {
+  display: block;
+}
+
+/* Thumbnails de páginas */
+.page-thumb {
+  flex-shrink: 0;
+  width: 70px;
+  padding: 0.5rem;
+  background: #4a5f7f;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.page-thumb:hover {
+  background: #5a6f8f;
+  transform: translateY(-2px);
+}
+
+.page-thumb.active {
+  background: #667eea;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+.thumb-number {
+  width: 50px;
+  height: 60px;
+  background: white;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: #2c3e50;
+  margin: 0 auto 0.25rem;
+}
+
+.page-thumb.active .thumb-number {
+  background: #f0f0f0;
+  color: #667eea;
+}
+
+.page-thumb small {
+  color: white;
+  font-size: 0.7rem;
+}
+
+/* Loading */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #2c3e50;
+  color: white;
+  font-size: 1.5rem;
+}

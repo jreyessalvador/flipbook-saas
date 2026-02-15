@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
 import PageViewer from './components/editor/PageViewer';
+import CanvasEditor from './components/editor/CanvasEditor';
 
 function App() {
   return (
@@ -44,6 +45,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <PageViewer />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/publications/:id/edit/:pageId?"
+            element={
+              <ProtectedRoute>
+                <CanvasEditor />
               </ProtectedRoute>
             }
           />

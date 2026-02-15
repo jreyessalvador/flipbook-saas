@@ -144,7 +144,7 @@ const PageViewer = () => {
               📖
             </button>
           </div>
-          <button className="btn-primary">
+          <button onClick={() => navigate(`/publications/${id}/edit/${currentPage?.id}`)} className="btn-primary">
             Editar Contenido
           </button>
         </div>
