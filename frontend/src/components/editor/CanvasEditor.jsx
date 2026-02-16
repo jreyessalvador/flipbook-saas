@@ -24,16 +24,20 @@ const CanvasEditor = () => {
   }, [id]);
 
   useEffect(() => {
+    if (publication && currentPage && canvasRef.current) {
+      initCanvas(currentPage);
+    }
+  }, [publication, currentPage]);
+
+  useEffect(() => {
     if (pageId && pages.length > 0) {
       const page = pages.find(p => p.id === pageId);
       if (page) {
         setCurrentPage(page);
-        initCanvas(page);
       }
-    } else if (pages.length > 0) {
+    } else if (pages.length > 0 && !currentPage) {
       // Cargar primera página por defecto
       setCurrentPage(pages[0]);
-      initCanvas(pages[0]);
     }
   }, [pageId, pages]);
 
@@ -59,7 +63,7 @@ const CanvasEditor = () => {
   };
 
   const initCanvas = (page) => {
-    if (!publication || !canvasRef.current) return;
+    if (!publication || !canvasRef.current || !page) return;
 
     // Limpiar canvas existente
     if (fabricCanvasRef.current) {
@@ -189,6 +193,10 @@ const CanvasEditor = () => {
     return <div className="loading">Cargando editor...</div>;
   }
 
+  if (!publication || !currentPage) {
+    return <div className="loading">Preparando editor...</div>;
+  }
+
   return (
     <div className="canvas-editor-container">
       {/* Header */}
@@ -197,9 +205,9 @@ const CanvasEditor = () => {
           <button onClick={() => navigate(`/publications/${id}/view`)} className="btn-back">
             ← Volver al Visor
           </button>
-          <h2>{publication?.title}</h2>
+          <h2>{publication.title}</h2>
           <span className="page-info">
-            Página {currentPage?.page_number} - {currentPage?.page_type === 'cover' ? 'Portada' : currentPage?.page_type === 'back_cover' ? 'Contraportada' : 'Contenido'}
+            Página {currentPage.page_number} - {currentPage.page_type === 'cover' ? 'Portada' : currentPage.page_type === 'back_cover' ? 'Contraportada' : 'Contenido'}
           </span>
         </div>
         <div className="header-right">
@@ -267,7 +275,7 @@ const CanvasEditor = () => {
         {pages.map((page) => (
           <div
             key={page.id}
-            className={`page-thumb ${page.id === currentPage?.id ? 'active' : ''}`}
+            className={`page-thumb ${page.id === currentPage.id ? 'active' : ''}`}
             onClick={() => goToPage(page)}
           >
             <div className="thumb-number">{page.page_number}</div>
