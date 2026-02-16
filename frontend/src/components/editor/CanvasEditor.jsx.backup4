@@ -93,13 +93,8 @@ const CanvasEditor = () => {
   const initCanvases = (spread) => {
     if (!publication) return;
 
-    // Calcular escala para que quepa en pantalla
-    const availableHeight = window.innerHeight - 250;
-    const realHeight = publication.page_height * 3.78;
-    const scale = Math.min(1, availableHeight / realHeight);
-    
-    const pixelWidth = publication.page_width * 3.78 * scale;
-    const pixelHeight = publication.page_height * 3.78 * scale;
+    const pixelWidth = publication.page_width * 3.78;
+    const pixelHeight = publication.page_height * 3.78;
 
     // Limpiar canvas izquierdo si existe
     if (leftFabricCanvasRef.current) {
@@ -142,11 +137,6 @@ const CanvasEditor = () => {
       leftCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
       });
-
-      // Detectar clic en el canvas para activarlo
-      leftCanvas.on('mouse:down', () => {
-        setActiveCanvas('left');
-      });
     }
 
     // Inicializar canvas derecho
@@ -177,11 +167,6 @@ const CanvasEditor = () => {
 
       rightCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
-      });
-
-      // Detectar clic en el canvas para activarlo
-      rightCanvas.on('mouse:down', () => {
-        setActiveCanvas('right');
       });
     }
   };

@@ -21,63 +21,16 @@ const CanvasEditor = () => {
   const [activeCanvas, setActiveCanvas] = useState('left');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [id]);
-
-  useEffect(() => {
-    if (publication && pages.length > 0 && pageId) {
-      navigateToPage(pageId);
-    }
-  }, [pageId, pages, publication]);
-
-  useEffect(() => {
-    if (publication && pages.length > 0 && leftCanvasRef.current && rightCanvasRef.current) {
-      const spread = getCurrentSpread();
-      initCanvases(spread);
-    }
-  }, [publication, pages, currentSpreadIndex]);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [pubData, pagesData] = await Promise.all([
-        publicationAPI.get(id),
-        pageAPI.getPublicationPages(id)
-      ]);
-      setPublication(pubData);
-      setPages(pagesData);
-    } catch (err) {
-      console.error('Error loading data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const navigateToPage = (targetPageId) => {
-    const pageIndex = pages.findIndex(p => p.id === targetPageId);
-    if (pageIndex !== -1) {
-      const page = pages[pageIndex];
-      if (page.page_type === 'cover') {
-        setCurrentSpreadIndex(0);
-      } else if (page.page_type === 'back_cover') {
-        const totalSpreads = Math.ceil((pages.length - 1) / 2) + 1;
-        setCurrentSpreadIndex(totalSpreads - 1);
-      } else {
-        const spreadIdx = Math.floor(pageIndex / 2);
-        setCurrentSpreadIndex(spreadIdx);
-      }
-    }
-  };
-
+  // Calcular spreads (páginas enfrentadas)
   const getSpread = (index) => {
-    if (pages.length === 0) return { left: null, right: null };
-
     if (index === 0) {
+      // Portada sola
       return { left: null, right: pages[0] };
-    } else if (index === Math.ceil((pages.length - 1) / 2) && pages[pages.length - 1]?.page_type === 'back_cover') {
+    } else if (index === pages.length - 1 && pages[pages.length - 1].page_type === 'back_cover') {
+      // Contraportada sola
       return { left: pages[pages.length - 1], right: null };
     } else {
+      // Páginas enfrentadas (índice par = izquierda, impar = derecha)
       const leftIndex = index * 2 - 1;
       const rightIndex = index * 2;
       return {
@@ -88,33 +41,74 @@ const CanvasEditor = () => {
   };
 
   const getCurrentSpread = () => getSpread(currentSpreadIndex);
-  const getTotalSpreads = () => pages.length > 0 ? Math.ceil((pages.length - 1) / 2) + 1 : 0;
+  const totalSpreads = Math.ceil((pages.length - 1) / 2) + 1;
+
+  useEffect(() => {
+    loadPublication();
+    loadPages();
+  }, [id]);
+
+  useEffect(() => {
+    if (publication && pages.length > 0) {
+      if (pageId) {
+        const pageIndex = pages.findIndex(p => p.id === pageId);
+        if (pageIndex !== -1) {
+          const page = pages[pageIndex];
+          if (page.page_type === 'cover') {
+            setCurrentSpreadIndex(0);
+          } else if (page.page_type === 'back_cover') {
+            setCurrentSpreadIndex(totalSpreads - 1);
+          } else {
+            const spreadIdx = Math.floor((pageIndex) / 2);
+            setCurrentSpreadIndex(spreadIdx);
+          }
+        }
+      } else {
+        setCurrentSpreadIndex(0);
+      }
+    }
+  }, [pageId, pages, publication]);
+
+  useEffect(() => {
+    if (publication && pages.length > 0) {
+      const spread = getCurrentSpread();
+      initCanvases(spread);
+    }
+  }, [publication, pages, currentSpreadIndex]);
+
+  const loadPublication = async () => {
+    try {
+      const data = await publicationAPI.get(id);
+      setPublication(data);
+    } catch (err) {
+      console.error('Error loading publication:', err);
+    }
+  };
+
+  const loadPages = async () => {
+    try {
+      setLoading(true);
+      const data = await pageAPI.getPublicationPages(id);
+      setPages(data);
+    } catch (err) {
+      console.error('Error loading pages:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const initCanvases = (spread) => {
     if (!publication) return;
 
-    // Calcular escala para que quepa en pantalla
-    const availableHeight = window.innerHeight - 250;
-    const realHeight = publication.page_height * 3.78;
-    const scale = Math.min(1, availableHeight / realHeight);
-    
-    const pixelWidth = publication.page_width * 3.78 * scale;
-    const pixelHeight = publication.page_height * 3.78 * scale;
+    const pixelWidth = publication.page_width * 3.78;
+    const pixelHeight = publication.page_height * 3.78;
 
-    // Limpiar canvas izquierdo si existe
-    if (leftFabricCanvasRef.current) {
-      leftFabricCanvasRef.current.dispose();
-      leftFabricCanvasRef.current = null;
-    }
-
-    // Limpiar canvas derecho si existe
-    if (rightFabricCanvasRef.current) {
-      rightFabricCanvasRef.current.dispose();
-      rightFabricCanvasRef.current = null;
-    }
-
-    // Inicializar canvas izquierdo
+    // Canvas izquierdo
     if (spread.left && leftCanvasRef.current) {
+      if (leftFabricCanvasRef.current) {
+        leftFabricCanvasRef.current.dispose();
+      }
+
       const leftCanvas = new fabric.Canvas(leftCanvasRef.current, {
         width: pixelWidth,
         height: pixelHeight,
@@ -142,15 +136,14 @@ const CanvasEditor = () => {
       leftCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
       });
-
-      // Detectar clic en el canvas para activarlo
-      leftCanvas.on('mouse:down', () => {
-        setActiveCanvas('left');
-      });
     }
 
-    // Inicializar canvas derecho
+    // Canvas derecho
     if (spread.right && rightCanvasRef.current) {
+      if (rightFabricCanvasRef.current) {
+        rightFabricCanvasRef.current.dispose();
+      }
+
       const rightCanvas = new fabric.Canvas(rightCanvasRef.current, {
         width: pixelWidth,
         height: pixelHeight,
@@ -177,11 +170,6 @@ const CanvasEditor = () => {
 
       rightCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
-      });
-
-      // Detectar clic en el canvas para activarlo
-      rightCanvas.on('mouse:down', () => {
-        setActiveCanvas('right');
       });
     }
   };
@@ -293,7 +281,6 @@ const CanvasEditor = () => {
   };
 
   const goToSpread = (index) => {
-    const totalSpreads = getTotalSpreads();
     if (index >= 0 && index < totalSpreads) {
       setCurrentSpreadIndex(index);
       setSelectedObject(null);
@@ -312,7 +299,6 @@ const CanvasEditor = () => {
   }
 
   const spread = getCurrentSpread();
-  const totalSpreads = getTotalSpreads();
   const canGoPrev = currentSpreadIndex > 0;
   const canGoNext = currentSpreadIndex < totalSpreads - 1;
 
@@ -329,9 +315,7 @@ const CanvasEditor = () => {
               ? `Páginas ${spread.left.page_number}-${spread.right.page_number}`
               : spread.left 
                 ? `Página ${spread.left.page_number}`
-                : spread.right
-                  ? `Página ${spread.right.page_number}`
-                  : 'Cargando...'
+                : `Página ${spread.right.page_number}`
             }
           </span>
         </div>
@@ -430,7 +414,7 @@ const CanvasEditor = () => {
               } else if (page.page_type === 'back_cover') {
                 goToSpread(totalSpreads - 1);
               } else {
-                const spreadIdx = Math.floor(index / 2);
+                const spreadIdx = Math.floor((index) / 2);
                 goToSpread(spreadIdx);
               }
             }}

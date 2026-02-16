@@ -144,7 +144,7 @@ const PageViewer = () => {
               📖
             </button>
           </div>
-          <button onClick={() => navigate(`/publications/${id}/edit/${currentPages[0]?.id}`)} className="btn-primary">
+          <button onClick={() => navigate(`/publications/${id}/edit/${currentPage?.id}`)} className="btn-primary">
             Editar Contenido
           </button>
         </div>
@@ -176,7 +176,7 @@ const PageViewer = () => {
                     <small>Haz clic en "Editar Contenido" para agregar elementos</small>
                   </div>
                 ) : (
-                  null
+                  <pre>{JSON.stringify(page.content, null, 2)}</pre>
                 )}
               </div>
             </div>

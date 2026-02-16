@@ -142,11 +142,6 @@ const CanvasEditor = () => {
       leftCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
       });
-
-      // Detectar clic en el canvas para activarlo
-      leftCanvas.on('mouse:down', () => {
-        setActiveCanvas('left');
-      });
     }
 
     // Inicializar canvas derecho
@@ -177,11 +172,6 @@ const CanvasEditor = () => {
 
       rightCanvas.on('selection:cleared', () => {
         setSelectedObject(null);
-      });
-
-      // Detectar clic en el canvas para activarlo
-      rightCanvas.on('mouse:down', () => {
-        setActiveCanvas('right');
       });
     }
   };
