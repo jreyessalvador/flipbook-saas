@@ -1,33 +1,36 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
 env/
 venv/
+.venv/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
 
 # Node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 dist/
 build/
 
-# Environment variables
+# Entornos
 .env
 .env.local
 .env.production
+.env.prod
+.env.staging
+backend/.env
+backend/.env.prod
+!backend/.env.dev
+!.env.prod.example
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # OS
 .DS_Store
@@ -35,9 +38,16 @@ Thumbs.db
 
 # Docker
 *.log
+docker-compose.override.yml
 
-# Kubernetes secrets (no subir contraseñas)
+# K8s secrets
 k8s/*/secret.yaml
 
-# Build artifacts
-*.pyc
+# Backups
+backups/
+*.sql.gz
+*.dump
+
+# Certificados SSL
+deploy/nginx/ssl/*.pem
+deploy/certbot/
