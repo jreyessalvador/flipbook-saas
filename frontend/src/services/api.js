@@ -1,51 +1,62 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.miflipbook.duckdns.org';
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+const api = axios.create({ baseURL: BASE });
+
+api.interceptors.request.use(config => {
+  const t = localStorage.getItem('token');
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
 });
 
-// Interceptor para agregar token a todas las requests
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.response.use(
+  r => r,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+    return Promise.reject(err);
   }
 );
 
-// Auth endpoints
 export const authAPI = {
   login: async (email, password) => {
-    const formData = new URLSearchParams();
-    formData.append('username', email);
-    formData.append('password', password);
-    
-    const response = await axios.post(`${API_URL}/api/auth/login`, formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+    const fd = new URLSearchParams({ username: email, password });
+    const r = await axios.post(`${BASE}/api/auth/login`, fd, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
-    return response.data;
+    return r.data;
   },
-  
-  getMe: async () => {
-    const response = await api.get('/api/auth/me');
-    return response.data;
+  me: () => api.get('/api/auth/me').then(r => r.data),
+};
+
+export const pubAPI = {
+  list: (params) => api.get('/api/publications', { params }).then(r => r.data),
+  get: (id) => api.get(`/api/publications/${id}`).then(r => r.data),
+  create: (data) => api.post('/api/publications', data).then(r => r.data),
+  update: (id, data) => api.put(`/api/publications/${id}`, data).then(r => r.data),
+  delete: (id) => api.delete(`/api/publications/${id}`),
+  publish: (id) => api.post(`/api/publications/${id}/publish`).then(r => r.data),
+  uploadPDF: (id, file, onProgress) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post(`/api/publications/${id}/upload-pdf`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: e => onProgress && onProgress(Math.round(e.loaded * 100 / e.total))
+    }).then(r => r.data);
   },
-  
-  logout: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  analytics: (id) => api.get(`/api/publications/${id}/analytics`).then(r => r.data),
+  publicView: (slug) => axios.get(`${BASE}/api/p/${slug}`).then(r => r.data),
+};
+
+export const assetAPI = {
+  upload: (file, onProgress) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post('/api/assets/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: e => onProgress && onProgress(Math.round(e.loaded * 100 / e.total))
+    }).then(r => r.data);
   },
 };
 
