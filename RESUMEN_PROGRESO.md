@@ -227,5 +227,5 @@ TOTAL: ████████░░░░░░░░░░ 46%
 - ✅ **Repo limpiado**: 13 archivos `.backup*` sueltos eliminados, `.gitignore` actualizado.
 - ⚠️ **Celery/workers**: configurado pero sin archivos de tasks reales — no funcional. Pendiente antes de Fase 4+.
 - ⚠️ **Makefile desactualizado**: referencia `k8s/base/` y `k8s/workers/` que no existen.
-- 🔍 **Hallazgo**: `k8s/backend/`, `k8s/frontend/`, `k8s/database/` ya tienen diseño de producción (namespace `flipbook-prod`, secrets reales) apuntando originalmente a AWS EC2. Esa instancia (conector `ssh-aws-flipbook`) no responde por SSH — pendiente de que Carlos confirme su estado real antes de decidir si producción va ahí o se migra a Contabo.
+- ⚠️ **AWS DEPRECADO**: los manifiestos `k8s/backend/`, `k8s/frontend/`, `k8s/database/` fueron diseñados originalmente para AWS EC2 (namespace `flipbook-prod`, secrets reales), pero ese plan quedó obsoleto — Carlos migró todo a Contabo por costo/rendimiento (AWS: 20-35 USD/mes; Contabo: 170 USD/año, más potente). La instancia AWS sigue sin responder por SSH y solo se conserva como respaldo temporal antes de eliminarla. Destino real de producción: Contabo.
 - 📄 Guía completa de replicación desde cero: ver `README.md` (nuevo).
