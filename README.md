@@ -16,11 +16,13 @@ Plataforma multi-tenant para crear y publicar revistas digitales interactivas (f
 
 ---
 
-## Hallazgo importante para la réplica: ya existe diseño de producción
+## AWS: DEPRECADO. Contabo es el destino de producción.
 
-En `k8s/backend/`, `k8s/frontend/` y `k8s/database/` hay manifiestos **distintos** a los `*-dev` de la raspi: apuntan al namespace `flipbook-prod`, usan `Secret` de Kubernetes (`backend-secret`) en vez de credenciales en texto plano en el ConfigMap, y el plan documentado originalmente (`DOCUMENTATION.md`) era **AWS EC2 + K3s + Nginx Ingress + Cert-Manager (Let's Encrypt)** — no Contabo ni Raspberry Pi.
+Los manifiestos en `k8s/backend/`, `k8s/frontend/` y `k8s/database/` apuntan al namespace `flipbook-prod` con `Secret` de Kubernetes reales (no credenciales en texto plano) — corresponden a un plan **antiguo** de desplegar en AWS EC2 + K3s + Nginx Ingress + Cert-Manager. **Ese plan ya no aplica.** Carlos migró sus servicios de AWS a Contabo por costo/rendimiento (AWS: 20-35 USD/mes por 4 vCPU/16GB RAM; Contabo: 170 USD/año por una máquina más potente, con 200GB NVMe vs el gp3 equivalente en AWS). El destino real de producción de Flipbook es **Contabo**, no AWS.
 
-Esto coincide con el conector SSH `ssh-aws-flipbook` (100.27.230.32) que **no responde** (timeout de conexión). Antes de construir de cero en Contabo, vale la pena confirmar el estado real de esa instancia AWS (¿detenida? ¿firewall bloqueando SSH? ¿sigue facturando sin usarse?) — puede que la base de producción ya esté más avanzada de lo que la raspi sugiere, o que sea una instancia abandonada generando costo.
+La instancia AWS (conector `ssh-aws-flipbook`, 100.27.230.32) sigue existiendo únicamente **como respaldo temporal antes de eliminarla**. Sigue sin responder por SSH (timeout de conexión) en cada intento realizado desde aquí — no tengo acceso a la consola de AWS para diagnosticar si está detenida, con el firewall bloqueando el puerto 22, o si sigue facturando sin poder usarse. **Acción pendiente para Carlos:** entrar a la consola de AWS, confirmar qué hay en esa instancia que valga la pena respaldar (si algo), extraer ese respaldo, y darla de baja — cada mes que seguya activa sin uso es entre 20 y 35 USD desperdiciados. Una vez confirmado el respaldo, también hay que retirar el conector `ssh-aws-flipbook` de la configuración local de Cowork/Claude y considerar borrar los manifiestos `k8s/backend/`, `k8s/frontend/`, `k8s/database/` de este repo (o adaptarlos al namespace/dominio real de Contabo) para que no queden referencias a una infraestructura que ya no existe.
+
+Los manifiestos de Kubernetes en sí (Deployment, Service, uso de Secrets) siguen siendo una buena base técnica — el trabajo pendiente es de **destino** (namespace, dominio, ingress), no de rediseño.
 
 ---
 
