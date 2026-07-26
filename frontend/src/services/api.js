@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.miflipbook.duckdns.org';
+// Asegurar que si el navegador está en HTTPS, la API también sea HTTPS ignorando strings HTTP en el .env
+let baseApiUrl = import.meta.env.VITE_API_URL || 'https://api.flipbook.local';
+if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseApiUrl.startsWith('http://')) {
+  baseApiUrl = baseApiUrl.replace('http://', 'https://');
+}
+const API_URL = baseApiUrl;
 
 const api = axios.create({
   baseURL: API_URL,
@@ -29,7 +34,7 @@ export const authAPI = {
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
-    
+
     const response = await axios.post(`${API_URL}/api/auth/login`, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -37,12 +42,12 @@ export const authAPI = {
     });
     return response.data;
   },
-  
+
   getMe: async () => {
     const response = await api.get('/api/auth/me');
     return response.data;
   },
-  
+
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
