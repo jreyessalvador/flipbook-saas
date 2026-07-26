@@ -218,3 +218,14 @@ TOTAL: ████████░░░░░░░░░░ 46%
 **Commits:** 7
 **Branch:** desarrollo
 **Repo:** github.com/jreyessalvador/flipbook-saas
+
+---
+
+## 🔄 ACTUALIZACIÓN — 26 Jul 2026
+
+- ✅ **Bug de crash loop del backend corregido** (21-22 restarts eliminados). Causa: chequeo de bucket MinIO a nivel de import sin reintentos. Ver `README.md` y commit `433d959`.
+- ✅ **Repo limpiado**: 13 archivos `.backup*` sueltos eliminados, `.gitignore` actualizado.
+- ⚠️ **Celery/workers**: configurado pero sin archivos de tasks reales — no funcional. Pendiente antes de Fase 4+.
+- ⚠️ **Makefile desactualizado**: referencia `k8s/base/` y `k8s/workers/` que no existen.
+- 🔍 **Hallazgo**: `k8s/backend/`, `k8s/frontend/`, `k8s/database/` ya tienen diseño de producción (namespace `flipbook-prod`, secrets reales) apuntando originalmente a AWS EC2. Esa instancia (conector `ssh-aws-flipbook`) no responde por SSH — pendiente de que Carlos confirme su estado real antes de decidir si producción va ahí o se migra a Contabo.
+- 📄 Guía completa de replicación desde cero: ver `README.md` (nuevo).
