@@ -45,3 +45,8 @@ k8s/*/secret.yaml
 # Development environment files
 .env.development
 .env.local
+
+# Backups manuales sueltos (usar git para historial, no copias .backupN)
+*.backup
+*.backup[0-9]*
+*.backup.*
