@@ -328,13 +328,63 @@ verificar antes con `docker inspect` que nada se desincronizó de nuevo**;
 la diferencia es que ahora, si hiciera falta recrear algo desde cero, este
 archivo SÍ reproduce el stack real.
 
-Pendientes (próximos lotes, no bloquean lo ya entregado): Galería/Collage/
-GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud + Quick Actions --
-Element Settings/Animate (Lote 6), Library + Blocks (Lote 7).
+**Lote 4 -- Galería, Collage y GIF.** Backend: nuevo
+`PageElementKind.gallery`, compartido por Galería y Collage (solo difieren
+en `props.layout`: `'grid'` o `'mosaic'`) -- ver
+`backend/app/schemas/page_element.py`. GIF reutiliza `kind='image'`: Konva
+no anima GIFs (pinta el primer frame), limitación conocida y documentada,
+no bloqueante. Frontend: los tres botones del rail ("Galería", "GIF",
+"Collage") dejan de ser placeholders. Galería/Collage suben varios
+archivos en secuencia (`uploadFilesSequentially` -- el backend solo acepta
+un archivo por llamada; si alguno falla a mitad de camino se avisa pero se
+conservan los que sí subieron) y crean UN elemento `kind='gallery'` con
+`props.images` (array de `{src}`) y el `layout` correspondiente.
+`GalleryElement`/`computeGalleryTiles` calculan el recorte de cada
+miniatura dentro del elemento: cuadrícula (`grid`, filas/columnas lo más
+cuadradas posible) o mosaico (`mosaic`, una imagen grande a la izquierda +
+el resto apilado a la derecha). El panel de propiedades gana una sección
+"Galería / Collage" con miniaturas (con botón para quitar cada una),
+"Agregar imágenes" (anexa, no reemplaza) y un toggle Cuadrícula/Mosaico
+que cambia `props.layout` en caliente (y con él, el encabezado del panel
+entre "Galería" y "Collage").
+
+**Bug real (pre-existente, no introducido en este lote) encontrado y
+corregido durante la verificación**: la tabla `page_elements` tiene un
+`CHECK CONSTRAINT` a nivel de base de datos (`ck_page_elements_kind`) que
+enumera los `kind` permitidos -- se había mantenido sincronizado a mano
+con el enum de Python, pero nadie lo había vuelto a tocar desde que se creó
+la tabla. Al guardar el primer elemento `kind='gallery'` la base real
+(creada antes de este lote) lo rechazaba con
+`psycopg2.errors.CheckViolation`, un 500 en `PUT
+/api/pages/{id}/elements`. Corregido con
+`backend/migrations/0002_lote4_gallery_kind.sql` (agrega `'gallery'` al
+`CHECK` vía `ALTER TABLE`, para bases de datos ya existentes) y aplicado
+también contra la base real de ia-lavatur; `0001_editor_v2.sql` (para
+bases nuevas) también se actualizó para incluir `'gallery'` desde el
+`CREATE TABLE`.
+
+**Segundo bug real (pre-existente, no introducido en este lote) encontrado
+y corregido durante la verificación**: `POST /api/publications/{id}/lock`
+podía devolver 500 de forma intermitente, que el navegador reportaba
+engañosamente como un bloqueo de CORS (la respuesta nunca llega a tener
+los headers de `CORSMiddleware` porque la excepción ocurre después de que
+la respuesta ya empezó). Causa real: tras el `UPSERT` atómico que toma el
+lock, el código hacía un `SELECT` adicional para reconstruir la respuesta
+completa -- si un `DELETE /lock` concurrente (el cleanup de un efecto de
+React, o el doble-efecto de StrictMode en desarrollo) borraba la fila
+justo entre el `commit()` del `UPSERT` y ese `SELECT`, la consulta
+devolvía `None` y `FastAPI` fallaba validando la respuesta contra
+`LockResponse`. Corregido construyendo la respuesta directamente de la
+cláusula `RETURNING` del propio `UPSERT`, sin ninguna consulta adicional
+después del commit -- ver `backend/app/api/locks.py`.
+
+Pendientes (próximos lotes, no bloquean lo ya entregado): YouTube/Vimeo
+(Lote 5), SoundCloud + Quick Actions -- Element Settings/Animate
+(Lote 6), Library + Blocks (Lote 7).
 
 ## 10. Próximo paso concreto (para quien retome esto)
 
-Seguir con el Lote 4 (Galería/Collage/GIF) siguiendo el mismo patrón:
+Seguir con el Lote 5 (YouTube/Vimeo) siguiendo el mismo patrón:
 implementar, verificar con Playwright real contra `ia-lavatur` (screenshots
 incluidos cuando aplique), commitear+pushear desde `raspi-2` (única
 máquina con credenciales de git para este repo), sincronizar `ia-lavatur`
@@ -342,6 +392,12 @@ con `git pull`, y solo entonces pasar al siguiente lote -- sin pausar a
 pedir confirmación salvo que algo requiera de verdad la validación de
 Carlos. Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
 ia-lavatur, releer el aviso de infraestructura de la sección 9 (Lote 3).
+Si un lote nuevo agrega un `PageElementKind`, recordar el
+`CHECK CONSTRAINT` de la sección de Lote 4 -- hace falta una migración SQL
+(`ALTER TABLE ... DROP/ADD CONSTRAINT`) aplicada tanto en el repo
+(`0001_editor_v2.sql` para bases nuevas + un `000N_*.sql` nuevo para
+bases existentes) como en la base real de ia-lavatur, o el primer guardado
+de ese elemento fallará con 500.
 
 Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
 vía script Playwright) el escenario de fuga portada→contraportada -- el

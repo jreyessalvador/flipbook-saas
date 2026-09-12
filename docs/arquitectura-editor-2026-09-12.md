@@ -103,9 +103,9 @@ El repo ya traía `publications.orientation` (portrait/landscape) y `total_pages
 inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
-  Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen,
-  Galería*, GIF*, Collage*, YouTube*, Vimeo*, Audio, SoundCloud*,
-  Plugins (shortcodes de texto), Library*, Blocks*.
+  Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen, Galería,
+  GIF, Collage, YouTube*, Vimeo*, Audio, SoundCloud*, Plugins (shortcodes
+  de texto), Library*, Blocks*.
 - **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
   requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
   ancho/alto/rotación -- funcional, conectado a `updateElement()`),
@@ -120,9 +120,12 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
   arbitrarios, decisión explícita de Carlos) se activó en el Lote 2, y
   Audio (subida real vía `POST /api/assets/upload`, icono fijo en el
   canvas + `<audio controls>` de vista previa en el panel de propiedades)
-  en el Lote 3 -- ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y
-  el resto de lotes pendientes (Galería/Collage/GIF, YouTube/Vimeo,
-  SoundCloud+Quick Actions, Library+Blocks).
+  en el Lote 3, y Galería/Collage/GIF en el Lote 4 (Galería y Collage
+  comparten `kind='gallery'`, solo difieren en `props.layout`: `grid` o
+  `mosaic`; GIF reutiliza `kind='image'` -- Konva no anima GIFs, pinta el
+  primer frame, limitación conocida no bloqueante) -- ver
+  RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de lotes
+  pendientes (YouTube/Vimeo, SoundCloud+Quick Actions, Library+Blocks).
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
 
@@ -134,6 +137,7 @@ Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columna
 | `video` | `{ asset_id, autoplay, loop, muted, poster_asset_id }` | `<video>` oculto + `Konva.Image` con `requestAnimationFrame` | Overlay `<video controls>` |
 | `audio` | `{ src, autoplay, loop }` (implementado Lote 3 así, no `asset_id`) | Ícono fijo (Konva) + `<audio controls>` de vista previa en el panel de propiedades | Overlay `<audio>` real sincronizado (Fase E) |
 | `hotspot` | `{ action_type: link\|goto_page\|gallery\|form, target }` | Rectángulo semitransparente con ícono | Zona invisible clicable |
+| `gallery` | `{ images: [{ src }], layout: grid\|mosaic }` (Lote 4; Galería y Collage comparten este kind, solo difiere `layout`) | `GalleryElement`: miniaturas recortadas en cuadrícula o mosaico (`computeGalleryTiles`), panel de propiedades con miniaturas/quitar/agregar/toggle de layout | Igual, estático (Fase E podría agregar lightbox/carrusel) |
 
 ---
 
