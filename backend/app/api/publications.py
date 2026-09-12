@@ -132,3 +132,106 @@ def delete_publication(
     db.commit()
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Editor v2: publicacion como snapshot inmutable (ver docs/arquitectura-editor-
+# 2026-09-12.md, seccion 5). El Reader publico debe leer SIEMPRE de
+# PublicationVersion.snapshot, nunca de Page/PageElement directamente -- asi
+# una edicion a medias nunca llega a un lector.
+# ---------------------------------------------------------------------------
+from app.models.page_element import PageElement
+from app.models.publication_version import PublicationVersion
+from app.models.edit_lock import EditLock
+
+
+def _serialize_publication_snapshot(db: Session, publication: Publication) -> dict:
+    pages = db.query(Page)\
+        .filter(Page.publication_id == publication.id)\
+        .order_by(Page.page_number)\
+        .all()
+    return {
+        "title": publication.title,
+        "orientation": publication.orientation,
+        "page_width": publication.page_width,
+        "page_height": publication.page_height,
+        "page_turn_sound_asset_id": str(publication.page_turn_sound_asset_id) if publication.page_turn_sound_asset_id else None,
+        "pages": [
+            {
+                "page_number": page.page_number,
+                "page_type": page.page_type,
+                "elements": [
+                    {
+                        "kind": el.kind,
+                        "x": float(el.x), "y": float(el.y),
+                        "width": float(el.width), "height": float(el.height),
+                        "rotation_deg": float(el.rotation_deg), "z_index": el.z_index,
+                        "props": el.props,
+                    }
+                    for el in db.query(PageElement)
+                        .filter(PageElement.page_id == page.id)
+                        .order_by(PageElement.z_index)
+                        .all()
+                ],
+            }
+            for page in pages
+        ],
+    }
+
+
+@router.post("/{publication_id}/publish", status_code=status.HTTP_201_CREATED)
+def publish_publication(
+    publication_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Congela el estado actual en un PublicationVersion nuevo y lo marca como vigente."""
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+
+    snapshot = _serialize_publication_snapshot(db, publication)
+    version = PublicationVersion(
+        publication_id=publication.id,
+        snapshot=snapshot,
+        created_by=current_user.id,
+    )
+    db.add(version)
+    db.flush()
+
+    publication.published_version_id = version.id
+    publication.status = "published"
+    db.commit()
+
+    return {"version_id": str(version.id), "created_at": version.created_at.isoformat()}
+
+
+@router.get("/{publication_id}/versions")
+def list_publication_versions(
+    publication_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+
+    versions = db.query(PublicationVersion)\
+        .filter(PublicationVersion.publication_id == publication_id)\
+        .order_by(PublicationVersion.created_at.desc())\
+        .all()
+    return [
+        {
+            "id": str(v.id),
+            "created_at": v.created_at.isoformat(),
+            "created_by": str(v.created_by),
+            "is_current": v.id == publication.published_version_id,
+        }
+        for v in versions
+    ]

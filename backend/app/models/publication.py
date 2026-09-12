@@ -19,12 +19,22 @@ class Publication(Base):
     views_count = Column(Integer, default=0)
     is_public = Column(Boolean, default=False)
 
-    # Configuración de revista
+    # Configuración de revista -- orientation/page_width/page_height se fijan al
+    # crear la publicacion y NO deben cambiarse via PUT /publications/{id} normal
+    # (ver PublicationUpdate en schemas/publication.py): el editor anterior
+    # sufria un bug donde la orientacion "cambiaba sola"; aqui se trata como un
+    # dato inmutable salvo una operacion explicita aparte, no implementada aun.
     page_size = Column(String(20), default="A4")  # A4, Letter, Legal, Custom
     page_width = Column(Integer, default=210)  # mm
     page_height = Column(Integer, default=297)  # mm
     orientation = Column(String(20), default="portrait")  # portrait, landscape
     creation_type = Column(String(20), default="blank")  # blank, pdf
+
+    # Sonido de "pase de pagina" del Reader (opcional, ver seccion 8 del doc de arquitectura)
+    page_turn_sound_asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=True)
+
+    # Publicacion inmutable actualmente vigente para el Reader (seccion 5)
+    published_version_id = Column(UUID(as_uuid=True), ForeignKey("publication_versions.id"), nullable=True)
 
     # Relaciones
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)

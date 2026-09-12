@@ -18,12 +18,16 @@ class PublicationCreate(PublicationBase):
     total_pages: Optional[int] = Field(10, ge=2, le=500)  # Mínimo 2 (portada + contraportada)
 
 class PublicationUpdate(PublicationBase):
+    """
+    DECISION (2026-09-12, ver docs/arquitectura-editor-2026-09-12.md seccion 3.1):
+    orientation/page_width/page_height/total_pages se fijan al CREAR la
+    publicacion y NO son editables via este endpoint -- deliberadamente, para
+    que la orientacion nunca pueda "cambiar sola" como en el editor anterior.
+    Cambiarlas requeriria una operacion explicita aparte (no implementada aun,
+    ver seccion 3.1 y 12 del documento de arquitectura).
+    """
     title: Optional[str] = None
     status: Optional[str] = None
-    page_size: Optional[str] = None
-    page_width: Optional[int] = None
-    page_height: Optional[int] = None
-    orientation: Optional[str] = None
 
 class PublicationResponse(PublicationBase):
     id: uuid.UUID
