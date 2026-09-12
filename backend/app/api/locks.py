@@ -87,14 +87,37 @@ def acquire_lock(
             (EditLock.locked_by_user == current_user.id)
             | (EditLock.heartbeat_at < expiry_cutoff)
         ),
-    ).returning(EditLock.publication_id)
+    ).returning(
+        EditLock.publication_id,
+        EditLock.locked_by_user,
+        EditLock.locked_at,
+        EditLock.heartbeat_at,
+    )
 
+    # OJO -- construimos la respuesta DIRECTAMENTE de la fila que devuelve
+    # RETURNING, sin volver a consultar la tabla despues del commit. Una
+    # version anterior hacia un SELECT adicional tras el UPSERT para
+    # obtener el lock completo, pero eso reabre una ventana de carrera: si
+    # otra peticion (p.ej. un DELETE de liberar lock disparado por el
+    # cleanup de un efecto en React, o el doble-efecto de StrictMode)
+    # borraba la fila justo entre el commit del UPSERT y ese SELECT, la
+    # consulta devolvia None y FastAPI fallaba con
+    # ResponseValidationError (el navegador lo reporta como error de CORS
+    # porque la respuesta nunca llega a tener los headers de
+    # CORSMiddleware -- encontrado verificando el Lote 4 con Playwright,
+    # ver RECETA-DESARROLLO.md). RETURNING ya trae todo lo que necesita
+    # LockResponse salvo locked_by_name (que sigue siendo opcional).
     applied = db.execute(stmt).fetchone()
     db.commit()
 
     if applied:
-        lock = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
-        return lock
+        return LockResponse(
+            publication_id=applied.publication_id,
+            locked_by_user=applied.locked_by_user,
+            locked_by_name=None,
+            locked_at=applied.locked_at,
+            heartbeat_at=applied.heartbeat_at,
+        )
 
     # No se aplico: hay un lock vigente de otro usuario. Consultar para el mensaje.
     existing = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()

@@ -44,7 +44,7 @@ ALTER TABLE pages ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1;
 CREATE TABLE IF NOT EXISTS page_elements (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     page_id       UUID NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-    kind          TEXT NOT NULL CHECK (kind IN ('image','text','shape','video','audio','hotspot')),
+    kind          TEXT NOT NULL CHECK (kind IN ('image','text','shape','video','audio','hotspot','gallery')),
     x             NUMERIC NOT NULL,
     y             NUMERIC NOT NULL,
     width         NUMERIC NOT NULL,
