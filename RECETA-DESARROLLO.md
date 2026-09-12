@@ -316,6 +316,18 @@ no en volúmenes nombrados de Docker) reconstruyendo el contenedor a mano
 con `docker run` replicando la config real inspeccionada de los demás
 contenedores del stack.
 
+**Cerrado**: `docker-compose.dev.yml` fue reescrito para coincidir
+exactamente con la configuración real (nombres `flipbook-dev-*`, binds a
+`./data/`, todo valor específico del entorno vía `.env` -- ver el nuevo
+`.env.example`) y validado con `docker compose -f docker-compose.dev.yml
+config` (solo renderiza la config fusionada, no toca contenedores) --
+coincide campo por campo con lo que `docker inspect` reporta de los
+contenedores reales. **Sigue siendo cierto que no se debe correr
+`docker compose up`/`--force-recreate` contra un stack ya en marcha sin
+verificar antes con `docker inspect` que nada se desincronizó de nuevo**;
+la diferencia es que ahora, si hiciera falta recrear algo desde cero, este
+archivo SÍ reproduce el stack real.
+
 Pendientes (próximos lotes, no bloquean lo ya entregado): Galería/Collage/
 GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud + Quick Actions --
 Element Settings/Animate (Lote 6), Library + Blocks (Lote 7).
