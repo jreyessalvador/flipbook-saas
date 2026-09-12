@@ -13,11 +13,15 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, SoundCloud, Library,
-// Blocks y Quick Actions -- quedan para lotes siguientes, no bloquean lo ya
-// verificado. Línea/Círculo/Estrella y Alinear/Distribuir (con selección
-// múltiple, Lote 1), Plugins/shortcodes de texto (Lote 2) y Audio (Lote 3)
-// SÍ son funcionales.
+// Hotspot, YouTube, Vimeo, SoundCloud, Library, Blocks y Quick Actions --
+// quedan para lotes siguientes, no bloquean lo ya verificado.
+// Línea/Círculo/Estrella y Alinear/Distribuir (con selección múltiple,
+// Lote 1), Plugins/shortcodes de texto (Lote 2), Audio (Lote 3) y
+// Galería/Collage/GIF (Lote 4) SÍ son funcionales. GIF reutiliza kind=
+// 'image' (Konva no anima GIFs -- limitación conocida, ver
+// RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y solo
+// difieren en props.layout ('grid'/'mosaic'), intercambiable después desde
+// el panel de propiedades.
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
 const HEARTBEAT_MS = 20000; // el lock expira a los 60s sin heartbeat (backend/app/api/locks.py)
@@ -189,6 +193,74 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       <Rect width={el.width} height={el.height} fill="#eef2ff" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
       <Path data={ICON_PATHS.audio} x={14} y={el.height / 2 - 10} scaleX={1.1} scaleY={1.1} stroke={accent} strokeWidth={1.8} />
       <KonvaText text="Audio" x={44} y={el.height / 2 - 8} fontSize={14} fill={accent} />
+    </Group>
+  );
+}
+
+// Galería / Collage (Lote 4): comparten el mismo kind='gallery' y el mismo
+// componente -- solo cambia props.layout ('grid': cuadricula uniforme,
+// 'mosaic': una imagen grande a la izquierda + el resto apiladas a la
+// derecha). Sin reordenar por arrastre en este MVP (agregar/quitar y
+// cambiar de layout sí son funcionales).
+function computeGalleryTiles(layout, n, w, h) {
+  if (n === 0) return [];
+  const gap = 4;
+  if (layout === 'mosaic' && n > 1) {
+    const leftW = w * 0.6 - gap / 2;
+    const rightW = w - leftW - gap;
+    const tiles = [{ x: 0, y: 0, width: leftW, height: h }];
+    const rest = n - 1;
+    const rightH = (h - gap * (rest - 1)) / rest;
+    for (let i = 0; i < rest; i++) {
+      tiles.push({ x: leftW + gap, y: i * (rightH + gap), width: rightW, height: rightH });
+    }
+    return tiles;
+  }
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const tileW = (w - gap * (cols - 1)) / cols;
+  const tileH = (h - gap * (rows - 1)) / rows;
+  const tiles = [];
+  for (let i = 0; i < n; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    tiles.push({ x: col * (tileW + gap), y: row * (tileH + gap), width: tileW, height: tileH });
+  }
+  return tiles;
+}
+
+// Subcomponente propio por imagen: cada uno con su propio useHtmlImage()
+// (hook), para no romper las reglas de hooks cuando cambia la cantidad de
+// imágenes de la galería entre renders (mapear el hook directamente dentro
+// de GalleryElement violaría esa regla).
+function GalleryTile({ src, x, y, width, height }) {
+  const image = useHtmlImage(src);
+  return <KonvaImage image={image} x={x} y={y} width={width} height={height} listening={false} />;
+}
+
+function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const images = el.props?.images || [];
+  const layout = el.props?.layout || 'grid';
+  const tiles = computeGalleryTiles(layout, images.length, el.width, el.height);
+  return (
+    <Group
+      ref={shapeRef}
+      x={el.x}
+      y={el.y}
+      width={el.width}
+      height={el.height}
+      rotation={el.rotation_deg}
+      draggable={canEdit}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+      onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+    >
+      <Rect width={el.width} height={el.height} fill="#f3f4f6" stroke="#9ca3af" strokeWidth={1} />
+      {images.map((img, i) => tiles[i] && <GalleryTile key={`${img.src}-${i}`} src={img.src} {...tiles[i]} />)}
+      {images.length === 0 && (
+        <KonvaText text="Galería vacía -- agrega imágenes desde el panel" x={10} y={el.height / 2 - 8} width={el.width - 20} fontSize={13} fill="#6b7280" />
+      )}
     </Group>
   );
 }
@@ -365,7 +437,7 @@ function NumberField({ label, value, disabled, onCommit, step = 1 }) {
 const ALIGN_ROW_ICONS = ['alignLeft', 'alignCenterH', 'alignRight', 'distributeH', 'alignTop', 'alignMiddleV', 'alignBottom', 'distributeV'];
 const DISTRIBUTE_ICONS = new Set(['distributeH', 'distributeV']);
 
-function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
+function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick }) {
   const count = selectedElements.length;
   const selectedElement = count === 1 ? selectedElements[0] : null;
   const disabled = !canEdit || !selectedElement;
@@ -376,7 +448,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
         {count === 0 && 'Ningún elemento seleccionado'}
-        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : 'Figura'}`}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : 'Figura'}`}
         {count > 1 && `${count} elementos seleccionados`}
       </div>
 
@@ -485,6 +557,60 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
               </p>
             </section>
           )}
+
+          {kind === 'gallery' && (
+            <section className="editor-v2-props-section">
+              <h4>{selectedElement.props?.layout === 'mosaic' ? 'Collage' : 'Galería'}</h4>
+              <div className="editor-v2-gallery-layout-row">
+                <button
+                  type="button"
+                  className={`editor-v2-tool ${(selectedElement.props?.layout || 'grid') === 'grid' ? 'active' : ''}`}
+                  disabled={disabled}
+                  onClick={() => onUpdate({ props: { ...selectedElement.props, layout: 'grid' } })}
+                >
+                  Cuadrícula
+                </button>
+                <button
+                  type="button"
+                  className={`editor-v2-tool ${selectedElement.props?.layout === 'mosaic' ? 'active' : ''}`}
+                  disabled={disabled}
+                  onClick={() => onUpdate({ props: { ...selectedElement.props, layout: 'mosaic' } })}
+                >
+                  Mosaico
+                </button>
+              </div>
+              <ul className="editor-v2-gallery-thumbs">
+                {(selectedElement.props?.images || []).map((img, i) => (
+                  <li key={`${img.src}-${i}`} className="editor-v2-gallery-thumb">
+                    <img src={img.src?.startsWith('http') ? img.src : `${API_URL}${img.src}`} alt="" />
+                    <button
+                      type="button"
+                      className="editor-v2-gallery-thumb-remove"
+                      disabled={disabled}
+                      title="Quitar imagen"
+                      onClick={() => {
+                        const next = (selectedElement.props?.images || []).filter((_, idx) => idx !== i);
+                        onUpdate({ props: { ...selectedElement.props, images: next } });
+                      }}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+                {(selectedElement.props?.images || []).length === 0 && (
+                  <p className="editor-v2-props-hint">Sin imágenes -- agrega al menos una.</p>
+                )}
+              </ul>
+              <button
+                type="button"
+                className="editor-v2-quickaction"
+                disabled={disabled}
+                onClick={onAppendImagesClick}
+              >
+                Agregar imágenes
+              </button>
+            </section>
+          )}
         </>
       )}
 
@@ -588,6 +714,10 @@ export default function CanvasEditorV2() {
   const shapeRefs = useRef({});
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const collageInputRef = useRef(null);
+  const gifInputRef = useRef(null);
+  const galleryAppendInputRef = useRef(null);
 
   const activePageId = pageIdParam || pages[0]?.id;
   const canEdit = lockState === 'held';
@@ -703,6 +833,10 @@ export default function CanvasEditorV2() {
 
   const handleUploadImageClick = () => fileInputRef.current?.click();
   const handleUploadAudioClick = () => audioInputRef.current?.click();
+  const handleUploadGalleryClick = () => galleryInputRef.current?.click();
+  const handleUploadCollageClick = () => collageInputRef.current?.click();
+  const handleUploadGifClick = () => gifInputRef.current?.click();
+  const handleUploadGalleryAppendClick = () => galleryAppendInputRef.current?.click();
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -734,6 +868,75 @@ export default function CanvasEditorV2() {
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir el audio');
     }
+  };
+
+  // Sube varios archivos en secuencia (el backend solo acepta uno por
+  // llamada) y devuelve las urls -- reutilizado por Galería, Collage y
+  // "agregar más imágenes" desde el panel de propiedades. Si alguno falla
+  // a mitad de camino, se avisa pero se conservan los que sí subieron.
+  const uploadFilesSequentially = async (fileList) => {
+    const urls = [];
+    for (const file of fileList) {
+      try {
+        const uploaded = await assetAPI.upload(file);
+        urls.push(uploaded.url);
+      } catch (err) {
+        window.alert(`No se pudo subir "${file.name}": ${err?.response?.data?.detail || 'error desconocido'}`);
+      }
+    }
+    return urls;
+  };
+
+  const handleGalleryFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    const urls = await uploadFilesSequentially(files);
+    if (urls.length === 0) return;
+    store.addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'grid' } });
+  };
+
+  const handleCollageFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    const urls = await uploadFilesSequentially(files);
+    if (urls.length === 0) return;
+    store.addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'mosaic' } });
+  };
+
+  const handleGifFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.type && file.type !== 'image/gif') {
+      window.alert('Selecciona un archivo GIF.');
+      return;
+    }
+    try {
+      const uploaded = await assetAPI.upload(file);
+      // GIF reutiliza kind='image' -- Konva pinta el primer frame (no anima
+      // GIFs animados), limitacion conocida documentada en
+      // RECETA-DESARROLLO.md; el archivo original SI se sirve tal cual.
+      store.addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
+    } catch (err) {
+      window.alert(err?.response?.data?.detail || 'No se pudo subir el GIF');
+    }
+  };
+
+  // "Agregar más imágenes" desde el panel de propiedades: solo tiene
+  // sentido con exactamente un elemento kind='gallery' seleccionado.
+  const handleAppendGalleryImages = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    const onlyGallerySelected = selectedElements.length === 1 && selectedElements[0].kind === 'gallery';
+    if (!onlyGallerySelected) return;
+    const urls = await uploadFilesSequentially(files);
+    if (urls.length === 0) return;
+    const el = selectedElements[0];
+    const current = el.props?.images || [];
+    store.updateElement(el.id, { props: { ...el.props, images: [...current, ...urls.map((src) => ({ src }))] } });
   };
 
   const handleInsertShortcode = (key) => {
@@ -863,9 +1066,9 @@ export default function CanvasEditorV2() {
 
         <ToolGroup>
           <ToolButton icon="image" label="Imagen" disabled={!canEdit} onClick={handleUploadImageClick} />
-          <ToolButton icon="gallery" label="Galería" comingSoon disabled />
-          <ToolButton icon="gif" label="GIF" comingSoon disabled />
-          <ToolButton icon="collage" label="Collage" comingSoon disabled />
+          <ToolButton icon="gallery" label="Galería" disabled={!canEdit} onClick={handleUploadGalleryClick} />
+          <ToolButton icon="gif" label="GIF" disabled={!canEdit} onClick={handleUploadGifClick} />
+          <ToolButton icon="collage" label="Collage" disabled={!canEdit} onClick={handleUploadCollageClick} />
           <ToolButton icon="youtube" label="YouTube" comingSoon disabled />
           <ToolButton icon="vimeo" label="Vimeo" comingSoon disabled />
           <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
@@ -901,6 +1104,10 @@ export default function CanvasEditorV2() {
 
         <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
         <input type="file" accept="audio/*" ref={audioInputRef} style={{ display: 'none' }} onChange={handleAudioFileChange} />
+        <input type="file" accept="image/*" multiple ref={galleryInputRef} style={{ display: 'none' }} onChange={handleGalleryFileChange} />
+        <input type="file" accept="image/*" multiple ref={collageInputRef} style={{ display: 'none' }} onChange={handleCollageFileChange} />
+        <input type="file" accept="image/gif" ref={gifInputRef} style={{ display: 'none' }} onChange={handleGifFileChange} />
+        <input type="file" accept="image/*" multiple ref={galleryAppendInputRef} style={{ display: 'none' }} onChange={handleAppendGalleryImages} />
       </nav>
 
       <main className="editor-v2-main">
@@ -963,6 +1170,7 @@ export default function CanvasEditorV2() {
                   if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
                   if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
                   if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
+                  if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
                   return <ShapeElement key={el.id} {...shared} />;
                 })}
                 {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
@@ -989,6 +1197,7 @@ export default function CanvasEditorV2() {
         canEdit={canEdit}
         onUpdate={(patch) => selectedElements.length === 1 && store.updateElement(selectedElements[0].id, patch)}
         onAlign={handleAlign}
+        onAppendImagesClick={handleUploadGalleryAppendClick}
       />
     </div>
   );

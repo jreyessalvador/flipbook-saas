@@ -12,6 +12,10 @@ class PageElementKind(str, Enum):
     video = "video"
     audio = "audio"
     hotspot = "hotspot"
+    gallery = "gallery"  # Lote 4: galeria/collage/GIF -- galeria y collage
+    # comparten este kind (solo difiere props.layout: 'grid'|'mosaic'); GIF
+    # sigue usando kind='image' (Konva no anima GIFs, se documenta como
+    # limitacion conocida -- ver RECETA-DESARROLLO.md).
 
 
 class PageElementBase(BaseModel):
