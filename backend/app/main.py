@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.api import auth, publications, pages, assets, locks
+from app.config import settings
 
 app = FastAPI(
     title="Flipbook SaaS API",
@@ -14,12 +15,10 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://flipbook.local",
-        "http://192.168.2.12",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],  # R08: wildcard + credentials es inválido por el estándar CORS
+    # Antes hardcodeado aqui (ignoraba settings.CORS_ORIGINS) -- roto para
+    # cualquier entorno que no fuera produccion/localhost. Ahora viene de la
+    # variable de entorno CORS_ORIGINS (ver app/config.py), coma-separada.
+    allow_origins=settings.CORS_ORIGINS,  # R08: wildcard + credentials es inválido por el estándar CORS
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

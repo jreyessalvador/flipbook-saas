@@ -29,8 +29,20 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
-    # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # CORS -- configurable por entorno via variable CORS_ORIGINS (coma-separada).
+    # Antes main.py ignoraba esto y traia una lista hardcodeada (incluia un
+    # dominio/IP de produccion) -- roto para cualquier otro entorno (p.ej. el
+    # de desarrollo en ia-lavatur, accesible solo por Tailscale). Se deja aqui
+    # el default de produccion conocido + localhost para no romper nada, y se
+    # añaden los origenes de cada entorno de desarrollo via .env.
+    CORS_ORIGINS_RAW: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://flipbook.local,http://192.168.2.12,http://localhost:5173,http://localhost:3000",
+    )
+
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        return [o.strip() for o in self.CORS_ORIGINS_RAW.split(",") if o.strip()]
     
     # Upload limits (bytes)
     MAX_IMAGE_SIZE: int = 10 * 1024 * 1024  # 10MB
