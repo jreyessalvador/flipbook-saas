@@ -5,7 +5,7 @@
 }
 
 .editor-v2-sidebar {
-  width: 240px;
+  width: 220px;
   flex-shrink: 0;
   background: #1f2937;
   color: #f9fafb;
@@ -48,11 +48,71 @@
   font-weight: 600;
 }
 
+/* --- Panel izquierdo de herramientas (inspirado en Photoshop/Joomag) --- */
+.editor-v2-tools-rail {
+  width: 56px;
+  flex-shrink: 0;
+  background: #111827;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.editor-v2-tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1f2937;
+  width: 100%;
+  align-items: center;
+}
+
+.editor-v2-tool-group:last-child {
+  border-bottom: none;
+}
+
+.editor-v2-tool {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.editor-v2-tool:hover:not(:disabled) {
+  background: #1f2937;
+  color: #fff;
+}
+
+.editor-v2-tool.active {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.editor-v2-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.editor-v2-tool.coming-soon {
+  opacity: 0.32;
+}
+
 .editor-v2-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: auto;
+  min-width: 0;
 }
 
 .editor-v2-toolbar {
@@ -124,4 +184,111 @@
   padding: 40px;
   text-align: center;
   color: #6b7280;
+}
+
+/* --- Panel derecho de propiedades (inspirado en Photoshop/Joomag) --- */
+.editor-v2-properties {
+  width: 240px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  padding: 14px;
+  overflow-y: auto;
+  font-size: 13px;
+  color: #111827;
+}
+
+.editor-v2-props-header {
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-v2-props-section {
+  margin-bottom: 18px;
+}
+
+.editor-v2-props-section h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.editor-v2-props-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.editor-v2-align-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.editor-v2-align-row .editor-v2-tool {
+  width: 100%;
+  height: 30px;
+  color: #6b7280;
+}
+
+.editor-v2-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.editor-v2-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.editor-v2-field input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 13px;
+  color: #111827;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.editor-v2-field input[type='color'] {
+  padding: 2px;
+  height: 30px;
+}
+
+.editor-v2-field input:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.editor-v2-quickaction {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 12px;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 900px) {
+  .editor-v2-sidebar {
+    display: none;
+  }
+  .editor-v2-properties {
+    width: 200px;
+  }
 }
