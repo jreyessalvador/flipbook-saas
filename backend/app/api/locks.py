@@ -11,8 +11,9 @@ Un lock se considera expirado si heartbeat_at tiene mas de LOCK_TIMEOUT_SECONDS
 de antiguedad -- en ese caso cualquiera puede tomarlo de nuevo sin error.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
 
 from app.db.session import get_db
@@ -52,54 +53,56 @@ def acquire_lock(
 ):
     _get_publication_or_404(db, publication_id, current_user.tenant_id)
 
+    # UPSERT atomico (INSERT ... ON CONFLICT DO UPDATE) en vez de
+    # SELECT-luego-INSERT/UPDATE: la version anterior (SELECT para ver si
+    # existe, despues decidir INSERT o UPDATE) tenia una ventana de carrera
+    # real entre el SELECT y el INSERT -- dos peticiones POST /lock casi
+    # simultaneas para la MISMA publicacion (el doble-efecto de React 18 en
+    # modo desarrollo la dispara siempre; dos pestañas reales tambien
+    # podrian) veian ambas "no existe" y ambas intentaban el INSERT, y un
+    # primer intento de arreglarlo con try/except+re-consulta seguia
+    # teniendo su propia ventana de carrera (encontrado verificando Fase B
+    # con un navegador real, ver RECETA-DESARROLLO.md). Un UPSERT de una
+    # sola sentencia resuelto por Postgres es atomico por construccion: no
+    # hay ventana entre "ver si existe" y "escribir".
+    #
+    # La condicion en DO UPDATE ... WHERE replica la regla de negocio: solo
+    # se permite tomar/renovar el lock si ya es del mismo usuario, o si el
+    # lock existente esta expirado (heartbeat viejo). Si ninguna se cumple
+    # (lock vigente de OTRO usuario), el UPDATE simplemente no se aplica y
+    # RETURNING no devuelve fila -- eso es como sabemos que hubo conflicto.
+    expiry_cutoff = datetime.now(timezone.utc) - timedelta(seconds=LOCK_TIMEOUT_SECONDS)
+
+    stmt = pg_insert(EditLock).values(
+        publication_id=publication_id,
+        locked_by_user=current_user.id,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[EditLock.publication_id],
+        set_={
+            "locked_by_user": stmt.excluded.locked_by_user,
+            "heartbeat_at": func.now(),
+        },
+        where=(
+            (EditLock.locked_by_user == current_user.id)
+            | (EditLock.heartbeat_at < expiry_cutoff)
+        ),
+    ).returning(EditLock.publication_id)
+
+    applied = db.execute(stmt).fetchone()
+    db.commit()
+
+    if applied:
+        lock = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
+        return lock
+
+    # No se aplico: hay un lock vigente de otro usuario. Consultar para el mensaje.
     existing = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
-
-    if existing and str(existing.locked_by_user) != str(current_user.id) and not _is_expired(existing):
-        holder = db.query(User).filter(User.id == existing.locked_by_user).first()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Publicacion bloqueada por {holder.full_name if holder else 'otro usuario'}",
-        )
-
-    if existing:
-        # Ya expirado, o es el mismo usuario reabriendo -- se toma/renueva.
-        existing.locked_by_user = current_user.id
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    # Bug real encontrado en Fase B (12-sep-2026, ver RECETA-DESARROLLO.md):
-    # entre el SELECT de arriba y este INSERT hay una ventana de carrera --
-    # dos peticiones POST /lock casi simultaneas para la MISMA publicacion
-    # (p.ej. el doble-efecto de React 18 en modo desarrollo, o dos pestañas
-    # abriendo el editor al mismo tiempo) pueden ambas ver "no hay lock" y
-    # ambas intentar el INSERT. La segunda choca contra la PK de
-    # edit_locks (publication_id) y antes tumbaba la peticion con un 500 sin
-    # manejar. Se captura el conflicto y se resuelve como si hubiera llegado
-    # tarde al SELECT: re-consultar y aplicar la misma logica de arriba.
-    try:
-        new_lock = EditLock(publication_id=publication_id, locked_by_user=current_user.id)
-        db.add(new_lock)
-        db.commit()
-        db.refresh(new_lock)
-        return new_lock
-    except IntegrityError:
-        db.rollback()
-        existing = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
-        if existing and str(existing.locked_by_user) != str(current_user.id) and not _is_expired(existing):
-            holder = db.query(User).filter(User.id == existing.locked_by_user).first()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Publicacion bloqueada por {holder.full_name if holder else 'otro usuario'}",
-            )
-        if existing:
-            existing.locked_by_user = current_user.id
-            db.commit()
-            db.refresh(existing)
-            return existing
-        # No deberia poder pasar (alguien mas borro el lock entre el fallo y
-        # esta reconsulta) -- lo tratamos como error transitorio.
-        raise HTTPException(status_code=409, detail="Conflicto adquiriendo el lock, reintenta")
+    holder = db.query(User).filter(User.id == existing.locked_by_user).first() if existing else None
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=f"Publicacion bloqueada por {holder.full_name if holder else 'otro usuario'}",
+    )
 
 
 @router.put("/{publication_id}/lock/heartbeat", response_model=LockResponse)
