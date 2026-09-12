@@ -273,18 +273,63 @@ canvas muestra el valor resuelto ("Texto 12/9/2026 2"), nunca las llaves
 literales. `e2e_editor_v2_regression.js` y `verify_lote1.js` re-ejecutados
 sin regresiones.
 
-Pendientes (próximos lotes, no bloquean lo ya entregado): Audio (Lote 3),
-Galería/Collage/GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud + Quick
-Actions -- Element Settings/Animate (Lote 6), Library + Blocks (Lote 7).
+**Lote 3 -- elemento de audio.** Backend: `POST /api/assets/upload` acepta
+ahora también `audio/mpeg`, `audio/mp3`, `audio/wav`, `audio/x-wav`,
+`audio/ogg`, `audio/webm` (antes solo imagen), validando el tamaño contra
+`MAX_AUDIO_SIZE` (20MB, ya existía en `config.py` sin usarse) en vez del
+límite de imagen (10MB). Frontend: el botón "Audio" del rail deja de ser
+placeholder -- sube el archivo y crea un elemento `kind='audio'` con
+`props.src/autoplay/loop`. En el canvas se representa con un icono fijo
+(`AudioElement`: `Group` con `Rect` + `Path` del icono de altavoz +
+etiqueta) -- Konva no reproduce audio, así que es arrastrable/
+seleccionable/transformable como cualquier otro elemento pero no suena en
+el canvas mismo. El panel de propiedades gana una sección "Audio" con un
+`<audio controls>` nativo (vista previa de escucha para validar el
+archivo, no el Reader final) y checkboxes de autoplay/loop.
+
+**Bug real (pre-existente, no introducido en este lote) encontrado y
+corregido durante la verificación**: en `upload_asset()`
+(`backend/app/api/assets.py`) un `except Exception` genérico atrapaba
+también las `HTTPException(400, ...)` ya deliberadas (tipo de archivo no
+permitido / archivo demasiado grande), reenvolviéndolas como 500 y
+ocultando el código de estado correcto al frontend. Corregido con un
+`except HTTPException: raise` antes del except genérico.
+
+**Incidente de infraestructura en ia-lavatur durante este lote (para que
+no se repita)**: `docker-compose.dev.yml`, tal como está en este repo, NO
+refleja la configuración real con la que se levantó el stack de
+ia-lavatur (nombres de contenedor `flipbook-dev-*`, puertos/binds
+definidos en `.env`, ver sección 4) -- es un archivo genérico más viejo
+que quedó desincronizado (probablemente por un `git reset --hard` de una
+ronda anterior, ver agents-memory ronda 8). Ejecutar
+`docker compose -f docker-compose.dev.yml up` contra este archivo
+RECREA los contenedores con OTRO nombre/config y puede *borrar* el
+contenedor real en uso (pasó con `flipbook-dev-backend` durante este
+lote). **Regla para el futuro: en ia-lavatur, para reiniciar/actualizar
+un contenedor de este stack, usar `docker restart <nombre-real>` o
+`docker cp` + `docker restart` sobre el contenedor `flipbook-dev-*` que
+ya existe -- nunca `docker compose up` contra `docker-compose.dev.yml` sin
+antes verificar con `docker inspect <contenedor> --format '{{json .Mounts}}'`
+que su configuración coincide con el archivo.** Recuperado sin pérdida de
+datos (los volúmenes con los datos reales viven en `./data/` en el host,
+no en volúmenes nombrados de Docker) reconstruyendo el contenedor a mano
+con `docker run` replicando la config real inspeccionada de los demás
+contenedores del stack.
+
+Pendientes (próximos lotes, no bloquean lo ya entregado): Galería/Collage/
+GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud + Quick Actions --
+Element Settings/Animate (Lote 6), Library + Blocks (Lote 7).
 
 ## 10. Próximo paso concreto (para quien retome esto)
 
-Seguir con el Lote 3 (Audio) siguiendo el mismo patrón: implementar,
-verificar con Playwright real contra `ia-lavatur` (screenshots incluidos
-cuando aplique), commitear+pushear desde `raspi-2` (única máquina con
-credenciales de git para este repo), sincronizar `ia-lavatur` con
-`git pull`, y solo entonces pasar al siguiente lote -- sin pausar a pedir
-confirmación salvo que algo requiera de verdad la validación de Carlos.
+Seguir con el Lote 4 (Galería/Collage/GIF) siguiendo el mismo patrón:
+implementar, verificar con Playwright real contra `ia-lavatur` (screenshots
+incluidos cuando aplique), commitear+pushear desde `raspi-2` (única
+máquina con credenciales de git para este repo), sincronizar `ia-lavatur`
+con `git pull`, y solo entonces pasar al siguiente lote -- sin pausar a
+pedir confirmación salvo que algo requiera de verdad la validación de
+Carlos. Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
+ia-lavatur, releer el aviso de infraestructura de la sección 9 (Lote 3).
 
 Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
 vía script Playwright) el escenario de fuga portada→contraportada -- el

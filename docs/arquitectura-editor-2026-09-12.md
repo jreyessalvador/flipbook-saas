@@ -104,7 +104,7 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
   Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen,
-  Galería*, GIF*, Collage*, YouTube*, Vimeo*, Audio*, SoundCloud*,
+  Galería*, GIF*, Collage*, YouTube*, Vimeo*, Audio, SoundCloud*,
   Plugins (shortcodes de texto), Library*, Blocks*.
 - **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
   requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
@@ -117,9 +117,11 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
   múltiple, shift+click y marquee-select) se activaron en el Lote 1;
   Plugins (shortcodes de texto plano `{{fecha}}`, `{{numero_pagina}}`,
   `{{total_paginas}}`, `{{titulo_publicacion}}` -- NUNCA HTML/JS/iframes
-  arbitrarios, decisión explícita de Carlos) se activó en el Lote 2 --
-  ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de
-  lotes pendientes (Audio, Galería/Collage/GIF, YouTube/Vimeo,
+  arbitrarios, decisión explícita de Carlos) se activó en el Lote 2, y
+  Audio (subida real vía `POST /api/assets/upload`, icono fijo en el
+  canvas + `<audio controls>` de vista previa en el panel de propiedades)
+  en el Lote 3 -- ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y
+  el resto de lotes pendientes (Galería/Collage/GIF, YouTube/Vimeo,
   SoundCloud+Quick Actions, Library+Blocks).
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
@@ -130,7 +132,7 @@ Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columna
 | `text` | `{ content_html, font_family, font_size, color, align }` | `Konva.Text` + `<textarea>` overlay para edición | Texto estático |
 | `shape` | `{ shape_type: rect\|circle\|line, fill, stroke, stroke_width }` | `Konva.Rect`/`Circle`/`Line` | Igual, estático |
 | `video` | `{ asset_id, autoplay, loop, muted, poster_asset_id }` | `<video>` oculto + `Konva.Image` con `requestAnimationFrame` | Overlay `<video controls>` |
-| `audio` | `{ asset_id, autoplay, loop, icon_style }` | Ícono fijo + `<audio>` overlay | Igual |
+| `audio` | `{ src, autoplay, loop }` (implementado Lote 3 así, no `asset_id`) | Ícono fijo (Konva) + `<audio controls>` de vista previa en el panel de propiedades | Overlay `<audio>` real sincronizado (Fase E) |
 | `hotspot` | `{ action_type: link\|goto_page\|gallery\|form, target }` | Rectángulo semitransparente con ícono | Zona invisible clicable |
 
 ---
