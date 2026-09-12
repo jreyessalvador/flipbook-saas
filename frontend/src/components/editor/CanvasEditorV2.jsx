@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Stage, Layer, Rect, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Ellipse, Line, Star, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 import { usePageEditorStore } from '../../store/pageEditorStore';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
@@ -12,11 +12,11 @@ import '../../styles/CanvasEditorV2.css';
 // Fase B -- editor canvas (image/text/shape) + shell de UI de dos paneles
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
-// sección 7. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, Línea, Círculo, Estrella, Galería, GIF, Collage, YouTube, Vimeo,
-// Audio, SoundCloud, Plugins, Library, Blocks, Alinear/Distribuir (requiere
-// selección múltiple) y las Quick Actions -- quedan para fases siguientes,
-// no bloquean lo ya verificado de Fase B.
+// sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
+// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, Audio, SoundCloud, Plugins,
+// Library, Blocks y Quick Actions -- quedan para lotes siguientes, no
+// bloquean lo ya verificado. Línea/Círculo/Estrella y Alinear/Distribuir
+// (con selección múltiple) SÍ son funcionales -- ver Lote 1.
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
 const HEARTBEAT_MS = 20000; // el lock expira a los 60s sin heartbeat (backend/app/api/locks.py)
@@ -49,6 +49,8 @@ const ICON_PATHS = {
   alignTop: 'M3 4h18M6 8v12M12 8v8M18 8v12',
   alignMiddleV: 'M3 12h18M7 6h4M13 6h4M7 18h4M13 18h4',
   alignBottom: 'M3 20h18M6 4v12M12 8v8M18 4v12',
+  distributeH: 'M4 4v16M12 4v16M20 4v16M8 12h1M15 12h1',
+  distributeV: 'M4 4h16M4 12h16M4 20h16M12 8v1M12 15v1',
 };
 
 function Icon({ name, size = 18 }) {
@@ -102,6 +104,9 @@ function useHtmlImage(src) {
   return image;
 }
 
+// Para formas cuyo x/y en nuestro modelo de datos es la esquina superior
+// izquierda (igual que Rect/Image/Text): tras escalar, resetea el scale a 1
+// y traduce el resultado a width/height reales.
 function handleTransformEnd(node, onChange) {
   const scaleX = node.scaleX();
   const scaleY = node.scaleY();
@@ -112,6 +117,27 @@ function handleTransformEnd(node, onChange) {
     y: node.y(),
     width: Math.max(10, node.width() * scaleX),
     height: Math.max(10, node.height() * scaleY),
+    rotation_deg: node.rotation(),
+  });
+}
+
+// Para formas cuyo nodo Konva usa x/y como CENTRO (Ellipse, Star) -- hay que
+// convertir de vuelta a esquina superior izquierda antes de guardar, o el
+// elemento "saltaría" de posición en el siguiente render (bug real evitado
+// aquí, no solo cosmético: sin esto, redimensionar/rotar un círculo movía su
+// esquina al punto donde antes estaba su centro).
+function handleTransformEndCentered(node, onChange) {
+  const scaleX = node.scaleX();
+  const scaleY = node.scaleY();
+  node.scaleX(1);
+  node.scaleY(1);
+  const newWidth = Math.max(10, node.width() * scaleX);
+  const newHeight = Math.max(10, node.height() * scaleY);
+  onChange({
+    x: node.x() - newWidth / 2,
+    y: node.y() - newHeight / 2,
+    width: newWidth,
+    height: newHeight,
     rotation_deg: node.rotation(),
   });
 }
@@ -136,20 +162,87 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   );
 }
 
+// Un solo componente para las 4 variantes de 'shape' (rect/línea/círculo/
+// estrella) -- todas comparten el mismo modelo de datos (x, y, width, height
+// como caja contenedora) para no duplicar el manejo de arrastre/transformar/
+// guardado; solo cambia qué nodo Konva se dibuja dentro de esa caja.
 function ShapeElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const shapeType = el.props?.shape_type || 'rect';
+  const fill = el.props?.fill || '#4f46e5';
+  const common = {
+    ref: shapeRef,
+    rotation: el.rotation_deg,
+    draggable: canEdit,
+    onClick: onSelect,
+    onTap: onSelect,
+  };
+
+  if (shapeType === 'line') {
+    return (
+      <Line
+        {...common}
+        x={el.x}
+        y={el.y}
+        width={el.width}
+        height={el.height}
+        points={[0, el.height / 2, el.width, el.height / 2]}
+        stroke={fill}
+        strokeWidth={el.props?.strokeWidth || 4}
+        hitStrokeWidth={16}
+        onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+        onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+      />
+    );
+  }
+
+  if (shapeType === 'circle') {
+    const rx = el.width / 2;
+    const ry = el.height / 2;
+    return (
+      <Ellipse
+        {...common}
+        x={el.x + rx}
+        y={el.y + ry}
+        radiusX={rx}
+        radiusY={ry}
+        fill={fill}
+        onDragEnd={(e) => onChange({ x: e.target.x() - rx, y: e.target.y() - ry })}
+        onTransformEnd={(e) => handleTransformEndCentered(e.target, onChange)}
+      />
+    );
+  }
+
+  if (shapeType === 'star') {
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    const outerRadius = Math.min(el.width, el.height) / 2;
+    return (
+      <Star
+        {...common}
+        x={cx}
+        y={cy}
+        width={el.width}
+        height={el.height}
+        numPoints={5}
+        innerRadius={outerRadius / 2}
+        outerRadius={outerRadius}
+        fill={fill}
+        onDragEnd={(e) => onChange({ x: e.target.x() - el.width / 2, y: e.target.y() - el.height / 2 })}
+        onTransformEnd={(e) => handleTransformEndCentered(e.target, onChange)}
+      />
+    );
+  }
+
+  // rect (default -- también el valor histórico de Fase B antes de esta ronda)
   return (
     <Rect
-      ref={shapeRef}
+      {...common}
       x={el.x}
       y={el.y}
       width={el.width}
       height={el.height}
-      rotation={el.rotation_deg}
       cornerRadius={el.props?.cornerRadius || 0}
-      fill={el.props?.fill || '#4f46e5'}
-      draggable={canEdit}
-      onClick={onSelect}
-      onTap={onSelect}
+      fill={fill}
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
       onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
     />
@@ -209,71 +302,101 @@ function NumberField({ label, value, disabled, onCommit, step = 1 }) {
   );
 }
 
-function PropertiesPanel({ selectedElement, canEdit, onUpdate }) {
+// Iconos del renglón "Alinear y distribuir" -- alinear necesita 2+
+// elementos seleccionados, distribuir necesita 3+ (con solo 2 no hay nada
+// intermedio que espaciar).
+const ALIGN_ROW_ICONS = ['alignLeft', 'alignCenterH', 'alignRight', 'distributeH', 'alignTop', 'alignMiddleV', 'alignBottom', 'distributeV'];
+const DISTRIBUTE_ICONS = new Set(['distributeH', 'distributeV']);
+
+function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
+  const count = selectedElements.length;
+  const selectedElement = count === 1 ? selectedElements[0] : null;
   const disabled = !canEdit || !selectedElement;
   const kind = selectedElement?.kind;
+  const shapeType = selectedElement?.props?.shape_type || 'rect';
 
   return (
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
-        {selectedElement
-          ? `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : 'Figura'}`
-          : 'Ningún elemento seleccionado'}
+        {count === 0 && 'Ningún elemento seleccionado'}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : 'Figura'}`}
+        {count > 1 && `${count} elementos seleccionados`}
       </div>
 
       <section className="editor-v2-props-section">
         <h4>Alinear y distribuir</h4>
         <div className="editor-v2-align-row">
-          {['alignLeft', 'alignCenterH', 'alignRight', 'alignTop', 'alignMiddleV', 'alignBottom'].map((icon) => (
-            <button key={icon} type="button" className="editor-v2-tool coming-soon" disabled title="Próximamente (requiere selección múltiple)">
-              <Icon name={icon} size={16} />
-            </button>
-          ))}
+          {ALIGN_ROW_ICONS.map((icon) => {
+            const needs = DISTRIBUTE_ICONS.has(icon) ? 3 : 2;
+            const enabled = canEdit && count >= needs;
+            return (
+              <button
+                key={icon}
+                type="button"
+                className="editor-v2-tool"
+                disabled={!enabled}
+                title={enabled ? undefined : `Requiere ${needs}+ elementos seleccionados`}
+                onClick={() => onAlign(icon)}
+              >
+                <Icon name={icon} size={16} />
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      <section className="editor-v2-props-section">
-        <h4>Transformar</h4>
-        <div className="editor-v2-field-grid">
-          <NumberField label="X" value={selectedElement?.x} disabled={disabled} onCommit={(n) => onUpdate({ x: n })} />
-          <NumberField label="Y" value={selectedElement?.y} disabled={disabled} onCommit={(n) => onUpdate({ y: n })} />
-          <NumberField label="Ancho" value={selectedElement?.width} disabled={disabled} onCommit={(n) => onUpdate({ width: Math.max(1, n) })} />
-          <NumberField label="Alto" value={selectedElement?.height} disabled={disabled} onCommit={(n) => onUpdate({ height: Math.max(1, n) })} />
-          <NumberField label="Rotación°" value={selectedElement?.rotation_deg} disabled={disabled} onCommit={(n) => onUpdate({ rotation_deg: n })} />
-        </div>
-      </section>
+      {count > 1 ? (
+        <section className="editor-v2-props-section">
+          <p className="editor-v2-props-hint">
+            Selecciona un único elemento para ver Transformar/Apariencia -- usa Alinear y distribuir arriba para mover varios a la vez.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="editor-v2-props-section">
+            <h4>Transformar</h4>
+            <div className="editor-v2-field-grid">
+              <NumberField label="X" value={selectedElement?.x} disabled={disabled} onCommit={(n) => onUpdate({ x: n })} />
+              <NumberField label="Y" value={selectedElement?.y} disabled={disabled} onCommit={(n) => onUpdate({ y: n })} />
+              <NumberField label="Ancho" value={selectedElement?.width} disabled={disabled} onCommit={(n) => onUpdate({ width: Math.max(1, n) })} />
+              <NumberField label="Alto" value={selectedElement?.height} disabled={disabled} onCommit={(n) => onUpdate({ height: Math.max(1, n) })} />
+              <NumberField label="Rotación°" value={selectedElement?.rotation_deg} disabled={disabled} onCommit={(n) => onUpdate({ rotation_deg: n })} />
+            </div>
+          </section>
 
-      <section className="editor-v2-props-section">
-        <h4>Apariencia</h4>
-        {(kind === 'shape' || kind === 'text') && (
-          <label className="editor-v2-field">
-            <span>Color</span>
-            <input
-              type="color"
-              disabled={disabled}
-              value={selectedElement?.props?.fill || '#4f46e5'}
-              onChange={(e) => onUpdate({ props: { ...selectedElement.props, fill: e.target.value } })}
-            />
-          </label>
-        )}
-        {kind === 'shape' && (
-          <NumberField
-            label="Radio de esquina"
-            value={selectedElement?.props?.cornerRadius || 0}
-            disabled={disabled}
-            onCommit={(n) => onUpdate({ props: { ...selectedElement.props, cornerRadius: Math.max(0, n) } })}
-          />
-        )}
-        {kind === 'text' && (
-          <NumberField
-            label="Tamaño de fuente"
-            value={selectedElement?.props?.fontSize || 24}
-            disabled={disabled}
-            onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })}
-          />
-        )}
-        {!kind && <p className="editor-v2-props-hint">Selecciona un elemento para ver sus opciones.</p>}
-      </section>
+          <section className="editor-v2-props-section">
+            <h4>Apariencia</h4>
+            {(kind === 'shape' || kind === 'text') && (
+              <label className="editor-v2-field">
+                <span>Color</span>
+                <input
+                  type="color"
+                  disabled={disabled}
+                  value={selectedElement?.props?.fill || '#4f46e5'}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, fill: e.target.value } })}
+                />
+              </label>
+            )}
+            {kind === 'shape' && shapeType === 'rect' && (
+              <NumberField
+                label="Radio de esquina"
+                value={selectedElement?.props?.cornerRadius || 0}
+                disabled={disabled}
+                onCommit={(n) => onUpdate({ props: { ...selectedElement.props, cornerRadius: Math.max(0, n) } })}
+              />
+            )}
+            {kind === 'text' && (
+              <NumberField
+                label="Tamaño de fuente"
+                value={selectedElement?.props?.fontSize || 24}
+                disabled={disabled}
+                onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })}
+              />
+            )}
+            {!kind && <p className="editor-v2-props-hint">Selecciona un elemento para ver sus opciones.</p>}
+          </section>
+        </>
+      )}
 
       <section className="editor-v2-props-section">
         <h4>Quick Actions</h4>
@@ -291,6 +414,56 @@ function PropertiesPanel({ selectedElement, canEdit, onUpdate }) {
   );
 }
 
+// --- Cálculo de Alinear/Distribuir ---------------------------------------
+// Todo en las mismas "unidades de página" que x/y/width/height (ver
+// PX_PER_MM) -- nunca en píxeles de pantalla, para que el resultado sea
+// idéntico sin importar el zoom del navegador.
+function computeAlignPatches(type, selected) {
+  const patches = {};
+  if (type === 'alignLeft') {
+    const minX = Math.min(...selected.map((e) => e.x));
+    selected.forEach((e) => { patches[e.id] = { x: minX }; });
+  } else if (type === 'alignRight') {
+    const maxRight = Math.max(...selected.map((e) => e.x + e.width));
+    selected.forEach((e) => { patches[e.id] = { x: maxRight - e.width }; });
+  } else if (type === 'alignCenterH') {
+    const minX = Math.min(...selected.map((e) => e.x));
+    const maxX = Math.max(...selected.map((e) => e.x + e.width));
+    const centerX = (minX + maxX) / 2;
+    selected.forEach((e) => { patches[e.id] = { x: centerX - e.width / 2 }; });
+  } else if (type === 'alignTop') {
+    const minY = Math.min(...selected.map((e) => e.y));
+    selected.forEach((e) => { patches[e.id] = { y: minY }; });
+  } else if (type === 'alignBottom') {
+    const maxBottom = Math.max(...selected.map((e) => e.y + e.height));
+    selected.forEach((e) => { patches[e.id] = { y: maxBottom - e.height }; });
+  } else if (type === 'alignMiddleV') {
+    const minY = Math.min(...selected.map((e) => e.y));
+    const maxY = Math.max(...selected.map((e) => e.y + e.height));
+    const centerY = (minY + maxY) / 2;
+    selected.forEach((e) => { patches[e.id] = { y: centerY - e.height / 2 }; });
+  } else if (type === 'distributeH' && selected.length >= 3) {
+    const sorted = [...selected].sort((a, b) => a.x + a.width / 2 - (b.x + b.width / 2));
+    const firstCenter = sorted[0].x + sorted[0].width / 2;
+    const lastCenter = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width / 2;
+    const step = (lastCenter - firstCenter) / (sorted.length - 1);
+    sorted.forEach((e, i) => { patches[e.id] = { x: firstCenter + step * i - e.width / 2 }; });
+  } else if (type === 'distributeV' && selected.length >= 3) {
+    const sorted = [...selected].sort((a, b) => a.y + a.height / 2 - (b.y + b.height / 2));
+    const firstCenter = sorted[0].y + sorted[0].height / 2;
+    const lastCenter = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height / 2;
+    const step = (lastCenter - firstCenter) / (sorted.length - 1);
+    sorted.forEach((e, i) => { patches[e.id] = { y: firstCenter + step * i - e.height / 2 }; });
+  }
+  return patches;
+}
+
+// Intersección de dos rectángulos axis-aligned (no considera rotación --
+// aproximación aceptable para un marquee-select de MVP).
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
 export default function CanvasEditorV2() {
   const { id: publicationId, pageId: pageIdParam } = useParams();
   const navigate = useNavigate();
@@ -303,6 +476,12 @@ export default function CanvasEditorV2() {
   const [lockState, setLockState] = useState('acquiring');
   const [lockMessage, setLockMessage] = useState('');
 
+  // Rectángulo de selección (marquee-select) mientras el usuario arrastra
+  // sobre el fondo del canvas -- estado puramente visual/local, no vive en
+  // el store (no se guarda ni afecta a otras páginas).
+  const [marquee, setMarquee] = useState(null); // { x, y, width, height } | null
+  const marqueeStartRef = useRef(null);
+
   const store = usePageEditorStore();
 
   // Hook de depuracion SOLO en dev (Vite lo elimina del build de produccion):
@@ -311,7 +490,7 @@ export default function CanvasEditorV2() {
   if (import.meta.env.DEV) {
     window.__pageEditorStore = store;
   }
-  const { elements, isLoading, isSaving, isDirty, loadError, saveError, selectedElementId } = store;
+  const { elements, isLoading, isSaving, isDirty, loadError, saveError, selectedElementIds } = store;
 
   const stageRef = useRef(null);
   const trRef = useRef(null);
@@ -320,7 +499,7 @@ export default function CanvasEditorV2() {
 
   const activePageId = pageIdParam || pages[0]?.id;
   const canEdit = lockState === 'held';
-  const selectedElement = elements.find((e) => e.id === selectedElementId) || null;
+  const selectedElements = elements.filter((e) => selectedElementIds.includes(e.id));
 
   // Publicación + lista de páginas: se cargan una vez, no dependen de qué
   // página está activa (evita refetchs innecesarios al navegar entre páginas).
@@ -397,28 +576,30 @@ export default function CanvasEditorV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePageId]);
 
-  // Adjuntar el Transformer al nodo Konva seleccionado.
+  // Adjuntar el Transformer a TODOS los nodos Konva seleccionados (Konva
+  // soporta redimensionar/rotar varios nodos a la vez como grupo de forma
+  // nativa vía Transformer.nodes([...])).
   useEffect(() => {
-    const node = selectedElementId ? shapeRefs.current[selectedElementId] : null;
+    const nodes = selectedElementIds.map((id) => shapeRefs.current[id]).filter(Boolean);
     if (trRef.current) {
-      trRef.current.nodes(node ? [node] : []);
+      trRef.current.nodes(nodes);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedElementId, elements]);
+  }, [selectedElementIds, elements]);
 
-  // Borrar con teclado (Delete/Backspace) cuando hay un elemento seleccionado
+  // Borrar con teclado (Delete/Backspace) cuando hay elementos seleccionados
   // y el foco no está en un input de texto.
   useEffect(() => {
     const onKeyDown = (e) => {
       const tag = document.activeElement?.tagName;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-        store.removeElement(selectedElementId);
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementIds.length > 0 && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        store.removeSelectedElements();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedElementId]);
+  }, [selectedElementIds]);
 
   const handleSelectPage = (newPageId) => {
     if (newPageId === activePageId) return;
@@ -440,6 +621,43 @@ export default function CanvasEditorV2() {
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir la imagen');
     }
+  };
+
+  const handleAlign = (type) => {
+    const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
+    if (selectedElements.length < needs) return;
+    store.updateElements(computeAlignPatches(type, selectedElements));
+  };
+
+  // --- Marquee-select (rectángulo de selección arrastrando sobre el fondo) --
+  const handleStageMouseDown = (e) => {
+    if (e.target !== e.target.getStage()) return; // click sobre un elemento, no el fondo
+    const pos = e.target.getStage().getPointerPosition();
+    if (!e.evt.shiftKey) store.selectElement(null);
+    marqueeStartRef.current = pos;
+    setMarquee({ x: pos.x, y: pos.y, width: 0, height: 0 });
+  };
+
+  const handleStageMouseMove = (e) => {
+    if (!marqueeStartRef.current) return;
+    const pos = e.target.getStage().getPointerPosition();
+    const start = marqueeStartRef.current;
+    setMarquee({
+      x: Math.min(start.x, pos.x),
+      y: Math.min(start.y, pos.y),
+      width: Math.abs(pos.x - start.x),
+      height: Math.abs(pos.y - start.y),
+    });
+  };
+
+  const handleStageMouseUp = () => {
+    if (!marqueeStartRef.current) return;
+    const rect = marquee;
+    marqueeStartRef.current = null;
+    setMarquee(null);
+    if (!rect || (rect.width < 4 && rect.height < 4)) return; // click simple, no arrastre real
+    const hitIds = elements.filter((el) => rectsIntersect(rect, el)).map((el) => el.id);
+    if (hitIds.length > 0) store.selectElements(hitIds);
   };
 
   if (loadErr) {
@@ -488,15 +706,30 @@ export default function CanvasEditorV2() {
         </ToolGroup>
 
         <ToolGroup>
-          <ToolButton icon="line" label="Línea" comingSoon disabled />
+          <ToolButton
+            icon="line"
+            label="Línea"
+            disabled={!canEdit}
+            onClick={() => store.addElement('shape', { width: 160, height: 4, props: { fill: '#4f46e5', shape_type: 'line', strokeWidth: 4 } })}
+          />
           <ToolButton
             icon="rectangle"
             label="Rectángulo"
             disabled={!canEdit}
-            onClick={() => store.addElement('shape', { props: { fill: '#4f46e5' } })}
+            onClick={() => store.addElement('shape', { props: { fill: '#4f46e5', shape_type: 'rect' } })}
           />
-          <ToolButton icon="circle" label="Círculo" comingSoon disabled />
-          <ToolButton icon="star" label="Estrella" comingSoon disabled />
+          <ToolButton
+            icon="circle"
+            label="Círculo"
+            disabled={!canEdit}
+            onClick={() => store.addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'circle' } })}
+          />
+          <ToolButton
+            icon="star"
+            label="Estrella"
+            disabled={!canEdit}
+            onClick={() => store.addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'star' } })}
+          />
         </ToolGroup>
 
         <ToolGroup>
@@ -539,8 +772,8 @@ export default function CanvasEditorV2() {
         )}
 
         <div className="editor-v2-toolbar">
-          <button type="button" disabled={!canEdit || !selectedElementId} onClick={() => selectedElementId && store.removeElement(selectedElementId)}>
-            Eliminar seleccionado
+          <button type="button" disabled={!canEdit || selectedElementIds.length === 0} onClick={() => store.removeSelectedElements()}>
+            Eliminar seleccionado{selectedElementIds.length > 1 ? 's' : ''}
           </button>
           <span className="editor-v2-spacer" />
           {isDirty && <span className="editor-v2-dirty">Cambios sin guardar</span>}
@@ -560,9 +793,9 @@ export default function CanvasEditorV2() {
               width={stageWidthPx}
               height={stageHeightPx}
               className="editor-v2-stage"
-              onMouseDown={(e) => {
-                if (e.target === e.target.getStage()) store.selectElement(null);
-              }}
+              onMouseDown={handleStageMouseDown}
+              onMouseMove={handleStageMouseMove}
+              onMouseUp={handleStageMouseUp}
             >
               <Layer>
                 <Rect x={0} y={0} width={stageWidthPx} height={stageHeightPx} fill="#ffffff" listening={false} />
@@ -573,7 +806,7 @@ export default function CanvasEditorV2() {
                   const shared = {
                     el,
                     canEdit,
-                    onSelect: () => canEdit && store.selectElement(el.id),
+                    onSelect: (e) => canEdit && store.selectElement(el.id, { additive: e?.evt?.shiftKey }),
                     onChange: (patch) => canEdit && store.updateElement(el.id, patch),
                     shapeRef: (node) => {
                       shapeRefs.current[el.id] = node;
@@ -584,6 +817,18 @@ export default function CanvasEditorV2() {
                   return <ShapeElement key={el.id} {...shared} />;
                 })}
                 {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
+                {marquee && (
+                  <Rect
+                    x={marquee.x}
+                    y={marquee.y}
+                    width={marquee.width}
+                    height={marquee.height}
+                    fill="rgba(79,70,229,0.15)"
+                    stroke="#4f46e5"
+                    strokeWidth={1}
+                    listening={false}
+                  />
+                )}
               </Layer>
             </Stage>
           </div>
@@ -591,9 +836,10 @@ export default function CanvasEditorV2() {
       </main>
 
       <PropertiesPanel
-        selectedElement={selectedElement}
+        selectedElements={selectedElements}
         canEdit={canEdit}
-        onUpdate={(patch) => selectedElementId && store.updateElement(selectedElementId, patch)}
+        onUpdate={(patch) => selectedElements.length === 1 && store.updateElement(selectedElements[0].id, patch)}
+        onAlign={handleAlign}
       />
     </div>
   );

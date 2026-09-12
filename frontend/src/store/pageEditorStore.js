@@ -46,7 +46,7 @@ export const usePageEditorStore = create(
     pageId: null,
     version: null,
     elements: [], // [{ id (temporal o real), kind, x, y, width, height, rotation_deg, z_index, props }]
-    selectedElementId: null,
+    selectedElementIds: [], // seleccion multiple -- array de ids (vacio = nada seleccionado)
     isLoading: false,
     isSaving: false,
     isDirty: false,
@@ -66,7 +66,7 @@ export const usePageEditorStore = create(
         state.pageId = pageId;
         state.version = null;
         state.elements = [];
-        state.selectedElementId = null;
+        state.selectedElementIds = [];
         state.isLoading = true;
         state.isDirty = false;
         state.loadError = null;
@@ -130,14 +130,62 @@ export const usePageEditorStore = create(
     removeElement: (id) => {
       set((state) => {
         state.elements = state.elements.filter((e) => e.id !== id);
-        if (state.selectedElementId === id) state.selectedElementId = null;
+        state.selectedElementIds = state.selectedElementIds.filter((sid) => sid !== id);
         state.isDirty = true;
       });
     },
 
-    selectElement: (id) => {
+    // Elimina TODOS los elementos actualmente seleccionados (boton "Eliminar
+    // seleccionado" / tecla Delete con seleccion multiple).
+    removeSelectedElements: () => {
       set((state) => {
-        state.selectedElementId = id;
+        if (state.selectedElementIds.length === 0) return;
+        const toRemove = new Set(state.selectedElementIds);
+        state.elements = state.elements.filter((e) => !toRemove.has(e.id));
+        state.selectedElementIds = [];
+        state.isDirty = true;
+      });
+    },
+
+    // id === null limpia la seleccion. options.additive (shift+click) agrega/
+    // quita ese id de la seleccion actual en vez de reemplazarla.
+    selectElement: (id, options = {}) => {
+      set((state) => {
+        if (id === null) {
+          state.selectedElementIds = [];
+          return;
+        }
+        if (options.additive) {
+          const idx = state.selectedElementIds.indexOf(id);
+          if (idx >= 0) state.selectedElementIds.splice(idx, 1);
+          else state.selectedElementIds.push(id);
+        } else {
+          state.selectedElementIds = [id];
+        }
+      });
+    },
+
+    // Reemplaza la seleccion completa por este conjunto de ids (usado por el
+    // rectangulo de seleccion / marquee-select).
+    selectElements: (ids) => {
+      set((state) => {
+        state.selectedElementIds = [...ids];
+      });
+    },
+
+    // Aplica un patch DISTINTO a cada elemento en un solo set() -- usado por
+    // Alinear/Distribuir, que calcula una x/y nueva por elemento seleccionado.
+    updateElements: (patchesById) => {
+      set((state) => {
+        let changed = false;
+        for (const el of state.elements) {
+          const patch = patchesById[el.id];
+          if (patch) {
+            Object.assign(el, patch);
+            changed = true;
+          }
+        }
+        if (changed) state.isDirty = true;
       });
     },
 
@@ -203,7 +251,7 @@ export const usePageEditorStore = create(
         state.pageId = null;
         state.version = null;
         state.elements = [];
-        state.selectedElementId = null;
+        state.selectedElementIds = [];
         state.isLoading = false;
         state.isSaving = false;
         state.isDirty = false;
