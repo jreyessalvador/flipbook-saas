@@ -128,6 +128,14 @@ async def upload_asset(
             "content_type": file.content_type
         }
 
+    except HTTPException:
+        # Bug real encontrado durante la verificacion del Lote 3 (audio):
+        # el except Exception generico de abajo atrapaba tambien las
+        # HTTPException ya deliberadas de arriba (400 tipo no permitido /
+        # archivo demasiado grande) y las reenvolvia como 500, ocultando el
+        # codigo de estado correcto. Re-lanzar tal cual antes de que el
+        # except generico las alcance.
+        raise
     except S3Error as e:
         raise HTTPException(status_code=500, detail=f"Error MinIO: {str(e)}")
     except Exception as e:
