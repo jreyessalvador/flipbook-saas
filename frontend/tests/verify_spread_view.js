@@ -118,9 +118,18 @@ function assert(cond, msg) {
   console.log('   OK: spread muestra paginas 2 (izq) y 3 (der)');
 
   console.log('5) foco/clic en el Stage IZQUIERDO -> agregar un TEXTO -- debe quedar en la pagina 2 (izquierda), no en la 3');
-  const leftSlot = page.locator('.editor-v2-canvas-wrap .editor-v2-page-slot').nth(0);
-  const rightSlot = page.locator('.editor-v2-canvas-wrap .editor-v2-page-slot').nth(1);
-  await leftSlot.locator('canvas').first().click({ position: { x: 5, y: 5 } }); // fondo del stage izquierdo, sin tocar elementos
+  // Mismo patron que verify_lote1_visual.js: boundingBox() + page.mouse.click()
+  // con coordenadas absolutas de pantalla -- mas fiable contra un <canvas> de
+  // Konva que locator.click({position}), que en este layout de dos Stages
+  // lado a lado quedaba reintentando indefinidamente ('<html> intercepts
+  // pointer events', posiblemente por el contenedor con overflow-x:auto del
+  // spread interfiriendo con el scroll-into-view automatico de Playwright).
+  const stagesBoxes = await page.$$eval('.editor-v2-page-slot .editor-v2-stage', (els) =>
+    els.map((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })
+  );
+  assert(stagesBoxes.length === 2, `Se esperaban 2 Stages para calcular sus coordenadas, hay ${stagesBoxes.length}`);
+  const [leftBox, rightBox] = stagesBoxes;
+  await page.mouse.click(leftBox.x + 5, leftBox.y + 5); // fondo del stage izquierdo, sin tocar elementos
   await page.waitForTimeout(200);
   await page.click('button[aria-label="Texto"]');
   await page.waitForTimeout(300);
@@ -132,7 +141,7 @@ function assert(cond, msg) {
   console.log('   OK: el texto quedo en la pagina 2 (izquierda), la 3 (derecha) sigue vacia');
 
   console.log('6) foco/clic en el Stage DERECHO -> agregar un RECTANGULO -- debe quedar en la pagina 3 (derecha), sin afectar la 2');
-  await rightSlot.locator('canvas').first().click({ position: { x: 5, y: 5 } }); // fondo del stage derecho
+  await page.mouse.click(rightBox.x + 5, rightBox.y + 5); // fondo del stage derecho
   await page.waitForTimeout(200);
   await page.click('button[aria-label="Rectángulo"]');
   await page.waitForTimeout(300);
