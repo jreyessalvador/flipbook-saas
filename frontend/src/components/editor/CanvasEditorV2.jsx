@@ -895,13 +895,22 @@ export default function CanvasEditorV2() {
   // (p.ej. scripts de verificacion con Playwright) sin exponer nada en
   // produccion. Se exponen ambos lados por separado -- ya no hay un único
   // "window.__pageEditorStore" porque ya no hay un único store.
-  if (import.meta.env.DEV) {
-    window.__pageEditorStoreLeft = useLeftStore;
-    window.__pageEditorStoreRight = useRightStore;
-  }
-
   const leftState = useLeftStore();
   const rightState = useRightStore();
+
+  // window.__pageEditorStore (sin sufijo) se conserva por compatibilidad con
+  // los scripts de verificacion Playwright ya existentes (previos a la
+  // vista de spread) -- todos ellos navegan siempre a portada/contraportada
+  // o a una pagina interior solitaria, nunca a un spread real, asi que
+  // "el store enfocado por defecto" (izquierdo) es equivalente al store
+  // singleton que exponian antes. Los scripts nuevos que sí necesitan
+  // distinguir ambos lados de un spread deben usar las variantes con
+  // sufijo Left/Right.
+  if (import.meta.env.DEV) {
+    window.__pageEditorStore = leftState;
+    window.__pageEditorStoreLeft = leftState;
+    window.__pageEditorStoreRight = rightState;
+  }
   const focusedState = focusedSide === 'right' ? rightState : leftState;
   const focusedStoreHook = focusedSide === 'right' ? useRightStore : useLeftStore;
 
