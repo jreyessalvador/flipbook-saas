@@ -134,6 +134,13 @@ export default function CanvasEditorV2() {
   const [lockMessage, setLockMessage] = useState('');
 
   const store = usePageEditorStore();
+
+  // Hook de depuracion SOLO en dev (Vite lo elimina del build de produccion):
+  // permite inspeccionar el estado real del store desde fuera de React
+  // (p.ej. scripts de verificacion con Playwright) sin exponer nada en produccion.
+  if (import.meta.env.DEV) {
+    window.__pageEditorStore = store;
+  }
   const { elements, isLoading, isSaving, isDirty, loadError, saveError, selectedElementId } = store;
 
   const stageRef = useRef(null);

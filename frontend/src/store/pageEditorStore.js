@@ -2,6 +2,23 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { elementAPI } from '../services/elementAPI';
 
+// crypto.randomUUID() exige un "secure context" (HTTPS o localhost) segun el
+// estandar Web Crypto API -- en cualquier otro origen (p.ej. http://<IP> como
+// el entorno de desarrollo en ia-lavatur via Tailscale, sin TLS) NO EXISTE
+// (queda undefined) y llamarla lanza una excepcion silenciosa dentro del
+// updater de Zustand/Immer, abortando el cambio de estado sin ningun error
+// visible en la UI. Bug real encontrado verificando Fase B en un navegador
+// real contra ese entorno (ver RECETA-DESARROLLO.md). Este id es solo un
+// identificador LOCAL temporal (nunca se envia al backend, que siempre
+// re-crea los elementos), asi que no necesita ser criptograficamente fuerte:
+// basta con que sea unico dentro de esta sesion de edicion.
+function genTempId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * Store del editor de UNA PÁGINA a la vez.
  *
@@ -85,7 +102,7 @@ export const usePageEditorStore = create(
           // id temporal, solo para el 'key' de React y selección local -- el
           // backend siempre re-crea los elementos al guardar (ver
           // PageElementCreate: sin id), así que este valor nunca se envía.
-          id: `tmp-${crypto.randomUUID()}`,
+          id: `tmp-${genTempId()}`,
           kind,
           x: 50,
           y: 50,
