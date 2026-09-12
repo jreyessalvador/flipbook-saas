@@ -356,8 +356,10 @@ export default function CanvasEditorV2() {
               <Layer>
                 <Rect x={0} y={0} width={stageWidthPx} height={stageHeightPx} fill="#ffffff" listening={false} />
                 {sortedElements.map((el) => {
+                  // 'key' se pasa aparte (no dentro del spread) -- React exige que sea
+                  // una prop directa de JSX, nunca parte de un objeto esparcido, o avisa
+                  // en consola (advertencia inofensiva pero evitable) en modo desarrollo.
                   const shared = {
-                    key: el.id,
                     el,
                     canEdit,
                     onSelect: () => canEdit && store.selectElement(el.id),
@@ -366,9 +368,9 @@ export default function CanvasEditorV2() {
                       shapeRefs.current[el.id] = node;
                     },
                   };
-                  if (el.kind === 'image') return <ImageElement {...shared} />;
-                  if (el.kind === 'text') return <TextElement {...shared} />;
-                  return <ShapeElement {...shared} />;
+                  if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
+                  if (el.kind === 'text') return <TextElement key={el.id} {...shared} />;
+                  return <ShapeElement key={el.id} {...shared} />;
                 })}
                 {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
               </Layer>
