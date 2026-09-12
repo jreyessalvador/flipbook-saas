@@ -168,25 +168,77 @@ import real, sección 3).
   QUÉ (ver ejemplo real ya en el repo: el comentario de `assets.ensure_bucket`
   sobre el crash loop de MinIO). Sigue ese estilo en código nuevo.
 
-## 7. Próximo paso concreto (para quien retome esto)
+## 7. Fase B -- CERRADA de verdad (12-sep-2026)
 
-Fase A ya está cerrada de verdad (ver sección 2) -- verificada con un stack
-real en `ia-lavatur`, no solo con imports de Python. Commits en
-`redesign/editor-v2`: `da9aa7a` (fundaciones) y `718ccde` (smoke test de
-regresión).
+Editor canvas mínimo implementado y verificado contra navegador real (no
+solo backend): React + `react-konva` (pinned `18.2.16` -- la versión
+reciente exige React 19), store Zustand + Immer **por página** (nunca un
+objeto global mutable compartido entre páginas -- ver sección 1), tipos
+`image`/`text`/`shape`, guardado explícito con manejo de 409, lock de
+edición con heartbeat cada 20s.
 
-**Siguiente: Fase B -- editor canvas mínimo.**
-1. React + `react-konva` en el frontend existente (o uno nuevo si el actual
-   está muy acoplado al editor viejo -- decidir revisando el código actual
-   primero, no asumir).
-2. Store de estado con Zustand + Immer, un store POR PÁGINA (nunca un
-   objeto global mutable compartido entre páginas -- esa fue la causa raíz
-   original, ver sección 1 de la arquitectura).
-3. Solo tipos `image`, `text`, `shape` al inicio (video/audio/hotspot en
-   Fase C/D, ya modelados en la BD pero sin UI todavía).
-4. Flujo de guardado EXPLÍCITO (botón "Guardar", no autosave) contra
-   `PUT /pages/{id}/elements` con `version` -- manejar el 409 mostrando al
-   usuario que alguien más guardó primero (no sobreescribir en silencio).
-5. Reproducir el escenario de `test_editor_v2_regression.sh` manualmente en
-   el navegador contra `ia-lavatur` (Tailscale) antes de dar la fase por
-   cerrada -- el test de backend no prueba la UI.
+Verificación real (Playwright dentro de un contenedor Docker oficial
+corriendo directo en `ia-lavatur`, `--network host` -- el navegador
+embebido de Claude no es viable contra IPs Tailscale por su modelo de
+permisos por-acción):
+`frontend/tests/e2e_editor_v2_regression.js` reproduce el bug original
+(editar portada → guardar → navegar a contraportada → volver) contra un
+Chromium real. **Pasa sin fugas de contenido ni errores de consola.**
+
+4 bugs reales encontrados y corregidos durante esta verificación (ninguno
+hubiera aparecido con solo revisión de código o `curl`):
+1. **Condición de carrera en adquisición de lock**: React 18 StrictMode
+   invoca los efectos dos veces en dev, lo que disparaba
+   `IntegrityError: duplicate key` en `edit_locks`. Corregido reemplazando
+   SELECT+INSERT/UPDATE por un UPSERT atómico de Postgres
+   (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`) en
+   `backend/app/api/locks.py`.
+2. **`crypto.randomUUID()` no existe fuera de un secure context**: el
+   entorno de dev sirve por HTTP sobre una IP Tailscale (no HTTPS ni
+   localhost), así que `crypto.randomUUID` es `undefined` y
+   `addElement()` fallaba en silencio. Corregido con un generador de ID
+   temporal con fallback en `pageEditorStore.js`.
+3. Warning de React por pasar `key` dentro de un objeto esparcido en vez
+   de como prop directa de JSX -- inofensivo pero corregido.
+4. URLs de assets y orígenes CORS hardcodeados a un host de producción --
+   corregido a rutas relativas / variable de entorno
+   (`CORS_ORIGINS`), ver `backend/app/config.py` y `backend/app/api/assets.py`.
+
+**Además, en esta misma ronda**: se reestructuró la UI del editor con un
+shell de dos paneles inspirado en Photoshop/Joomag (sin copiarlos) --
+rail de herramientas por iconos a la izquierda (Seleccionar, Hotspot,
+Texto, Línea, Rectángulo, Círculo, Estrella, Imagen/Galería/GIF/Collage/
+YouTube/Vimeo/Audio/SoundCloud, Plugins, Library, Blocks) y panel de
+propiedades a la derecha (Alinear/distribuir, X/Y/ancho/alto/rotación,
+Apariencia, Quick Actions). Solo Seleccionar/Texto/Rectángulo/Imagen y los
+campos de Transformar+Apariencia quedan funcionales; el resto son
+placeholders deshabilitados marcados "próximamente" -- ver
+`frontend/src/components/editor/CanvasEditorV2.jsx` y sección 6 de
+`docs/arquitectura-editor-2026-09-12.md`. El test e2e fue actualizado para
+usar los nuevos selectores (`button[aria-label="..."]`) y sigue pasando.
+
+## 8. Próximo paso concreto (para quien retome esto)
+
+Dos caminos posibles, a decidir con Carlos, no asumir:
+
+**A) Fase C/D -- funcionalidad de fondo para las herramientas nuevas del
+shell.** Cada categoría del rail hoy deshabilitada implica trabajo real de
+backend + frontend, no solo UI: Galería/Collage (subida múltiple +
+layout), GIF (validación de formato), YouTube/Vimeo (nuevo tipo de
+elemento `embed` con oEmbed o iframe sandboxed), Audio/SoundCloud (nuevo
+tipo `audio`, ya modelado en BD pero sin UI), Plugins/shortcodes (motor de
+reemplazo de texto, superficie de riesgo si se permite HTML/JS arbitrario
+-- decidir alcance con cuidado), Library (endpoint de listado de assets
+reutilizables por tenant), Blocks (serializar un elemento o grupo como
+plantilla reutilizable), Alinear/distribuir (requiere selección múltiple,
+no implementada aún), Animar (nuevo campo de transición + Reader que la
+respete, Fase E).
+
+**B) Pulido de Fase B antes de avanzar**: editor de texto inline
+(reemplazar el `window.prompt()` actual), formulario real de creación de
+publicación en la UI (hoy los tests la crean vía API directa), selección
+múltiple (prerequisito de Alinear/distribuir).
+
+Antes de dar por cerrada cualquier fase nueva: reproducir manualmente (o
+vía el script Playwright) el escenario de fuga portada→contraportada --
+el test de backend por sí solo no prueba la UI.

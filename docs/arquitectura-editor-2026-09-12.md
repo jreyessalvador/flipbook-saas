@@ -97,7 +97,24 @@ El repo ya traía `publications.orientation` (portrait/landscape) y `total_pages
 
 ---
 
-## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — modelo implementado, UI pendiente (Fase B/C/D)
+## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — `image`/`text`/`shape` con UI (Fase B); `video`/`audio`/`hotspot` modelados en BD, UI pendiente (Fase C/D)
+
+**Shell de UI del editor (Fase B, 12-sep-2026)**: layout de dos paneles
+inspirado en Photoshop/Joomag (sin copiarlos), ver
+`frontend/src/components/editor/CanvasEditorV2.jsx`:
+- **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
+  Hotspot*, Texto, Línea*, Rectángulo, Círculo*, Estrella*, Imagen,
+  Galería*, GIF*, Collage*, YouTube*, Vimeo*, Audio*, SoundCloud*,
+  Plugins* (código/shortcodes), Library*, Blocks*.
+- **Panel de propiedades (derecha)**: Alinear y distribuir* (requiere
+  selección múltiple, no implementada), Transformar (X/Y/ancho/alto/
+  rotación -- funcional, conectado a `updateElement()`), Apariencia
+  (color de relleno para figura/texto, radio de esquina para figura,
+  tamaño de fuente para texto -- funcional), Quick Actions*
+  (Configuración del elemento, Guardar como bloque, Animar).
+- `*` = placeholder deshabilitado ("próximamente"), sin funcionalidad de
+  fondo todavía -- ver RECETA-DESARROLLO.md sección 8 para el desglose de
+  qué implica implementar cada uno.
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
 
@@ -157,7 +174,7 @@ GET    /api/assets/{id}
 ## 9. Plan de implementación por fases — ESTADO REAL
 
 1. **Fase A — Fundaciones de datos y bloqueo — ✅ COMPLETADA Y VERIFICADA CONTRA STACK REAL (12-sep-2026), rama `redesign/editor-v2`, commits `da9aa7a` y `718ccde`.** Migraciones SQL, modelos SQLAlchemy, endpoints de lock/heartbeat/unlock, endpoint de guardado con concurrencia optimista, endpoint de publish/versions. Verificado en dos niveles: (a) import real de la app FastAPI sin errores, (b) stack completo Postgres+Redis+MinIO+FastAPI levantado con Docker en `ia-lavatur` y prueba end-to-end con `curl` reproduciendo el bug original de Carlos (fuga portada→contraportada) -- **el bug NO se reproduce**, ver checklist sección 10 y `backend/tests/test_editor_v2_regression.sh`.
-2. **Fase B — Editor canvas mínimo**: React + react-konva, store Zustand/Immer por página, tipos `image`, `text`, `shape` únicamente. NO INICIADA.
+2. **Fase B — Editor canvas mínimo — ✅ COMPLETADA Y VERIFICADA CONTRA NAVEGADOR REAL (12-sep-2026), rama `redesign/editor-v2`.** React + react-konva (pinned `18.2.16`), store Zustand/Immer por página, tipos `image`/`text`/`shape`, guardado explícito con 409, lock+heartbeat. Verificado con Playwright (Chromium real vía Docker en `ia-lavatur`, `frontend/tests/e2e_editor_v2_regression.js`) reproduciendo el escenario exacto del bug original -- **no se reproduce, sin fugas ni errores de consola**. 4 bugs reales encontrados y corregidos en esta ronda (condición de carrera en lock, `crypto.randomUUID` fuera de secure context, warning de key en spread, URLs/CORS hardcodeados) -- ver RECETA-DESARROLLO.md sección 7 para el detalle. Además se reestructuró la UI a un shell de dos paneles inspirado en Photoshop/Joomag (ver sección 6 más abajo); las categorías de herramienta nuevas quedan como placeholders visuales, su funcionalidad de fondo es trabajo de Fase C/D.
 3. **Fase C — Medios**: tipos `video` y `audio`. NO INICIADA.
 4. **Fase D — Hotspots**: tipo `hotspot` + acciones. NO INICIADA.
 5. **Fase E — Reader público**. NO INICIADA.
@@ -172,7 +189,9 @@ GET    /api/assets/{id}
 - [ ] Reordenar páginas y confirmar que ningún `page_element` cambia de `page_id`. (No probado aún -- reordenar páginas no implementado hasta Fase B/D.)
 - [ ] Abrir la misma publicación en dos pestañas: la segunda recibe 409 al bloquear. (Lógica de lock ya verificada por API directamente; falta probar desde dos sesiones de navegador reales en Fase B.)
 - [ ] Cerrar sin guardar/salir: el lock se libera solo tras ~60s sin heartbeat. (Lógica implementada y revisada en código; no cronometrado en vivo aún.)
+- [x] Editar la portada, guardar, navegar a la contraportada y volver -- REPETIDO en Fase B con navegador real (Playwright/Chromium, no solo curl): **VERIFICADO 12-sep-2026, sin fuga de contenido ni errores de consola.**
 - [ ] Cargar una página con 50+ elementos mixtos en una sola petición HTTP. (No probado con volumen; probado con 2 elementos. Pendiente prueba de carga.)
+- [ ] Abrir la misma publicación en dos pestañas: la segunda recibe 409 al bloquear -- probado por API en Fase A; pendiente repetir desde dos sesiones de navegador reales.
 
 Script reutilizable: `backend/tests/test_editor_v2_regression.sh` (bash + curl, ejecutable, con asserts explícitos). Hallazgo colateral: `minio/minio` fue retirado de Docker Hub ("pull access denied") -- usar `quay.io/minio/minio` en cualquier compose nuevo.
 
