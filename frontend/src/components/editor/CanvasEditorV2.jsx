@@ -13,15 +13,18 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, YouTube, Vimeo, SoundCloud, Library, Blocks y Quick Actions --
-// quedan para lotes siguientes, no bloquean lo ya verificado.
+// Hotspot, SoundCloud, Library, Blocks y Quick Actions -- quedan para lotes
+// siguientes, no bloquean lo ya verificado.
 // Línea/Círculo/Estrella y Alinear/Distribuir (con selección múltiple,
-// Lote 1), Plugins/shortcodes de texto (Lote 2), Audio (Lote 3) y
-// Galería/Collage/GIF (Lote 4) SÍ son funcionales. GIF reutiliza kind=
-// 'image' (Konva no anima GIFs -- limitación conocida, ver
-// RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y solo
-// difieren en props.layout ('grid'/'mosaic'), intercambiable después desde
-// el panel de propiedades.
+// Lote 1), Plugins/shortcodes de texto (Lote 2), Audio (Lote 3),
+// Galería/Collage/GIF (Lote 4) y YouTube/Vimeo (Lote 5) SÍ son funcionales.
+// GIF reutiliza kind='image' (Konva no anima GIFs -- limitación conocida,
+// ver RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y
+// solo difieren en props.layout ('grid'/'mosaic'), intercambiable después
+// desde el panel de propiedades. YouTube/Vimeo usan kind='embed' -- ver
+// parseVideoUrl()/EmbedElement más abajo: en el canvas se muestra un
+// placeholder (Konva no puede reproducir un iframe), la reproducción real
+// queda diferida al Reader (Fase E).
 //
 // VISTA DE HOJA DOBLE (spread) -- añadido en esta ronda por pedido explícito
 // de Carlos: se retiró la barra lateral con la lista larga de páginas (para
@@ -280,6 +283,106 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   );
 }
 
+// --- Embeds de video (Lote 5: YouTube/Vimeo) ----------------------------
+// parseVideoUrl() es una funcion PURA (sin dependencias de React) que
+// reconoce los formatos mas comunes de URL pegados por un usuario y
+// devuelve {provider, video_id}, o null si no se reconoce el formato.
+// Se guardan TANTO el video_id extraido como la url original pegada por el
+// usuario (ver props de kind='embed' en backend/app/schemas/page_element.py)
+// para que un futuro embed real en el Reader (Fase E) no tenga que volver a
+// parsear nada.
+export function parseVideoUrl(input) {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    // El usuario a veces pega sin protocolo ("youtu.be/xxxx") -- se intenta
+    // una vez asumiendo https:// antes de rendirse.
+    try {
+      url = new URL(`https://${trimmed}`);
+    } catch {
+      return null;
+    }
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^www\.|^m\./, '');
+
+  if (host === 'youtube.com' || host === 'youtu.be') {
+    let videoId = null;
+    if (host === 'youtu.be') {
+      videoId = url.pathname.split('/').filter(Boolean)[0] || null;
+    } else if (url.pathname === '/watch') {
+      videoId = url.searchParams.get('v');
+    } else if (url.pathname.startsWith('/embed/')) {
+      videoId = url.pathname.split('/embed/')[1]?.split('/')[0] || null;
+    } else if (url.pathname.startsWith('/shorts/')) {
+      videoId = url.pathname.split('/shorts/')[1]?.split('/')[0] || null;
+    }
+    if (videoId && /^[A-Za-z0-9_-]{6,}$/.test(videoId)) {
+      return { provider: 'youtube', video_id: videoId };
+    }
+    return null;
+  }
+
+  if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+    const parts = url.pathname.split('/').filter(Boolean);
+    let videoId = null;
+    if (host === 'player.vimeo.com' && parts[0] === 'video') {
+      videoId = parts[1] || null;
+    } else if (host === 'vimeo.com') {
+      videoId = parts[0] || null;
+    }
+    if (videoId && /^\d+$/.test(videoId)) {
+      return { provider: 'vimeo', video_id: videoId };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// En el canvas se representa igual que AudioElement: Konva no puede
+// reproducir un iframe real, asi que se dibuja un placeholder (Group con
+// fondo + icono del proveedor + etiqueta). La verificacion visual real de
+// que la URL apunta al video correcto se hace desde el panel de propiedades
+// (enlace clicable -- ver PropertiesPanel), no aqui.
+function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const provider = el.props?.provider === 'vimeo' ? 'vimeo' : 'youtube';
+  const accent = provider === 'vimeo' ? '#1ab7ea' : '#ff0000';
+  const label = provider === 'vimeo' ? 'Vimeo' : 'YouTube';
+  return (
+    <Group
+      ref={shapeRef}
+      x={el.x}
+      y={el.y}
+      width={el.width}
+      height={el.height}
+      rotation={el.rotation_deg}
+      draggable={canEdit}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+      onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+    >
+      <Rect width={el.width} height={el.height} fill="#111827" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
+      <Path
+        data={ICON_PATHS[provider]}
+        x={el.width / 2 - 16}
+        y={el.height / 2 - 26}
+        scaleX={1.4}
+        scaleY={1.4}
+        stroke={accent}
+        strokeWidth={1.6}
+      />
+      <KonvaText text={label} x={0} y={el.height / 2 + 10} width={el.width} align="center" fontSize={14} fill="#f3f4f6" />
+    </Group>
+  );
+}
+
 // Un solo componente para las 4 variantes de 'shape' (rect/línea/círculo/
 // estrella) -- todas comparten el mismo modelo de datos (x, y, width, height
 // como caja contenedora) para no duplicar el manejo de arrastre/transformar/
@@ -463,7 +566,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
         {count === 0 && 'Ningún elemento seleccionado'}
-        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : 'Figura'}`}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : kind === 'embed' ? (selectedElement?.props?.provider === 'vimeo' ? 'Vimeo' : 'YouTube') : 'Figura'}`}
         {count > 1 && `${count} elementos seleccionados`}
       </div>
 
@@ -624,6 +727,28 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
               >
                 Agregar imágenes
               </button>
+            </section>
+          )}
+
+          {kind === 'embed' && (
+            <section className="editor-v2-props-section">
+              <h4>{selectedElement.props?.provider === 'vimeo' ? 'Vimeo' : 'YouTube'}</h4>
+              <p className="editor-v2-props-hint">
+                Konva no puede reproducir el video embebido dentro del editor -- usa este enlace para confirmar
+                que apunta al video correcto. La reproducción real llega con el Reader (Fase E).
+              </p>
+              <a
+                className="editor-v2-embed-link"
+                href={selectedElement.props?.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {selectedElement.props?.url || '(sin URL)'}
+              </a>
+              <label className="editor-v2-field">
+                <span>video_id</span>
+                <input type="text" value={selectedElement.props?.video_id || ''} readOnly disabled />
+              </label>
             </section>
           )}
         </>
@@ -843,6 +968,7 @@ function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages
           if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
           if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
           if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
+          if (el.kind === 'embed') return <EmbedElement key={el.id} {...shared} />;
           return <ShapeElement key={el.id} {...shared} />;
         })}
         {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
@@ -876,6 +1002,18 @@ export default function CanvasEditorV2() {
   const [lockMessage, setLockMessage] = useState('');
 
   const [pluginsMenuOpen, setPluginsMenuOpen] = useState(false);
+
+  // Lote 5 (YouTube/Vimeo): popover propio para pegar la URL -- este
+  // proyecto no usa window.prompt/dialogs nativos para nada mas alla de la
+  // edicion de texto simplificada de TextElement (deuda anterior, no se
+  // toca aqui). embedMenuOpen indica cual de los dos botones de rail abrio
+  // el popover ('youtube' | 'vimeo' | null); el proveedor real que se
+  // guarda es siempre el que parseVideoUrl() detecta en la URL pegada, sin
+  // importar cual boton se uso para abrir el popover (ver parseVideoUrl y
+  // handleInsertEmbed mas abajo -- decision documentada en RECETA-DESARROLLO.md).
+  const [embedMenuOpen, setEmbedMenuOpen] = useState(null);
+  const [embedUrlDraft, setEmbedUrlDraft] = useState('');
+  const [embedError, setEmbedError] = useState('');
 
   // Página "enfocada" dentro del spread (o la única en hoja simple) -- el
   // rail de herramientas y el panel de propiedades actúan siempre sobre
@@ -1217,6 +1355,34 @@ export default function CanvasEditorV2() {
     setPluginsMenuOpen(false);
   };
 
+  const handleOpenEmbedMenu = (provider) => {
+    setEmbedMenuOpen((v) => (v === provider ? null : provider));
+    setEmbedUrlDraft('');
+    setEmbedError('');
+  };
+
+  // El proveedor guardado es el que parseVideoUrl() detecta a partir de la
+  // URL pegada -- no el boton que abrio el popover. Si Carlos pega por error
+  // una URL de Vimeo tras abrir el popover de "YouTube", se inserta como
+  // Vimeo igual (una URL valida no deberia rechazarse solo porque no
+  // coincide con el boton clicado); si el formato no se reconoce en
+  // absoluto, se muestra el error inline y no se crea ningun elemento.
+  const handleInsertEmbed = () => {
+    const parsed = parseVideoUrl(embedUrlDraft);
+    if (!parsed) {
+      setEmbedError('No se reconoce esa URL de YouTube o Vimeo. Revisa el formato.');
+      return;
+    }
+    focusedStoreHook.getState().addElement('embed', {
+      width: 280,
+      height: 160,
+      props: { provider: parsed.provider, video_id: parsed.video_id, url: embedUrlDraft.trim() },
+    });
+    setEmbedMenuOpen(null);
+    setEmbedUrlDraft('');
+    setEmbedError('');
+  };
+
   const handleAlign = (type) => {
     const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
     if (selectedElements.length < needs) return;
@@ -1295,8 +1461,60 @@ export default function CanvasEditorV2() {
             <ToolButton icon="gallery" label="Galería" disabled={!canEdit} onClick={handleUploadGalleryClick} />
             <ToolButton icon="gif" label="GIF" disabled={!canEdit} onClick={handleUploadGifClick} />
             <ToolButton icon="collage" label="Collage" disabled={!canEdit} onClick={handleUploadCollageClick} />
-            <ToolButton icon="youtube" label="YouTube" comingSoon disabled />
-            <ToolButton icon="vimeo" label="Vimeo" comingSoon disabled />
+            <div className="editor-v2-plugins-wrap">
+              <ToolButton
+                icon="youtube"
+                label="YouTube"
+                disabled={!canEdit}
+                active={embedMenuOpen === 'youtube'}
+                onClick={() => handleOpenEmbedMenu('youtube')}
+              />
+              {embedMenuOpen === 'youtube' && (
+                <div className="editor-v2-plugins-menu editor-v2-embed-menu">
+                  <div className="editor-v2-plugins-menu-title">Insertar video (YouTube o Vimeo)</div>
+                  <input
+                    type="text"
+                    className="editor-v2-embed-input"
+                    placeholder="Pega la URL del video…"
+                    value={embedUrlDraft}
+                    onChange={(e) => { setEmbedUrlDraft(e.target.value); setEmbedError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleInsertEmbed(); }}
+                    autoFocus
+                  />
+                  {embedError && <p className="editor-v2-embed-error">{embedError}</p>}
+                  <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
+                    Insertar
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="editor-v2-plugins-wrap">
+              <ToolButton
+                icon="vimeo"
+                label="Vimeo"
+                disabled={!canEdit}
+                active={embedMenuOpen === 'vimeo'}
+                onClick={() => handleOpenEmbedMenu('vimeo')}
+              />
+              {embedMenuOpen === 'vimeo' && (
+                <div className="editor-v2-plugins-menu editor-v2-embed-menu">
+                  <div className="editor-v2-plugins-menu-title">Insertar video (YouTube o Vimeo)</div>
+                  <input
+                    type="text"
+                    className="editor-v2-embed-input"
+                    placeholder="Pega la URL del video…"
+                    value={embedUrlDraft}
+                    onChange={(e) => { setEmbedUrlDraft(e.target.value); setEmbedError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleInsertEmbed(); }}
+                    autoFocus
+                  />
+                  {embedError && <p className="editor-v2-embed-error">{embedError}</p>}
+                  <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
+                    Insertar
+                  </button>
+                </div>
+              )}
+            </div>
             <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
             <ToolButton icon="soundcloud" label="SoundCloud" comingSoon disabled />
           </ToolGroup>

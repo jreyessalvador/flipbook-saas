@@ -436,6 +436,36 @@
   margin-top: 2px;
 }
 
+/* --- Lote 5: popover para pegar URL de YouTube/Vimeo --- */
+.editor-v2-embed-menu {
+  width: 260px;
+}
+
+.editor-v2-embed-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.editor-v2-embed-error {
+  color: #b91c1c;
+  font-size: 12px;
+  margin: 0 0 6px;
+  padding: 0 2px;
+}
+
+.editor-v2-embed-link {
+  display: block;
+  word-break: break-all;
+  font-size: 12px;
+  color: #4f46e5;
+  margin-bottom: 10px;
+}
+
 /* --- Lote 3: elemento de audio (checkbox de autoplay/loop en el panel) --- */
 .editor-v2-field-checkbox {
   flex-direction: row;

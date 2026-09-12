@@ -21,7 +21,7 @@ class PageElement(Base):
     __tablename__ = "page_elements"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('image','text','shape','video','audio','hotspot')",
+            "kind IN ('image','text','shape','video','audio','hotspot','gallery','embed')",
             name="ck_page_elements_kind",
         ),
     )
