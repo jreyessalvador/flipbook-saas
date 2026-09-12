@@ -378,9 +378,10 @@ devolvía `None` y `FastAPI` fallaba validando la respuesta contra
 cláusula `RETURNING` del propio `UPSERT`, sin ninguna consulta adicional
 después del commit -- ver `backend/app/api/locks.py`.
 
-Pendientes (próximos lotes, no bloquean lo ya entregado): YouTube/Vimeo
-(Lote 5), SoundCloud + Quick Actions -- Element Settings/Animate
-(Lote 6), Library + Blocks (Lote 7).
+Pendientes (próximos lotes, no bloquean lo ya entregado):
+SoundCloud + Quick Actions -- Element Settings/Animate (Lote 6),
+Library + Blocks (Lote 7). YouTube/Vimeo se completaron en el Lote 5,
+ver sección 9c.
 
 ## 9b. Vista de hoja doble (spread) + navegación inferior (12-sep-2026)
 
@@ -480,19 +481,93 @@ coordenadas absolutas de pantalla, en vez de `locator.click({position})`.
 No hubo bugs reales de producto que corregir en esta ronda (solo el de
 test descrito arriba).
 
+## 9c. Lote 5 -- YouTube/Vimeo (embeds de video) (12-sep-2026)
+
+Nuevo `PageElementKind.embed` (`props = {provider, video_id, url}`) para
+insertar videos de YouTube y Vimeo desde el rail de herramientas. Konva no
+puede reproducir un iframe real dentro del canvas -- se sigue el mismo
+patrón que `AudioElement` (Lote 3): el elemento se representa con un
+placeholder (`Konva.Group` con fondo + icono del proveedor + etiqueta),
+arrastrable/seleccionable/transformable como cualquier otro elemento. La
+reproducción real vía iframe queda diferida al Reader (Fase E), tal como
+estaba planificado desde el inicio (ver sección 6 de
+`docs/arquitectura-editor-2026-09-12.md`).
+
+**`parseVideoUrl(url)`** (función pura, exportada desde
+`CanvasEditorV2.jsx`, sin dependencias de React): reconoce los formatos
+comunes de YouTube (`watch?v=`, `youtu.be/`, `/embed/`, `/shorts/`) y Vimeo
+(`vimeo.com/`, `player.vimeo.com/video/`) y devuelve `{provider,
+video_id}`, o `null` si no reconoce el formato. Se guardan tanto el
+`video_id` extraído como la `url` original pegada por el usuario, para que
+un futuro embed real en el Reader no tenga que volver a parsear nada.
+
+**UI de inserción**: este proyecto no usa `window.prompt`/diálogos nativos
+para insertar contenido (la única excepción, deuda anterior sin tocar en
+este lote, es la edición simplificada de `TextElement`) -- se implementó un
+popover propio (`.editor-v2-embed-menu`, mismo lenguaje visual que
+`.editor-v2-plugins-menu` del Lote 2) con un `<input type="text">` para
+pegar la URL y un botón "Insertar". Una URL no reconocida muestra un error
+inline (`.editor-v2-embed-error`) sin crear ningún elemento -- nunca un
+`alert()`.
+
+**Decisión de diseño (no fijada explícitamente por el encargo, resuelta con
+criterio)**: los botones de rail "YouTube" y "Vimeo" abren el MISMO
+popover; el proveedor que se guarda es siempre el que `parseVideoUrl()`
+detecta en la URL pegada, **no** el botón que se usó para abrirlo. Si
+Carlos pega por error una URL de Vimeo tras abrir el popover de "YouTube",
+se inserta igual como Vimeo -- rechazar una URL válida solo porque no
+coincide con el botón clicado parecía peor experiencia que simplemente
+usar el proveedor real detectado. El error inline solo aparece cuando el
+formato no se reconoce para NINGÚN proveedor. Si Carlos prefiere el
+comportamiento estricto (rechazar si no coincide con el botón), es un
+cambio acotado a `handleInsertEmbed()`.
+
+**Panel de propiedades**: sección "YouTube"/"Vimeo" (según
+`props.provider`) con un enlace clicable (`<a target="_blank">`) a la URL
+original -- sustituye a una vista previa real, ya que Konva no puede
+embeber el iframe ahí, y un `<iframe>` HTML suelto en el panel se evitó
+deliberadamente por el riesgo de CSP/mixed-content en ia-lavatur (HTTP, no
+HTTPS) -- y `video_id` de solo lectura para depuración.
+
+**Bug real preexistente encontrado y corregido de paso**: el
+`CheckConstraint` declarado en el modelo Python de SQLAlchemy
+(`backend/app/models/page_element.py`) se había quedado sin `'gallery'`
+desde el Lote 4 -- el CHECK real en la base de datos sí lo tenía (se
+administra aparte, con migraciones SQL crudas, nunca con
+`metadata.create_all`), así que esto nunca causó un fallo real, pero era
+una inconsistencia de documentación-como-código que podía confundir a
+quien leyera el modelo. Corregido junto con el `embed` de este lote.
+
+**Backend**: `PageElementKind.embed` en schemas y modelo, migración
+`0003_lote5_embed_kind.sql` (`ALTER TABLE ... DROP/ADD CONSTRAINT`) para
+bases existentes + `0001_editor_v2.sql` actualizado para bases nuevas,
+aplicada también contra la base real de ia-lavatur.
+
+**Verificación**: nuevo `frontend/tests/verify_lote5_embed.js` cubre
+insertar YouTube (`youtu.be/XXXX`), insertar Vimeo (`vimeo.com/XXXXXXXX`),
+URL inválida (error inline, cero elementos creados), panel de propiedades
+(enlace/provider correctos para ambos) y persistencia tras
+guardar+recargar. Los 6 scripts de regresión existentes
+(`e2e_editor_v2_regression.js`, `verify_lote1.js`,
+`verify_lote2_shortcodes.js`, `verify_lote3_audio.js`,
+`verify_lote4_gallery.js`, `verify_spread_view.js`) se re-ejecutaron uno
+por uno tras el cambio: **todos pasan limpio, sin errores de consola, sin
+regresiones**.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
-Seguir con el Lote 5 (YouTube/Vimeo) siguiendo el mismo patrón:
-implementar, verificar con Playwright real contra `ia-lavatur` (screenshots
-incluidos cuando aplique), commitear+pushear desde `raspi-2` (única
-máquina con credenciales de git para este repo), sincronizar `ia-lavatur`
-con `git pull`, y solo entonces pasar al siguiente lote -- sin pausar a
-pedir confirmación salvo que algo requiera de verdad la validación de
-Carlos. Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
+Seguir con el Lote 6 (SoundCloud + Quick Actions -- Element
+Settings/Animate) siguiendo el mismo patrón: implementar, verificar con
+Playwright real contra `ia-lavatur` (screenshots incluidos cuando
+aplique), commitear+pushear desde `raspi-2` (única máquina con
+credenciales de git para este repo), sincronizar `ia-lavatur` con `git
+pull`, y solo entonces pasar al siguiente lote -- sin pausar a pedir
+confirmación salvo que algo requiera de verdad la validación de Carlos.
+Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
 ia-lavatur, releer el aviso de infraestructura de la sección 9 (Lote 3).
 Si un lote nuevo agrega un `PageElementKind`, recordar el
-`CHECK CONSTRAINT` de la sección de Lote 4 -- hace falta una migración SQL
-(`ALTER TABLE ... DROP/ADD CONSTRAINT`) aplicada tanto en el repo
+`CHECK CONSTRAINT` de la sección de Lote 4/5 -- hace falta una migración
+SQL (`ALTER TABLE ... DROP/ADD CONSTRAINT`) aplicada tanto en el repo
 (`0001_editor_v2.sql` para bases nuevas + un `000N_*.sql` nuevo para
 bases existentes) como en la base real de ia-lavatur, o el primer guardado
 de ese elemento fallará con 500.

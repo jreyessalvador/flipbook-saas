@@ -106,7 +106,7 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
   Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen, Galería,
-  GIF, Collage, YouTube*, Vimeo*, Audio, SoundCloud*, Plugins (shortcodes
+  GIF, Collage, YouTube, Vimeo, Audio, SoundCloud*, Plugins (shortcodes
   de texto), Library*, Blocks*.
 - **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
   requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
@@ -122,12 +122,14 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
   arbitrarios, decisión explícita de Carlos) se activó en el Lote 2, y
   Audio (subida real vía `POST /api/assets/upload`, icono fijo en el
   canvas + `<audio controls>` de vista previa en el panel de propiedades)
-  en el Lote 3, y Galería/Collage/GIF en el Lote 4 (Galería y Collage
+  en el Lote 3, Galería/Collage/GIF en el Lote 4 (Galería y Collage
   comparten `kind='gallery'`, solo difieren en `props.layout`: `grid` o
   `mosaic`; GIF reutiliza `kind='image'` -- Konva no anima GIFs, pinta el
-  primer frame, limitación conocida no bloqueante) -- ver
-  RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de lotes
-  pendientes (YouTube/Vimeo, SoundCloud+Quick Actions, Library+Blocks).
+  primer frame, limitación conocida no bloqueante), y YouTube/Vimeo en el
+  Lote 5 (nuevo `kind='embed'`, placeholder de Konva con icono + etiqueta
+  del proveedor -- reproducción real vía iframe diferida al Reader, Fase E)
+  -- ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de
+  lotes pendientes (SoundCloud+Quick Actions, Library+Blocks).
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
 
@@ -140,6 +142,7 @@ Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columna
 | `audio` | `{ src, autoplay, loop }` (implementado Lote 3 así, no `asset_id`) | Ícono fijo (Konva) + `<audio controls>` de vista previa en el panel de propiedades | Overlay `<audio>` real sincronizado (Fase E) |
 | `hotspot` | `{ action_type: link\|goto_page\|gallery\|form, target }` | Rectángulo semitransparente con ícono | Zona invisible clicable |
 | `gallery` | `{ images: [{ src }], layout: grid\|mosaic }` (Lote 4; Galería y Collage comparten este kind, solo difiere `layout`) | `GalleryElement`: miniaturas recortadas en cuadrícula o mosaico (`computeGalleryTiles`), panel de propiedades con miniaturas/quitar/agregar/toggle de layout | Igual, estático (Fase E podría agregar lightbox/carrusel) |
+| `embed` | `{ provider: youtube\|vimeo, video_id, url }` (Lote 5; `parseVideoUrl()` extrae provider/video_id de la URL pegada por el usuario, se guarda junto con la `url` original) | `EmbedElement`: placeholder Konva (icono del proveedor + etiqueta), panel de propiedades con enlace clicable a la URL original + `video_id` de solo lectura | Iframe real embebido (YouTube/Vimeo embed API) |
 
 ---
 
