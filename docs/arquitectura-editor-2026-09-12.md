@@ -103,18 +103,24 @@ El repo ya traía `publications.orientation` (portrait/landscape) y `total_pages
 inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
-  Hotspot*, Texto, Línea*, Rectángulo, Círculo*, Estrella*, Imagen,
+  Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen,
   Galería*, GIF*, Collage*, YouTube*, Vimeo*, Audio*, SoundCloud*,
-  Plugins* (código/shortcodes), Library*, Blocks*.
-- **Panel de propiedades (derecha)**: Alinear y distribuir* (requiere
-  selección múltiple, no implementada), Transformar (X/Y/ancho/alto/
-  rotación -- funcional, conectado a `updateElement()`), Apariencia
-  (color de relleno para figura/texto, radio de esquina para figura,
-  tamaño de fuente para texto -- funcional), Quick Actions*
+  Plugins (shortcodes de texto), Library*, Blocks*.
+- **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
+  requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
+  ancho/alto/rotación -- funcional, conectado a `updateElement()`),
+  Apariencia (color de relleno para figura/texto, radio de esquina para
+  figura, tamaño de fuente para texto -- funcional), Quick Actions*
   (Configuración del elemento, Guardar como bloque, Animar).
 - `*` = placeholder deshabilitado ("próximamente"), sin funcionalidad de
-  fondo todavía -- ver RECETA-DESARROLLO.md sección 8 para el desglose de
-  qué implica implementar cada uno.
+  fondo todavía. Línea/Círculo/Estrella + Alinear/Distribuir (selección
+  múltiple, shift+click y marquee-select) se activaron en el Lote 1;
+  Plugins (shortcodes de texto plano `{{fecha}}`, `{{numero_pagina}}`,
+  `{{total_paginas}}`, `{{titulo_publicacion}}` -- NUNCA HTML/JS/iframes
+  arbitrarios, decisión explícita de Carlos) se activó en el Lote 2 --
+  ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de
+  lotes pendientes (Audio, Galería/Collage/GIF, YouTube/Vimeo,
+  SoundCloud+Quick Actions, Library+Blocks).
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
 

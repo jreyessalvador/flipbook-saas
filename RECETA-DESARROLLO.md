@@ -210,35 +210,82 @@ rail de herramientas por iconos a la izquierda (Seleccionar, Hotspot,
 Texto, Línea, Rectángulo, Círculo, Estrella, Imagen/Galería/GIF/Collage/
 YouTube/Vimeo/Audio/SoundCloud, Plugins, Library, Blocks) y panel de
 propiedades a la derecha (Alinear/distribuir, X/Y/ancho/alto/rotación,
-Apariencia, Quick Actions). Solo Seleccionar/Texto/Rectángulo/Imagen y los
-campos de Transformar+Apariencia quedan funcionales; el resto son
-placeholders deshabilitados marcados "próximamente" -- ver
-`frontend/src/components/editor/CanvasEditorV2.jsx` y sección 6 de
-`docs/arquitectura-editor-2026-09-12.md`. El test e2e fue actualizado para
-usar los nuevos selectores (`button[aria-label="..."]`) y sigue pasando.
+Apariencia, Quick Actions). En esta ronda inicial solo
+Seleccionar/Texto/Rectángulo/Imagen y los campos de Transformar+Apariencia
+quedaron funcionales; el resto placeholders "próximamente" -- ver sección
+9 para el trabajo posterior que ya los activó.
 
-## 8. Próximo paso concreto (para quien retome esto)
+## 8. Decisiones explícitas de Carlos (no revisitar sin que él lo pida)
 
-Dos caminos posibles, a decidir con Carlos, no asumir:
+- **Ritmo de entrega**: "por lotes, verificando cada uno" -- cada lote se
+  implementa, se verifica de verdad contra el stack real (Playwright, no
+  solo lectura de código) y se commitea/pushea ANTES de pasar al
+  siguiente, sin pausar a pedir confirmación entre lotes salvo que algo
+  requiera de verdad su validación.
+- **Alcance de Plugins/shortcodes: SOLO shortcodes de texto seguros.**
+  Únicamente variables de texto plano predefinidas (`{{fecha}}`,
+  `{{numero_pagina}}`, etc.) resueltas en el momento de renderizar --
+  **NUNCA HTML/JS/iframes arbitrarios.** Motivo: riesgo real de XSS si el
+  producto llega a tener contenido self-service multi-tenant. Cualquier
+  ampliación de este alcance (por ejemplo permitir HTML) requiere que
+  Carlos lo reabra explícitamente.
 
-**A) Fase C/D -- funcionalidad de fondo para las herramientas nuevas del
-shell.** Cada categoría del rail hoy deshabilitada implica trabajo real de
-backend + frontend, no solo UI: Galería/Collage (subida múltiple +
-layout), GIF (validación de formato), YouTube/Vimeo (nuevo tipo de
-elemento `embed` con oEmbed o iframe sandboxed), Audio/SoundCloud (nuevo
-tipo `audio`, ya modelado en BD pero sin UI), Plugins/shortcodes (motor de
-reemplazo de texto, superficie de riesgo si se permite HTML/JS arbitrario
--- decidir alcance con cuidado), Library (endpoint de listado de assets
-reutilizables por tenant), Blocks (serializar un elemento o grupo como
-plantilla reutilizable), Alinear/distribuir (requiere selección múltiple,
-no implementada aún), Animar (nuevo campo de transición + Reader que la
-respete, Fase E).
+## 9. Lotes de funcionalidad completados sobre el shell de UI (12-sep-2026)
 
-**B) Pulido de Fase B antes de avanzar**: editor de texto inline
-(reemplazar el `window.prompt()` actual), formulario real de creación de
-publicación en la UI (hoy los tests la crean vía API directa), selección
-múltiple (prerequisito de Alinear/distribuir).
+Tras el shell-only inicial (sección 7), Carlos pidió continuar hasta dejar
+todo funcional. Se avanza por lotes (ver sección 8):
 
-Antes de dar por cerrada cualquier fase nueva: reproducir manualmente (o
-vía el script Playwright) el escenario de fuga portada→contraportada --
-el test de backend por sí solo no prueba la UI.
+**Lote 1 -- Selección múltiple, Alinear/Distribuir, formas Línea/Círculo/
+Estrella.** `selectedElementIds` (array) reemplaza el `selectedElementId`
+único en `pageEditorStore.js`; shift+click (aditivo) y marquee-select
+(arrastre sobre el fondo del canvas, axis-aligned, no considera rotación)
+como mecanismos de selección múltiple. 8 operaciones de alinear/distribuir
+(`computeAlignPatches`) operan en "unidades de página" (nunca píxeles de
+pantalla), independientes del zoom. Nuevas formas Línea/Círculo/Estrella
+reutilizan el `kind: 'shape'` existente vía `props.shape_type`. **Bug real
+evitado proactivamente** (no por fallo de test sino por razonamiento sobre
+el código antes de que se enviara): `Ellipse`/`Star` de Konva usan
+coordenadas de CENTRO, no de esquina superior-izquierda como el resto del
+modelo de datos -- se creó `handleTransformEndCentered()` dedicado para
+evitar que la figura "saltara" de posición al redimensionar/rotar.
+Verificado con dos scripts Playwright reales contra `ia-lavatur`:
+`frontend/tests/verify_lote1.js` (vía `window.__pageEditorStore`) y
+`frontend/tests/verify_lote1_visual.js` (arrastre de mouse real,
+capturas de pantalla incluidas). Ambos pasan.
+
+**Lote 2 -- Shortcodes de texto (Plugins).** Catálogo fijo `SHORTCODES`
+(`{{fecha}}`, `{{numero_pagina}}`, `{{total_paginas}}`,
+`{{titulo_publicacion}}`) resuelto por `resolveShortcodes()` -- ver
+decisión de alcance en sección 8. La plantilla sin resolver se guarda
+siempre en `props.text` (re-editar el texto muestra `{{fecha}}`, no la
+fecha de hoy); solo la vista previa en el canvas (Konva `<Text>`) muestra
+el valor ya resuelto, calculado en cada render a partir de
+`shortcodeCtx` (página activa, total de páginas, título de la
+publicación -- estos tres viven en estado de React del componente, NO en
+el store Zustand). El botón "Plugins" del rail abre un popover con la
+lista de shortcodes: si hay un único texto seleccionado, el shortcode se
+AGREGA a su plantilla; si no, crea un elemento de texto nuevo. Un
+shortcode no reconocido se deja intacto (nunca rompe el render). Verificado
+con `frontend/tests/verify_lote2_shortcodes.js` (inserción, concatenación,
+creación sin selección, shortcode desconocido, persistencia tras
+guardar+recargar) y confirmado visualmente por captura de pantalla que el
+canvas muestra el valor resuelto ("Texto 12/9/2026 2"), nunca las llaves
+literales. `e2e_editor_v2_regression.js` y `verify_lote1.js` re-ejecutados
+sin regresiones.
+
+Pendientes (próximos lotes, no bloquean lo ya entregado): Audio (Lote 3),
+Galería/Collage/GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud + Quick
+Actions -- Element Settings/Animate (Lote 6), Library + Blocks (Lote 7).
+
+## 10. Próximo paso concreto (para quien retome esto)
+
+Seguir con el Lote 3 (Audio) siguiendo el mismo patrón: implementar,
+verificar con Playwright real contra `ia-lavatur` (screenshots incluidos
+cuando aplique), commitear+pushear desde `raspi-2` (única máquina con
+credenciales de git para este repo), sincronizar `ia-lavatur` con
+`git pull`, y solo entonces pasar al siguiente lote -- sin pausar a pedir
+confirmación salvo que algo requiera de verdad la validación de Carlos.
+
+Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
+vía script Playwright) el escenario de fuga portada→contraportada -- el
+test de backend por sí solo no prueba la UI.
