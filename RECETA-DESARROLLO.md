@@ -379,9 +379,8 @@ cláusula `RETURNING` del propio `UPSERT`, sin ninguna consulta adicional
 después del commit -- ver `backend/app/api/locks.py`.
 
 Pendientes (próximos lotes, no bloquean lo ya entregado):
-SoundCloud + Quick Actions -- Element Settings/Animate (Lote 6),
-Library + Blocks (Lote 7). YouTube/Vimeo se completaron en el Lote 5,
-ver sección 9c.
+Library + Blocks (Lote 7). YouTube/Vimeo se completaron en el Lote 5 (ver
+sección 9c) y SoundCloud + Quick Actions en el Lote 6 (ver sección 9d).
 
 ## 9b. Vista de hoja doble (spread) + navegación inferior (12-sep-2026)
 
@@ -554,15 +553,120 @@ guardar+recargar. Los 6 scripts de regresión existentes
 por uno tras el cambio: **todos pasan limpio, sin errores de consola, sin
 regresiones**.
 
+## 9d. Lote 6 -- SoundCloud + Quick Actions (12-sep-2026)
+
+**SoundCloud**: se modeló como un tercer `provider` (`'soundcloud'`) dentro
+del `kind='embed'` ya existente (Lote 5) -- NO se agregó un
+`PageElementKind` nuevo. Decisión de diseño y por qué: conceptualmente
+SoundCloud es lo mismo que YouTube/Vimeo desde la perspectiva del editor
+(el usuario pega una URL externa, no hay archivo que subir, Konva no puede
+reproducirlo, se ve como un placeholder con icono+etiqueta y el panel de
+propiedades muestra un enlace clicable) -- reutilizar `EmbedElement`, el
+popover de pegar URL (ahora `renderEmbedPopover()`, extraído de la
+duplicación YouTube/Vimeo del Lote 5 a una sola función ya que el
+contenido es idéntico para los 3 proveedores) y la sección del panel de
+propiedades evita otra migración de `CHECK CONSTRAINT` en Postgres, ya que
+`provider` vive libremente dentro de `props` (JSONB) sin tocar el modelo,
+el schema Pydantic ni el enum `PageElementKind`.
+
+`parseVideoUrl()` ahora también reconoce `soundcloud.com`/
+`m.soundcloud.com`. A diferencia de YouTube/Vimeo, SoundCloud no tiene un
+`video_id` numérico simple -- su iframe de embed real
+(`w.soundcloud.com/player/?url=...`) solo necesita la URL completa. En vez
+de dejar `video_id` vacío para este proveedor, se guarda ahí la ruta
+`"usuario/track-slug"` (o `"usuario/sets/playlist-slug"`) extraída de la
+URL -- sigue siendo un dato útil (identifica el track sin volver a
+parsear la URL completa) y reutiliza el mismo campo del panel de
+propiedades sin agregar uno nuevo solo para este proveedor. Como
+validación mínima de formato (SoundCloud no tiene nada tan verificable
+como el id numérico de Vimeo o el patrón alfanumérico de YouTube) se
+exige al menos 2 segmentos de ruta -- rechaza un campo vacío y un enlace
+de perfil suelto (`soundcloud.com/usuario`, sin track), pero acepta
+cualquier otra URL de ese dominio con esa forma.
+
+**Quick Actions -- "Configuración del elemento"**: deja de ser placeholder.
+Al hacer clic se expande un panel inline (`.editor-v2-element-settings`,
+mismo lenguaje visual del resto del panel de propiedades -- se prefirió
+esto sobre un popover flotante o un modal centrado por simplicidad y para
+no introducir problemas de posicionamiento/z-index en un panel que ya vive
+en un contenedor angosto y con scroll) con:
+- **Nombre del elemento** (`props.element_name`) -- se guarda dentro de
+  `props` como cualquier otro campo, sin tocar el esquema de BD (deliberado,
+  para minimizar invasividad); el header del panel de propiedades lo
+  refleja entre paréntesis cuando está seleccionado un único elemento con
+  nombre. Útil de cara al Lote 7 (Library/Blocks) para identificar
+  elementos en una lista.
+- **Bloquear elemento** (`props.locked: boolean`) -- funcionalidad REAL,
+  no solo una bandera decorativa: `draggable` se condiciona en TODOS los
+  componentes de elemento (`ImageElement`, `AudioElement`, `GalleryElement`,
+  `EmbedElement`, `TextElement`, y el objeto `common` de `ShapeElement`) a
+  `canEdit && !el.props?.locked`. Además, el `useEffect` de `PageCanvas`
+  que calcula qué nodos recibe el `Transformer` excluye deliberadamente los
+  elementos bloqueados de esa lista -- sin esto, aunque `draggable={false}`
+  ya impediría arrastrarlo, sus asas de redimensionar/rotar seguirían
+  funcionando si estuviera seleccionado junto con otros elementos
+  desbloqueados. El elemento bloqueado SIGUE siendo seleccionable (para
+  poder desbloquearlo desde el mismo panel). Cuando `props.locked` es
+  `undefined` (elemento creado antes de este lote, o simplemente nunca
+  tocado) se comporta como no bloqueado -- `!undefined === true` -- así que
+  no hay ninguna migración de datos necesaria ni riesgo de romper
+  elementos ya existentes.
+- **Ocultar en el Reader** (`props.hidden_in_reader: boolean`) -- por ahora
+  solo se guarda en `props`; no hay Reader real todavía que la respete
+  (Fase E), pero dejar la bandera lista es de bajo costo y evitará otra
+  migración de datos cuando el Reader exista.
+
+**Quick Actions -- "Animar"**: pasa de botón deshabilitado a un `<select>`
+real dentro de la propia sección Quick Actions (no un popover separado,
+es un único campo) con opciones `Ninguna` (default) / `Aparecer (fade)` /
+`Deslizar desde abajo` / `Deslizar desde la izquierda` / `Zoom`, que
+guarda la elección en `props.animation`. **NO implementa la animación
+real** -- eso es explícitamente Fase E, cuando exista el Reader que pueda
+reproducirla -- documentado con un comentario en el código, mismo
+criterio que otras "limitaciones conocidas" ya presentes en el archivo
+(GIF/Konva del Lote 4, iframe de embeds del Lote 5).
+
+**"Guardar como bloque de plantilla"** sigue como placeholder -- es
+trabajo del Lote 7 (Library/Blocks), fuera de alcance de este lote.
+
+**Sin cambios de backend/BD**: `props` es JSONB de forma libre, así que
+ni `element_name`/`locked`/`hidden_in_reader`/`animation` ni
+`provider='soundcloud'` requirieron tocar el modelo SQLAlchemy, el schema
+Pydantic ni el `CHECK CONSTRAINT` de `page_elements` -- únicamente se
+actualizó el comentario de documentación en
+`backend/app/schemas/page_element.py` para reflejar el nuevo provider.
+Esto es diferente de los Lotes 4/5, que sí necesitaron una migración SQL
+nueva por agregar un `PageElementKind` a nivel de columna/CHECK.
+
+**Verificación**: nuevo `frontend/tests/verify_lote6_soundcloud_quickactions.js`
+cubre insertar SoundCloud con URL válida (kind/provider/video_id/url +
+enlace en el panel), rechazo de campo vacío y de un enlace de perfil
+suelto, Quick Actions completo sobre un rectángulo (nombrar, bloquear con
+verificación REAL de arrastre de mouse en ambos sentidos -- incluyendo que
+`props.locked` `undefined` se comporta como no bloqueado por defecto --,
+que el elemento bloqueado siga siendo seleccionable, ocultar en el
+Reader, cambiar Animar) y persistencia de todo tras guardar+recargar. Los
+7 scripts de regresión existentes (`e2e_editor_v2_regression.js`,
+`verify_lote1.js`, `verify_lote2_shortcodes.js`, `verify_lote3_audio.js`,
+`verify_lote4_gallery.js`, `verify_spread_view.js`, `verify_lote5_embed.js`)
+se re-ejecutaron uno por uno tras el cambio: **todos pasan limpio, sin
+errores de consola, sin regresiones** -- en particular, el drag por
+defecto de elementos sin `props.locked` (Lote 1, spread view) sigue
+funcionando exactamente igual que antes.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
-Seguir con el Lote 6 (SoundCloud + Quick Actions -- Element
-Settings/Animate) siguiendo el mismo patrón: implementar, verificar con
-Playwright real contra `ia-lavatur` (screenshots incluidos cuando
-aplique), commitear+pushear desde `raspi-2` (única máquina con
-credenciales de git para este repo), sincronizar `ia-lavatur` con `git
-pull`, y solo entonces pasar al siguiente lote -- sin pausar a pedir
-confirmación salvo que algo requiera de verdad la validación de Carlos.
+Seguir con el Lote 7 (Library + Blocks) siguiendo el mismo patrón:
+implementar, verificar con Playwright real contra `ia-lavatur`
+(screenshots incluidos cuando aplique), commitear+pushear desde `raspi-2`
+(única máquina con credenciales de git para este repo), sincronizar
+`ia-lavatur` con `git pull`, y solo entonces pasar al siguiente lote --
+sin pausar a pedir confirmación salvo que algo requiera de verdad la
+validación de Carlos. Library/Blocks va a necesitar tablas y endpoints
+nuevos (reutilización de assets/plantillas) -- pensar el alcance con
+Carlos si algo no está claro (por ejemplo: ¿un bloque de plantilla puede
+mezclar varios elementos, o es siempre uno solo? ¿Library es solo
+imágenes/assets ya subidos, o también plantillas completas de página?).
 Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
 ia-lavatur, releer el aviso de infraestructura de la sección 9 (Lote 3).
 Si un lote nuevo agrega un `PageElementKind`, recordar el
@@ -570,7 +674,9 @@ Si un lote nuevo agrega un `PageElementKind`, recordar el
 SQL (`ALTER TABLE ... DROP/ADD CONSTRAINT`) aplicada tanto en el repo
 (`0001_editor_v2.sql` para bases nuevas + un `000N_*.sql` nuevo para
 bases existentes) como en la base real de ia-lavatur, o el primer guardado
-de ese elemento fallará con 500.
+de ese elemento fallará con 500. (El Lote 6 NO necesitó esto -- SoundCloud
+reutilizó `kind='embed'` y Quick Actions solo agregó campos dentro de
+`props`, que es JSONB libre.)
 
 Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
 vía script Playwright) el escenario de fuga portada→contraportada -- el

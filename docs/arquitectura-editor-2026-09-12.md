@@ -99,21 +99,22 @@ El repo ya traía `publications.orientation` (portrait/landscape) y `total_pages
 
 ---
 
-## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — `image`/`text`/`shape` con UI (Fase B); `video`/`audio`/`hotspot` modelados en BD, UI pendiente (Fase C/D)
+## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — `image`/`text`/`shape`/`audio`/`gallery`/`embed` con UI (Fases B-C, Lotes 1-6); `video`/`hotspot` modelados en BD, UI pendiente
 
 **Shell de UI del editor (Fase B, 12-sep-2026)**: layout de dos paneles
 inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
   Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen, Galería,
-  GIF, Collage, YouTube, Vimeo, Audio, SoundCloud*, Plugins (shortcodes
+  GIF, Collage, YouTube, Vimeo, Audio, SoundCloud, Plugins (shortcodes
   de texto), Library*, Blocks*.
 - **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
   requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
   ancho/alto/rotación -- funcional, conectado a `updateElement()`),
   Apariencia (color de relleno para figura/texto, radio de esquina para
-  figura, tamaño de fuente para texto -- funcional), Quick Actions*
-  (Configuración del elemento, Guardar como bloque, Animar).
+  figura, tamaño de fuente para texto -- funcional), Quick Actions
+  (Configuración del elemento -- funcional, Lote 6; Guardar como bloque*;
+  Animar -- funcional, Lote 6, solo guarda la preferencia).
 - `*` = placeholder deshabilitado ("próximamente"), sin funcionalidad de
   fondo todavía. Línea/Círculo/Estrella + Alinear/Distribuir (selección
   múltiple, shift+click y marquee-select) se activaron en el Lote 1;
@@ -125,11 +126,16 @@ inspirado en Photoshop/Joomag (sin copiarlos), ver
   en el Lote 3, Galería/Collage/GIF en el Lote 4 (Galería y Collage
   comparten `kind='gallery'`, solo difieren en `props.layout`: `grid` o
   `mosaic`; GIF reutiliza `kind='image'` -- Konva no anima GIFs, pinta el
-  primer frame, limitación conocida no bloqueante), y YouTube/Vimeo en el
+  primer frame, limitación conocida no bloqueante), YouTube/Vimeo en el
   Lote 5 (nuevo `kind='embed'`, placeholder de Konva con icono + etiqueta
-  del proveedor -- reproducción real vía iframe diferida al Reader, Fase E)
-  -- ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y el resto de
-  lotes pendientes (SoundCloud+Quick Actions, Library+Blocks).
+  del proveedor -- reproducción real vía iframe diferida al Reader, Fase E),
+  y en el Lote 6: SoundCloud (tercer `provider` del mismo `kind='embed'`,
+  sin `PageElementKind` nuevo -- ver sección de tipos de elemento más
+  abajo) y Quick Actions > Configuración del elemento (nombre/bloquear/
+  ocultar en Reader, todos dentro de `props`) y > Animar (guarda
+  `props.animation`, sin animación real todavía -- Fase E)
+  -- ver RECETA-DESARROLLO.md secciones 8-9 para el detalle y el Lote 7
+  (Library+Blocks) pendiente.
 
 Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columnas propias). `props` (JSONB) guarda lo específico:
 
@@ -142,7 +148,8 @@ Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columna
 | `audio` | `{ src, autoplay, loop }` (implementado Lote 3 así, no `asset_id`) | Ícono fijo (Konva) + `<audio controls>` de vista previa en el panel de propiedades | Overlay `<audio>` real sincronizado (Fase E) |
 | `hotspot` | `{ action_type: link\|goto_page\|gallery\|form, target }` | Rectángulo semitransparente con ícono | Zona invisible clicable |
 | `gallery` | `{ images: [{ src }], layout: grid\|mosaic }` (Lote 4; Galería y Collage comparten este kind, solo difiere `layout`) | `GalleryElement`: miniaturas recortadas en cuadrícula o mosaico (`computeGalleryTiles`), panel de propiedades con miniaturas/quitar/agregar/toggle de layout | Igual, estático (Fase E podría agregar lightbox/carrusel) |
-| `embed` | `{ provider: youtube\|vimeo, video_id, url }` (Lote 5; `parseVideoUrl()` extrae provider/video_id de la URL pegada por el usuario, se guarda junto con la `url` original) | `EmbedElement`: placeholder Konva (icono del proveedor + etiqueta), panel de propiedades con enlace clicable a la URL original + `video_id` de solo lectura | Iframe real embebido (YouTube/Vimeo embed API) |
+| `embed` | `{ provider: youtube\|vimeo\|soundcloud, video_id, url }` (Lote 5 YouTube/Vimeo, Lote 6 SoundCloud; `parseVideoUrl()` extrae provider/video_id de la URL pegada por el usuario, se guarda junto con la `url` original. Para SoundCloud, sin id numérico, `video_id` guarda la ruta `"usuario/track-slug"` extraída de la URL) | `EmbedElement`: placeholder Konva (icono del proveedor + etiqueta), panel de propiedades con enlace clicable a la URL original + `video_id`/ruta de solo lectura | Iframe real embebido (YouTube/Vimeo embed API; SoundCloud vía `w.soundcloud.com/player/?url=...`) |
+| `shape`/`text`/`gallery`/`embed` (cualquier `kind`) | `props.element_name` (Lote 6, nombre libre para identificar el elemento), `props.locked` (Lote 6, bloquea drag/transform pero no la selección), `props.hidden_in_reader` (Lote 6, sin efecto hasta que exista Reader), `props.animation: none\|fade\|slide-up\|slide-left\|zoom` (Lote 6, Quick Actions > Animar -- solo guarda la preferencia, sin animación real todavía) | Panel de propiedades, sección Quick Actions (`PropertiesPanel`) | Fase E: aplicar `hidden_in_reader` y reproducir `animation` al pasar de página |
 
 ---
 
