@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
-import { usePageEditorStore } from '../../store/pageEditorStore';
+import { createPageEditorStore } from '../../store/pageEditorStore';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
 import { assetAPI } from '../../services/assetAPI';
@@ -22,6 +22,19 @@ import '../../styles/CanvasEditorV2.css';
 // RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y solo
 // difieren en props.layout ('grid'/'mosaic'), intercambiable después desde
 // el panel de propiedades.
+//
+// VISTA DE HOJA DOBLE (spread) -- añadido en esta ronda por pedido explícito
+// de Carlos: se retiró la barra lateral con la lista larga de páginas (para
+// ganar espacio de canvas) y se sustituyó por un encabezado compacto arriba
+// y una barra de navegación inferior (Anterior/Siguiente + salto manual por
+// número de página). Las páginas interiores se muestran de a DOS (spread),
+// portada y contraportada siempre solas. AMBAS páginas de un spread son
+// independiente y SIMULTÁNEAMENTE editables (decisión explícita de Carlos:
+// "Ambas editables simultáneamente", como InDesign) -- esto exigió que
+// pageEditorStore.js deje de ser un singleton y pase a ser una fábrica
+// (createPageEditorStore()): este componente crea dos instancias estables
+// (storeLeftHook/storeRightHook) y el bloque de render de una página se
+// extrajo a <PageCanvas> para no duplicar código entre ambos lados.
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
 const HEARTBEAT_MS = 20000; // el lock expira a los 60s sin heartbeat (backend/app/api/locks.py)
@@ -56,6 +69,8 @@ const ICON_PATHS = {
   alignBottom: 'M3 20h18M6 4v12M12 8v8M18 4v12',
   distributeH: 'M4 4v16M12 4v16M20 4v16M8 12h1M15 12h1',
   distributeV: 'M4 4h16M4 12h16M4 20h16M12 8v1M12 15v1',
+  chevronLeft: 'M15 4l-8 8 8 8',
+  chevronRight: 'M9 4l8 8-8 8',
 };
 
 function Icon({ name, size = 18 }) {
@@ -680,6 +695,174 @@ function rectsIntersect(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
+// --- Cálculo de la agrupación en "vistas" (hoja simple / hoja doble) -----
+// Helper puro, sin dependencias de React -- fácil de razonar/testear:
+//   - page_number === 1 (portada) siempre sola.
+//   - page_number === total (contraportada) siempre sola.
+//   - El resto se agrupa de a 2 EN ORDEN (2,3), (4,5), (6,7)... Si el total
+//     de páginas interiores es impar, el último spread interior queda con
+//     una sola página (lado derecho vacío -- no se renderiza un segundo
+//     Stage ahí, simplemente `right` queda null).
+// `total` se recibe aparte (no se infiere de pages.length) porque en teoría
+// la lista de páginas podría llegar incompleta -- en la práctica hoy siempre
+// coincide, pero así el cálculo es correcto también si no coincidiera.
+export function computeSpreadViews(pages, total) {
+  const sorted = [...pages].sort((a, b) => a.page_number - b.page_number);
+  const lastPageNumber = total ?? (sorted.length > 0 ? sorted[sorted.length - 1].page_number : 0);
+  const views = [];
+  let i = 0;
+  while (i < sorted.length) {
+    const p = sorted[i];
+    const isCover = p.page_number === 1;
+    const isBackCover = p.page_number === lastPageNumber;
+    if (isCover || isBackCover) {
+      views.push({ left: p, right: null });
+      i += 1;
+      continue;
+    }
+    const next = sorted[i + 1];
+    const nextIsInteriorPartner = next && next.page_number !== 1 && next.page_number !== lastPageNumber;
+    if (nextIsInteriorPartner) {
+      views.push({ left: p, right: next });
+      i += 2;
+    } else {
+      views.push({ left: p, right: null });
+      i += 1;
+    }
+  }
+  return views;
+}
+
+function findViewIndexForPageId(views, pageId) {
+  if (!pageId) return -1;
+  return views.findIndex((v) => v.left?.id === pageId || v.right?.id === pageId);
+}
+
+function findViewIndexForPageNumber(views, pageNumber) {
+  return views.findIndex((v) => v.left?.page_number === pageNumber || v.right?.page_number === pageNumber);
+}
+
+// --- Bloque de render de UNA página (Stage/Layer/Transformer/marquee) ----
+// Extraído a su propio componente para poder montarlo una vez (hoja simple)
+// o dos veces lado a lado (spread) sin duplicar código. Cada instancia tiene
+// SUS PROPIOS refs (stageRef/trRef/shapeRefs) -- nunca compartidos entre
+// lados, o el Transformer de un lado terminaría adjuntándose a nodos del
+// otro. `useStoreHook` es la instancia de store (creada por
+// createPageEditorStore()) que gobierna esta página -- ella misma es un
+// hook de Zustand, así que se llama directamente en el cuerpo del
+// componente como cualquier otro hook.
+function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages, onFocus }) {
+  const { elements, isLoading, loadError, selectedElementIds } = useStoreHook();
+
+  const stageRef = useRef(null);
+  const trRef = useRef(null);
+  const shapeRefs = useRef({});
+  const marqueeStartRef = useRef(null);
+  const [marquee, setMarquee] = useState(null);
+
+  useEffect(() => {
+    const nodes = selectedElementIds.map((id) => shapeRefs.current[id]).filter(Boolean);
+    if (trRef.current) {
+      trRef.current.nodes(nodes);
+      trRef.current.getLayer()?.batchDraw();
+    }
+  }, [selectedElementIds, elements]);
+
+  const stageWidthPx = publication.page_width * PX_PER_MM;
+  const stageHeightPx = publication.page_height * PX_PER_MM;
+  const sortedElements = [...elements].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
+  const shortcodeCtx = { pageNumber, totalPages, publicationTitle: publication.title };
+
+  const handleStageMouseDown = (e) => {
+    onFocus();
+    if (e.target !== e.target.getStage()) return; // click sobre un elemento, no el fondo
+    const pos = e.target.getStage().getPointerPosition();
+    if (!e.evt.shiftKey) useStoreHook.getState().selectElement(null);
+    marqueeStartRef.current = pos;
+    setMarquee({ x: pos.x, y: pos.y, width: 0, height: 0 });
+  };
+
+  const handleStageMouseMove = (e) => {
+    if (!marqueeStartRef.current) return;
+    const pos = e.target.getStage().getPointerPosition();
+    const start = marqueeStartRef.current;
+    setMarquee({
+      x: Math.min(start.x, pos.x),
+      y: Math.min(start.y, pos.y),
+      width: Math.abs(pos.x - start.x),
+      height: Math.abs(pos.y - start.y),
+    });
+  };
+
+  const handleStageMouseUp = () => {
+    if (!marqueeStartRef.current) return;
+    const rect = marquee;
+    marqueeStartRef.current = null;
+    setMarquee(null);
+    if (!rect || (rect.width < 4 && rect.height < 4)) return; // click simple, no arrastre real
+    const hitIds = elements.filter((el) => rectsIntersect(rect, el)).map((el) => el.id);
+    if (hitIds.length > 0) useStoreHook.getState().selectElements(hitIds);
+  };
+
+  if (isLoading) {
+    return <div className="editor-v2-loading editor-v2-page-slot" style={{ width: stageWidthPx, height: stageHeightPx }}>Cargando página…</div>;
+  }
+  if (loadError) {
+    return <div className="editor-v2-error editor-v2-page-slot" style={{ width: stageWidthPx, height: stageHeightPx }}>{loadError}</div>;
+  }
+
+  return (
+    <Stage
+      ref={stageRef}
+      width={stageWidthPx}
+      height={stageHeightPx}
+      className="editor-v2-stage"
+      onMouseDown={handleStageMouseDown}
+      onMouseMove={handleStageMouseMove}
+      onMouseUp={handleStageMouseUp}
+    >
+      <Layer>
+        <Rect x={0} y={0} width={stageWidthPx} height={stageHeightPx} fill="#ffffff" listening={false} />
+        {sortedElements.map((el) => {
+          // 'key' se pasa aparte (no dentro del spread) -- React exige que sea
+          // una prop directa de JSX, nunca parte de un objeto esparcido, o avisa
+          // en consola (advertencia inofensiva pero evitable) en modo desarrollo.
+          const shared = {
+            el,
+            canEdit,
+            onSelect: (e) => {
+              onFocus();
+              if (canEdit) useStoreHook.getState().selectElement(el.id, { additive: e?.evt?.shiftKey });
+            },
+            onChange: (patch) => canEdit && useStoreHook.getState().updateElement(el.id, patch),
+            shapeRef: (node) => {
+              shapeRefs.current[el.id] = node;
+            },
+          };
+          if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
+          if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
+          if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
+          if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
+          return <ShapeElement key={el.id} {...shared} />;
+        })}
+        {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
+        {marquee && (
+          <Rect
+            x={marquee.x}
+            y={marquee.y}
+            width={marquee.width}
+            height={marquee.height}
+            fill="rgba(79,70,229,0.15)"
+            stroke="#4f46e5"
+            strokeWidth={1}
+            listening={false}
+          />
+        )}
+      </Layer>
+    </Stage>
+  );
+}
+
 export default function CanvasEditorV2() {
   const { id: publicationId, pageId: pageIdParam } = useParams();
   const navigate = useNavigate();
@@ -692,26 +875,36 @@ export default function CanvasEditorV2() {
   const [lockState, setLockState] = useState('acquiring');
   const [lockMessage, setLockMessage] = useState('');
 
-  // Rectángulo de selección (marquee-select) mientras el usuario arrastra
-  // sobre el fondo del canvas -- estado puramente visual/local, no vive en
-  // el store (no se guarda ni afecta a otras páginas).
-  const [marquee, setMarquee] = useState(null); // { x, y, width, height } | null
-  const marqueeStartRef = useRef(null);
   const [pluginsMenuOpen, setPluginsMenuOpen] = useState(false);
 
-  const store = usePageEditorStore();
+  // Página "enfocada" dentro del spread (o la única en hoja simple) -- el
+  // rail de herramientas y el panel de propiedades actúan siempre sobre
+  // ella. Se actualiza al hacer click en el fondo o al seleccionar un
+  // elemento de cualquiera de los dos Stages.
+  const [focusedSide, setFocusedSide] = useState('left');
+
+  // Dos instancias INDEPENDIENTES del store (fábrica, ver
+  // store/pageEditorStore.js) -- estables a través de renders gracias a
+  // useState(() => ...). En hoja simple solo useLeftStore está en uso;
+  // useRightStore queda sin cargar/inactiva.
+  const [useLeftStore] = useState(() => createPageEditorStore());
+  const [useRightStore] = useState(() => createPageEditorStore());
 
   // Hook de depuracion SOLO en dev (Vite lo elimina del build de produccion):
-  // permite inspeccionar el estado real del store desde fuera de React
-  // (p.ej. scripts de verificacion con Playwright) sin exponer nada en produccion.
+  // permite inspeccionar el estado real de cada store desde fuera de React
+  // (p.ej. scripts de verificacion con Playwright) sin exponer nada en
+  // produccion. Se exponen ambos lados por separado -- ya no hay un único
+  // "window.__pageEditorStore" porque ya no hay un único store.
   if (import.meta.env.DEV) {
-    window.__pageEditorStore = store;
+    window.__pageEditorStoreLeft = useLeftStore;
+    window.__pageEditorStoreRight = useRightStore;
   }
-  const { elements, isLoading, isSaving, isDirty, loadError, saveError, selectedElementIds } = store;
 
-  const stageRef = useRef(null);
-  const trRef = useRef(null);
-  const shapeRefs = useRef({});
+  const leftState = useLeftStore();
+  const rightState = useRightStore();
+  const focusedState = focusedSide === 'right' ? rightState : leftState;
+  const focusedStoreHook = focusedSide === 'right' ? useRightStore : useLeftStore;
+
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -719,9 +912,8 @@ export default function CanvasEditorV2() {
   const gifInputRef = useRef(null);
   const galleryAppendInputRef = useRef(null);
 
-  const activePageId = pageIdParam || pages[0]?.id;
   const canEdit = lockState === 'held';
-  const selectedElements = elements.filter((e) => selectedElementIds.includes(e.id));
+  const selectedElements = focusedState.elements.filter((e) => focusedState.selectedElementIds.includes(e.id));
 
   // Publicación + lista de páginas: se cargan una vez, no dependen de qué
   // página está activa (evita refetchs innecesarios al navegar entre páginas).
@@ -745,15 +937,36 @@ export default function CanvasEditorV2() {
     };
   }, [publicationId]);
 
-  // Si no se especificó página en la URL, redirigir a la primera en cuanto se conoce.
+  const spreadViews = useMemo(
+    () => computeSpreadViews(pages, publication?.total_pages ?? pages.length),
+    [pages, publication?.total_pages]
+  );
+
+  const currentViewIndex = pageIdParam ? findViewIndexForPageId(spreadViews, pageIdParam) : 0;
+  const currentView = currentViewIndex >= 0 ? spreadViews[currentViewIndex] : spreadViews[0];
+
+  // Si no se especificó página en la URL (o no corresponde a ninguna vista
+  // conocida), redirigir a la primera en cuanto se conoce.
   useEffect(() => {
-    if (!pageIdParam && pages.length > 0) {
-      navigate(`/publications/${publicationId}/edit/${pages[0].id}`, { replace: true });
+    if (spreadViews.length === 0) return;
+    const idx = pageIdParam ? findViewIndexForPageId(spreadViews, pageIdParam) : -1;
+    if (idx === -1) {
+      navigate(`/publications/${publicationId}/edit/${spreadViews[0].left.id}`, { replace: true });
     }
-  }, [pageIdParam, pages, publicationId, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageIdParam, spreadViews, publicationId]);
+
+  // Al cambiar de vista (spread u hoja simple), el foco vuelve al lado
+  // izquierdo por defecto -- es el único lado garantizado de existir.
+  useEffect(() => {
+    setFocusedSide('left');
+  }, [currentViewIndex]);
 
   // Lock de edición de la publicación completa: se adquiere UNA vez al entrar
-  // al editor (no por página) y se libera al salir. Heartbeat mientras dure.
+  // al editor (no por página, y no por lado del spread) y se libera al
+  // salir. Heartbeat mientras dure. No requiere cambios por la vista de
+  // spread: el lock ya cubre la publicación completa, ambas páginas
+  // incluidas.
   useEffect(() => {
     let heartbeatTimer = null;
     let cancelled = false;
@@ -787,48 +1000,90 @@ export default function CanvasEditorV2() {
     };
   }, [publicationId]);
 
-  // Cargar la página activa CADA VEZ que cambia. store.loadPage() reemplaza
-  // TODO el estado -- nunca reutiliza el de la página anterior (ver
-  // comentario extenso en store/pageEditorStore.js sobre la causa raíz del
-  // bug original).
-  useEffect(() => {
-    if (!activePageId) return undefined;
-    store.loadPage(activePageId);
-    return () => store.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePageId]);
+  // Cargar cada lado del spread en SU PROPIA instancia de store cada vez que
+  // cambia. loadPage() reemplaza TODO el estado de esa instancia -- nunca
+  // reutiliza el de la página anterior en ese mismo lado (ver comentario
+  // extenso en store/pageEditorStore.js sobre la causa raíz del bug
+  // original). Si el lado no tiene página (hoja simple), se resetea para no
+  // dejar residuo de un spread anterior.
+  const leftPageId = currentView?.left?.id || null;
+  const rightPageId = currentView?.right?.id || null;
 
-  // Adjuntar el Transformer a TODOS los nodos Konva seleccionados (Konva
-  // soporta redimensionar/rotar varios nodos a la vez como grupo de forma
-  // nativa vía Transformer.nodes([...])).
   useEffect(() => {
-    const nodes = selectedElementIds.map((id) => shapeRefs.current[id]).filter(Boolean);
-    if (trRef.current) {
-      trRef.current.nodes(nodes);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [selectedElementIds, elements]);
+    if (leftPageId) useLeftStore.getState().loadPage(leftPageId);
+    else useLeftStore.getState().reset();
+    return () => useLeftStore.getState().reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftPageId]);
+
+  useEffect(() => {
+    if (rightPageId) useRightStore.getState().loadPage(rightPageId);
+    else useRightStore.getState().reset();
+    return () => useRightStore.getState().reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightPageId]);
 
   // Borrar con teclado (Delete/Backspace) cuando hay elementos seleccionados
-  // y el foco no está en un input de texto.
+  // en el lado ENFOCADO y el foco no está en un input de texto.
   useEffect(() => {
     const onKeyDown = (e) => {
       const tag = document.activeElement?.tagName;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementIds.length > 0 && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-        store.removeSelectedElements();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && focusedState.selectedElementIds.length > 0 && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        focusedStoreHook.getState().removeSelectedElements();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedElementIds]);
+  }, [focusedSide, focusedState.selectedElementIds]);
 
-  const handleSelectPage = (newPageId) => {
-    if (newPageId === activePageId) return;
-    if (isDirty && !window.confirm('Tienes cambios sin guardar en esta página. ¿Descartarlos y cambiar de página?')) {
+  const anyDirty = leftState.isDirty || rightState.isDirty;
+  const anySaving = leftState.isSaving || rightState.isSaving;
+  const combinedSaveError = leftState.saveError || rightState.saveError;
+
+  const handleSaveAll = async () => {
+    // Ambas páginas del spread son editables simultáneamente -- "Guardar"
+    // persiste cualquiera de las dos que tenga cambios pendientes, no solo
+    // la enfocada.
+    if (leftState.isDirty) await useLeftStore.getState().save();
+    if (rightState.isDirty) await useRightStore.getState().save();
+  };
+
+  const handleReloadOnConflict = () => {
+    if (leftState.saveError?.status === 409 && leftPageId) useLeftStore.getState().loadPage(leftPageId);
+    if (rightState.saveError?.status === 409 && rightPageId) useRightStore.getState().loadPage(rightPageId);
+  };
+
+  // --- Navegación inferior (Anterior/Siguiente + salto manual) ------------
+  const goToViewIndex = (idx) => {
+    if (idx < 0 || idx >= spreadViews.length) return;
+    const view = spreadViews[idx];
+    if (anyDirty && !window.confirm('Tienes cambios sin guardar en esta vista. ¿Descartarlos y cambiar de página?')) {
       return;
     }
-    navigate(`/publications/${publicationId}/edit/${newPageId}`);
+    navigate(`/publications/${publicationId}/edit/${view.left.id}`);
+  };
+
+  const handlePrev = () => goToViewIndex(currentViewIndex - 1);
+  const handleNext = () => goToViewIndex(currentViewIndex + 1);
+
+  const [pageJumpDraft, setPageJumpDraft] = useState('');
+  const activeLeftPageNumber = currentView?.left?.page_number;
+  const activeRightPageNumber = currentView?.right?.page_number;
+  useEffect(() => {
+    setPageJumpDraft(activeLeftPageNumber ? String(activeLeftPageNumber) : '');
+  }, [activeLeftPageNumber]);
+
+  const commitPageJump = () => {
+    const n = parseInt(pageJumpDraft, 10);
+    const totalPages = publication?.total_pages ?? pages.length;
+    if (Number.isNaN(n) || n < 1 || n > totalPages) {
+      setPageJumpDraft(activeLeftPageNumber ? String(activeLeftPageNumber) : '');
+      return;
+    }
+    const idx = findViewIndexForPageNumber(spreadViews, n);
+    if (idx === -1 || idx === currentViewIndex) return;
+    goToViewIndex(idx);
   };
 
   const handleUploadImageClick = () => fileInputRef.current?.click();
@@ -844,7 +1099,7 @@ export default function CanvasEditorV2() {
     if (!file) return;
     try {
       const uploaded = await assetAPI.upload(file);
-      store.addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
+      focusedStoreHook.getState().addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir la imagen');
     }
@@ -864,7 +1119,7 @@ export default function CanvasEditorV2() {
         return;
       }
       const uploaded = await assetAPI.upload(file);
-      store.addElement('audio', { width: 220, height: 56, props: { src: uploaded.url, autoplay: false, loop: false } });
+      focusedStoreHook.getState().addElement('audio', { width: 220, height: 56, props: { src: uploaded.url, autoplay: false, loop: false } });
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir el audio');
     }
@@ -893,7 +1148,7 @@ export default function CanvasEditorV2() {
     if (files.length === 0) return;
     const urls = await uploadFilesSequentially(files);
     if (urls.length === 0) return;
-    store.addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'grid' } });
+    focusedStoreHook.getState().addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'grid' } });
   };
 
   const handleCollageFileChange = async (e) => {
@@ -902,7 +1157,7 @@ export default function CanvasEditorV2() {
     if (files.length === 0) return;
     const urls = await uploadFilesSequentially(files);
     if (urls.length === 0) return;
-    store.addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'mosaic' } });
+    focusedStoreHook.getState().addElement('gallery', { width: 320, height: 220, props: { images: urls.map((src) => ({ src })), layout: 'mosaic' } });
   };
 
   const handleGifFileChange = async (e) => {
@@ -918,7 +1173,7 @@ export default function CanvasEditorV2() {
       // GIF reutiliza kind='image' -- Konva pinta el primer frame (no anima
       // GIFs animados), limitacion conocida documentada en
       // RECETA-DESARROLLO.md; el archivo original SI se sirve tal cual.
-      store.addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
+      focusedStoreHook.getState().addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir el GIF');
     }
@@ -936,7 +1191,7 @@ export default function CanvasEditorV2() {
     if (urls.length === 0) return;
     const el = selectedElements[0];
     const current = el.props?.images || [];
-    store.updateElement(el.id, { props: { ...el.props, images: [...current, ...urls.map((src) => ({ src }))] } });
+    focusedStoreHook.getState().updateElement(el.id, { props: { ...el.props, images: [...current, ...urls.map((src) => ({ src }))] } });
   };
 
   const handleInsertShortcode = (key) => {
@@ -946,9 +1201,9 @@ export default function CanvasEditorV2() {
       const el = selectedElements[0];
       const current = el.props?.text || '';
       const sep = current && !current.endsWith(' ') ? ' ' : '';
-      store.updateElement(el.id, { props: { ...el.props, text: `${current}${sep}{{${key}}}` } });
+      focusedStoreHook.getState().updateElement(el.id, { props: { ...el.props, text: `${current}${sep}{{${key}}}` } });
     } else {
-      store.addElement('text', { props: { text: `{{${key}}}`, fontSize: 24, fill: '#111111' } });
+      focusedStoreHook.getState().addElement('text', { props: { text: `{{${key}}}`, fontSize: 24, fill: '#111111' } });
     }
     setPluginsMenuOpen(false);
   };
@@ -956,249 +1211,213 @@ export default function CanvasEditorV2() {
   const handleAlign = (type) => {
     const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
     if (selectedElements.length < needs) return;
-    store.updateElements(computeAlignPatches(type, selectedElements));
-  };
-
-  // --- Marquee-select (rectángulo de selección arrastrando sobre el fondo) --
-  const handleStageMouseDown = (e) => {
-    if (e.target !== e.target.getStage()) return; // click sobre un elemento, no el fondo
-    const pos = e.target.getStage().getPointerPosition();
-    if (!e.evt.shiftKey) store.selectElement(null);
-    marqueeStartRef.current = pos;
-    setMarquee({ x: pos.x, y: pos.y, width: 0, height: 0 });
-  };
-
-  const handleStageMouseMove = (e) => {
-    if (!marqueeStartRef.current) return;
-    const pos = e.target.getStage().getPointerPosition();
-    const start = marqueeStartRef.current;
-    setMarquee({
-      x: Math.min(start.x, pos.x),
-      y: Math.min(start.y, pos.y),
-      width: Math.abs(pos.x - start.x),
-      height: Math.abs(pos.y - start.y),
-    });
-  };
-
-  const handleStageMouseUp = () => {
-    if (!marqueeStartRef.current) return;
-    const rect = marquee;
-    marqueeStartRef.current = null;
-    setMarquee(null);
-    if (!rect || (rect.width < 4 && rect.height < 4)) return; // click simple, no arrastre real
-    const hitIds = elements.filter((el) => rectsIntersect(rect, el)).map((el) => el.id);
-    if (hitIds.length > 0) store.selectElements(hitIds);
+    focusedStoreHook.getState().updateElements(computeAlignPatches(type, selectedElements));
   };
 
   if (loadErr) {
     return <div className="editor-v2-error">Error: {loadErr}</div>;
   }
-  if (!publication || pages.length === 0 || !activePageId) {
+  if (!publication || pages.length === 0 || !currentView) {
     return <div className="editor-v2-loading">Cargando publicación…</div>;
   }
 
-  const stageWidthPx = publication.page_width * PX_PER_MM;
-  const stageHeightPx = publication.page_height * PX_PER_MM;
-  const sortedElements = [...elements].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
-  const activePageNumber = pages.find((p) => p.id === activePageId)?.page_number;
-  const shortcodeCtx = { pageNumber: activePageNumber, totalPages: pages.length, publicationTitle: publication.title };
+  const totalPages = publication.total_pages ?? pages.length;
+  const positionLabel = currentView.right
+    ? `${activeLeftPageNumber}-${activeRightPageNumber} / ${totalPages}`
+    : `${activeLeftPageNumber} / ${totalPages}`;
 
   return (
     <div className="editor-v2-layout">
-      <aside className="editor-v2-sidebar">
-        <h3>{publication.title}</h3>
-        <p className="editor-v2-orientation">
-          {publication.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {publication.page_width}×{publication.page_height}mm
-        </p>
-        <ul className="editor-v2-pagelist">
-          {pages.map((p) => (
-            <li key={p.id} className={p.id === activePageId ? 'active' : ''} onClick={() => handleSelectPage(p.id)}>
-              {p.page_number}. {p.page_type === 'cover' ? 'Portada' : p.page_type === 'back_cover' ? 'Contraportada' : 'Interior'}
-            </li>
-          ))}
-        </ul>
-        <button type="button" onClick={() => navigate('/publications')}>
-          Volver a publicaciones
+      <header className="editor-v2-header">
+        <button type="button" className="editor-v2-back" onClick={() => navigate('/publications')}>
+          ← Volver a publicaciones
         </button>
-      </aside>
+        <h3 className="editor-v2-header-title">{publication.title}</h3>
+        <span className="editor-v2-orientation">
+          {publication.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {publication.page_width}×{publication.page_height}mm
+        </span>
+      </header>
 
-      <nav className="editor-v2-tools-rail">
-        <ToolGroup>
-          <ToolButton icon="select" label="Seleccionar" active />
-          <ToolButton icon="hotspot" label="Hotspot" comingSoon disabled />
-        </ToolGroup>
+      <div className="editor-v2-body">
+        <nav className="editor-v2-tools-rail">
+          <ToolGroup>
+            <ToolButton icon="select" label="Seleccionar" active />
+            <ToolButton icon="hotspot" label="Hotspot" comingSoon disabled />
+          </ToolGroup>
 
-        <ToolGroup>
-          <ToolButton
-            icon="text"
-            label="Texto"
-            disabled={!canEdit}
-            onClick={() => store.addElement('text', { props: { text: 'Texto', fontSize: 24, fill: '#111111' } })}
-          />
-        </ToolGroup>
-
-        <ToolGroup>
-          <ToolButton
-            icon="line"
-            label="Línea"
-            disabled={!canEdit}
-            onClick={() => store.addElement('shape', { width: 160, height: 4, props: { fill: '#4f46e5', shape_type: 'line', strokeWidth: 4 } })}
-          />
-          <ToolButton
-            icon="rectangle"
-            label="Rectángulo"
-            disabled={!canEdit}
-            onClick={() => store.addElement('shape', { props: { fill: '#4f46e5', shape_type: 'rect' } })}
-          />
-          <ToolButton
-            icon="circle"
-            label="Círculo"
-            disabled={!canEdit}
-            onClick={() => store.addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'circle' } })}
-          />
-          <ToolButton
-            icon="star"
-            label="Estrella"
-            disabled={!canEdit}
-            onClick={() => store.addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'star' } })}
-          />
-        </ToolGroup>
-
-        <ToolGroup>
-          <ToolButton icon="image" label="Imagen" disabled={!canEdit} onClick={handleUploadImageClick} />
-          <ToolButton icon="gallery" label="Galería" disabled={!canEdit} onClick={handleUploadGalleryClick} />
-          <ToolButton icon="gif" label="GIF" disabled={!canEdit} onClick={handleUploadGifClick} />
-          <ToolButton icon="collage" label="Collage" disabled={!canEdit} onClick={handleUploadCollageClick} />
-          <ToolButton icon="youtube" label="YouTube" comingSoon disabled />
-          <ToolButton icon="vimeo" label="Vimeo" comingSoon disabled />
-          <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
-          <ToolButton icon="soundcloud" label="SoundCloud" comingSoon disabled />
-        </ToolGroup>
-
-        <ToolGroup>
-          <div className="editor-v2-plugins-wrap">
+          <ToolGroup>
             <ToolButton
-              icon="plugins"
-              label="Plugins (shortcodes)"
+              icon="text"
+              label="Texto"
               disabled={!canEdit}
-              active={pluginsMenuOpen}
-              onClick={() => setPluginsMenuOpen((v) => !v)}
+              onClick={() => focusedStoreHook.getState().addElement('text', { props: { text: 'Texto', fontSize: 24, fill: '#111111' } })}
             />
-            {pluginsMenuOpen && (
-              <div className="editor-v2-plugins-menu">
-                <div className="editor-v2-plugins-menu-title">Insertar shortcode</div>
-                {SHORTCODES.map((sc) => (
-                  <button key={sc.key} type="button" onClick={() => handleInsertShortcode(sc.key)}>
-                    {'{{' + sc.key + '}}'} <span>{sc.label}</span>
-                  </button>
-                ))}
+          </ToolGroup>
+
+          <ToolGroup>
+            <ToolButton
+              icon="line"
+              label="Línea"
+              disabled={!canEdit}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 160, height: 4, props: { fill: '#4f46e5', shape_type: 'line', strokeWidth: 4 } })}
+            />
+            <ToolButton
+              icon="rectangle"
+              label="Rectángulo"
+              disabled={!canEdit}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { props: { fill: '#4f46e5', shape_type: 'rect' } })}
+            />
+            <ToolButton
+              icon="circle"
+              label="Círculo"
+              disabled={!canEdit}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'circle' } })}
+            />
+            <ToolButton
+              icon="star"
+              label="Estrella"
+              disabled={!canEdit}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'star' } })}
+            />
+          </ToolGroup>
+
+          <ToolGroup>
+            <ToolButton icon="image" label="Imagen" disabled={!canEdit} onClick={handleUploadImageClick} />
+            <ToolButton icon="gallery" label="Galería" disabled={!canEdit} onClick={handleUploadGalleryClick} />
+            <ToolButton icon="gif" label="GIF" disabled={!canEdit} onClick={handleUploadGifClick} />
+            <ToolButton icon="collage" label="Collage" disabled={!canEdit} onClick={handleUploadCollageClick} />
+            <ToolButton icon="youtube" label="YouTube" comingSoon disabled />
+            <ToolButton icon="vimeo" label="Vimeo" comingSoon disabled />
+            <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
+            <ToolButton icon="soundcloud" label="SoundCloud" comingSoon disabled />
+          </ToolGroup>
+
+          <ToolGroup>
+            <div className="editor-v2-plugins-wrap">
+              <ToolButton
+                icon="plugins"
+                label="Plugins (shortcodes)"
+                disabled={!canEdit}
+                active={pluginsMenuOpen}
+                onClick={() => setPluginsMenuOpen((v) => !v)}
+              />
+              {pluginsMenuOpen && (
+                <div className="editor-v2-plugins-menu">
+                  <div className="editor-v2-plugins-menu-title">Insertar shortcode</div>
+                  {SHORTCODES.map((sc) => (
+                    <button key={sc.key} type="button" onClick={() => handleInsertShortcode(sc.key)}>
+                      {'{{' + sc.key + '}}'} <span>{sc.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </ToolGroup>
+
+          <ToolGroup>
+            <ToolButton icon="library" label="Library" comingSoon disabled />
+            <ToolButton icon="blocks" label="Blocks" comingSoon disabled />
+          </ToolGroup>
+
+          <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+          <input type="file" accept="audio/*" ref={audioInputRef} style={{ display: 'none' }} onChange={handleAudioFileChange} />
+          <input type="file" accept="image/*" multiple ref={galleryInputRef} style={{ display: 'none' }} onChange={handleGalleryFileChange} />
+          <input type="file" accept="image/*" multiple ref={collageInputRef} style={{ display: 'none' }} onChange={handleCollageFileChange} />
+          <input type="file" accept="image/gif" ref={gifInputRef} style={{ display: 'none' }} onChange={handleGifFileChange} />
+          <input type="file" accept="image/*" multiple ref={galleryAppendInputRef} style={{ display: 'none' }} onChange={handleAppendGalleryImages} />
+        </nav>
+
+        <main className="editor-v2-main">
+          {lockState === 'acquiring' && <div className="editor-v2-banner">Adquiriendo bloqueo de edición…</div>}
+          {lockState === 'denied' && (
+            <div className="editor-v2-banner editor-v2-banner-warn">{lockMessage} (modo solo lectura)</div>
+          )}
+          {combinedSaveError && (
+            <div className="editor-v2-banner editor-v2-banner-error">
+              {combinedSaveError.detail}
+              {combinedSaveError.status === 409 && (
+                <button type="button" onClick={handleReloadOnConflict}>
+                  Recargar página
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="editor-v2-toolbar">
+            <button
+              type="button"
+              disabled={!canEdit || focusedState.selectedElementIds.length === 0}
+              onClick={() => focusedStoreHook.getState().removeSelectedElements()}
+            >
+              Eliminar seleccionado{focusedState.selectedElementIds.length > 1 ? 's' : ''}
+            </button>
+            <span className="editor-v2-spacer" />
+            {anyDirty && <span className="editor-v2-dirty">Cambios sin guardar</span>}
+            <button type="button" className="editor-v2-save" disabled={!canEdit || anySaving || !anyDirty} onClick={handleSaveAll}>
+              {anySaving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+
+          <div className={`editor-v2-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}>
+            <div className={`editor-v2-page-slot${focusedSide === 'left' ? ' focused' : ''}`}>
+              <PageCanvas
+                useStoreHook={useLeftStore}
+                canEdit={canEdit}
+                publication={publication}
+                pageNumber={activeLeftPageNumber}
+                totalPages={totalPages}
+                onFocus={() => setFocusedSide('left')}
+              />
+            </div>
+            {currentView.right && (
+              <div className={`editor-v2-page-slot${focusedSide === 'right' ? ' focused' : ''}`}>
+                <PageCanvas
+                  useStoreHook={useRightStore}
+                  canEdit={canEdit}
+                  publication={publication}
+                  pageNumber={activeRightPageNumber}
+                  totalPages={totalPages}
+                  onFocus={() => setFocusedSide('right')}
+                />
               </div>
             )}
           </div>
-        </ToolGroup>
 
-        <ToolGroup>
-          <ToolButton icon="library" label="Library" comingSoon disabled />
-          <ToolButton icon="blocks" label="Blocks" comingSoon disabled />
-        </ToolGroup>
-
-        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-        <input type="file" accept="audio/*" ref={audioInputRef} style={{ display: 'none' }} onChange={handleAudioFileChange} />
-        <input type="file" accept="image/*" multiple ref={galleryInputRef} style={{ display: 'none' }} onChange={handleGalleryFileChange} />
-        <input type="file" accept="image/*" multiple ref={collageInputRef} style={{ display: 'none' }} onChange={handleCollageFileChange} />
-        <input type="file" accept="image/gif" ref={gifInputRef} style={{ display: 'none' }} onChange={handleGifFileChange} />
-        <input type="file" accept="image/*" multiple ref={galleryAppendInputRef} style={{ display: 'none' }} onChange={handleAppendGalleryImages} />
-      </nav>
-
-      <main className="editor-v2-main">
-        {lockState === 'acquiring' && <div className="editor-v2-banner">Adquiriendo bloqueo de edición…</div>}
-        {lockState === 'denied' && (
-          <div className="editor-v2-banner editor-v2-banner-warn">{lockMessage} (modo solo lectura)</div>
-        )}
-        {saveError && (
-          <div className="editor-v2-banner editor-v2-banner-error">
-            {saveError.detail}
-            {saveError.status === 409 && (
-              <button type="button" onClick={() => store.loadPage(activePageId)}>
-                Recargar página
-              </button>
-            )}
+          <div className="editor-v2-pagenav">
+            <button type="button" onClick={handlePrev} disabled={currentViewIndex <= 0} aria-label="Hoja anterior">
+              <Icon name="chevronLeft" size={16} /> Anterior
+            </button>
+            <span className="editor-v2-pagenav-position">
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={pageJumpDraft}
+                onChange={(e) => setPageJumpDraft(e.target.value)}
+                onBlur={commitPageJump}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label="Ir a la página"
+              />
+              <span className="editor-v2-pagenav-label"> {currentView.right ? `(hoja ${positionLabel})` : `/ ${totalPages}`}</span>
+            </span>
+            <button type="button" onClick={handleNext} disabled={currentViewIndex >= spreadViews.length - 1} aria-label="Hoja siguiente">
+              Siguiente <Icon name="chevronRight" size={16} />
+            </button>
           </div>
-        )}
+        </main>
 
-        <div className="editor-v2-toolbar">
-          <button type="button" disabled={!canEdit || selectedElementIds.length === 0} onClick={() => store.removeSelectedElements()}>
-            Eliminar seleccionado{selectedElementIds.length > 1 ? 's' : ''}
-          </button>
-          <span className="editor-v2-spacer" />
-          {isDirty && <span className="editor-v2-dirty">Cambios sin guardar</span>}
-          <button type="button" className="editor-v2-save" disabled={!canEdit || isSaving || !isDirty} onClick={() => store.save()}>
-            {isSaving ? 'Guardando…' : 'Guardar'}
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="editor-v2-loading">Cargando página…</div>
-        ) : loadError ? (
-          <div className="editor-v2-error">{loadError}</div>
-        ) : (
-          <div className="editor-v2-canvas-wrap">
-            <Stage
-              ref={stageRef}
-              width={stageWidthPx}
-              height={stageHeightPx}
-              className="editor-v2-stage"
-              onMouseDown={handleStageMouseDown}
-              onMouseMove={handleStageMouseMove}
-              onMouseUp={handleStageMouseUp}
-            >
-              <Layer>
-                <Rect x={0} y={0} width={stageWidthPx} height={stageHeightPx} fill="#ffffff" listening={false} />
-                {sortedElements.map((el) => {
-                  // 'key' se pasa aparte (no dentro del spread) -- React exige que sea
-                  // una prop directa de JSX, nunca parte de un objeto esparcido, o avisa
-                  // en consola (advertencia inofensiva pero evitable) en modo desarrollo.
-                  const shared = {
-                    el,
-                    canEdit,
-                    onSelect: (e) => canEdit && store.selectElement(el.id, { additive: e?.evt?.shiftKey }),
-                    onChange: (patch) => canEdit && store.updateElement(el.id, patch),
-                    shapeRef: (node) => {
-                      shapeRefs.current[el.id] = node;
-                    },
-                  };
-                  if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
-                  if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
-                  if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
-                  if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
-                  return <ShapeElement key={el.id} {...shared} />;
-                })}
-                {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
-                {marquee && (
-                  <Rect
-                    x={marquee.x}
-                    y={marquee.y}
-                    width={marquee.width}
-                    height={marquee.height}
-                    fill="rgba(79,70,229,0.15)"
-                    stroke="#4f46e5"
-                    strokeWidth={1}
-                    listening={false}
-                  />
-                )}
-              </Layer>
-            </Stage>
-          </div>
-        )}
-      </main>
-
-      <PropertiesPanel
-        selectedElements={selectedElements}
-        canEdit={canEdit}
-        onUpdate={(patch) => selectedElements.length === 1 && store.updateElement(selectedElements[0].id, patch)}
-        onAlign={handleAlign}
-        onAppendImagesClick={handleUploadGalleryAppendClick}
-      />
+        <PropertiesPanel
+          selectedElements={selectedElements}
+          canEdit={canEdit}
+          onUpdate={(patch) => selectedElements.length === 1 && focusedStoreHook.getState().updateElement(selectedElements[0].id, patch)}
+          onAlign={handleAlign}
+          onAppendImagesClick={handleUploadGalleryAppendClick}
+        />
+      </div>
     </div>
   );
 }
