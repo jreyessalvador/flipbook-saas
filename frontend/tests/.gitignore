@@ -1,0 +1,6 @@
+# Artefactos generados al correr e2e_editor_v2_regression.js -- nunca se
+# comitean (evidencia visual util para depurar en el momento, no historica).
+*.png
+node_modules/
+package.json
+package-lock.json
