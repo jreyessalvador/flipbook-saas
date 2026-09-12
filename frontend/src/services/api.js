@@ -7,6 +7,11 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:' && ba
 }
 const API_URL = baseApiUrl;
 
+// Exportado para construir URLs absolutas a partir de rutas relativas que
+// devuelve el backend (p.ej. /api/assets/serve/... -- ver assetAPI.upload y
+// CanvasEditorV2). Antes esas URLs venian con host hardcodeado; ya no.
+export { API_URL };
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {

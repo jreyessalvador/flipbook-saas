@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
 import PageViewer from './components/editor/PageViewer';
 import CanvasEditor from './components/editor/CanvasEditor';
+import CanvasEditorV2 from './components/editor/CanvasEditorV2';
 
 function App() {
   return (
@@ -49,11 +50,16 @@ function App() {
             }
           />
 
+          {/* Editor v2 (Fase B, react-konva) -- reemplaza al editor viejo basado en
+              Fabric.js/objeto global mutable que causaba la fuga portada<->contraportada.
+              Ver docs/arquitectura-editor-2026-09-12.md. El componente viejo
+              (CanvasEditor) se deja sin usar en el repo por ahora como referencia,
+              no se borra hasta confirmar que v2 cubre todos los casos. */}
           <Route
             path="/publications/:id/edit/:pageId?"
             element={
               <ProtectedRoute>
-                <CanvasEditor />
+                <CanvasEditorV2 />
               </ProtectedRoute>
             }
           />

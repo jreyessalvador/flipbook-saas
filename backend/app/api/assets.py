@@ -67,8 +67,15 @@ def ensure_bucket(retries: int = 5, backoff_seconds: float = 1.5) -> bool:
 
 
 def build_asset_url(object_name: str) -> str:
-    """URL pública accesible desde el navegador via backend proxy"""
-    return f"http://api.flipbook.local/api/assets/serve/{object_name}"
+    """
+    Ruta RELATIVA (no host hardcodeado) servida por este mismo backend via
+    /api/assets/serve/{object_name}. Antes devolvia un host fijo
+    (http://api.flipbook.local/...) que solo resolvia en produccion -- rompia
+    cualquier otro entorno (dev en ia-lavatur via Tailscale, etc.). El
+    frontend antepone su propio VITE_API_URL (services/api.js) al mostrar la
+    imagen, asi que esta funcion no necesita saber en que host corre.
+    """
+    return f"/api/assets/serve/{object_name}"
 
 
 @router.post("/upload")
