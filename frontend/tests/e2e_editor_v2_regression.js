@@ -92,9 +92,9 @@ async function shot(page, name) {
   await shot(page, '04_editor_cover_empty');
 
   console.log('5) agregar texto y figura en la portada, guardar');
-  await page.click('text=+ Texto');
+  await page.click('button[aria-label="Texto"]');
   await page.waitForTimeout(300);
-  await page.click('text=+ Figura');
+  await page.click('button[aria-label="Rectángulo"]');
   await page.waitForTimeout(300);
   await shot(page, '05_editor_cover_with_elements');
 
