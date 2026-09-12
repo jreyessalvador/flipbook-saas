@@ -76,7 +76,7 @@ const OUT_DIR = __dirname;
   await page.screenshot({ path: `${OUT_DIR}/lote1_03_marquee_resultado.png` });
 
   console.log('3) drag real de una figura individual con el mouse (sin multi-seleccion)');
-  await page.mouse.click(5, 5); // clic fuera para limpiar seleccion (fuera del stage, en el sidebar oscuro)
+  await page.mouse.click(5, 5); // clic fuera para limpiar seleccion (fuera del stage, en el encabezado oscuro superior -- ya no hay sidebar lateral)
   await page.waitForTimeout(100);
   const before = await page.evaluate(() => window.__pageEditorStore.elements[0]);
   const shapeScreenX = stageBox.x + before.x + before.width / 2;

@@ -115,8 +115,10 @@ async function shot(page, name) {
   if (bannerErrors.length > 0) throw new Error(`Error al guardar: ${bannerErrors.join(' | ')}`);
   console.log('   OK: guardado sin errores.');
 
-  console.log('6) navegar a la contraportada -- AQUI es donde el bug original fugaba contenido');
-  await page.click('li:has-text("Contraportada")');
+  console.log('6) navegar a la contraportada (via el campo de salto de la barra inferior, la lista lateral de paginas ya no existe) -- AQUI es donde el bug original fugaba contenido');
+  const pageJumpInput = await page.$('.editor-v2-pagenav-position input[type="number"]');
+  await pageJumpInput.fill(String(sorted[sorted.length - 1].page_number));
+  await pageJumpInput.press('Enter');
   await page.waitForTimeout(1500);
   await shot(page, '07_editor_back_cover');
 
