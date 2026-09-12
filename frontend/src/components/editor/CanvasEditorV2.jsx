@@ -13,10 +13,11 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, Audio, SoundCloud, Plugins,
+// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, Audio, SoundCloud,
 // Library, Blocks y Quick Actions -- quedan para lotes siguientes, no
 // bloquean lo ya verificado. Línea/Círculo/Estrella y Alinear/Distribuir
-// (con selección múltiple) SÍ son funcionales -- ver Lote 1.
+// (con selección múltiple, Lote 1) y Plugins/shortcodes de texto (Lote 2)
+// SÍ son funcionales.
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
 const HEARTBEAT_MS = 20000; // el lock expira a los 60s sin heartbeat (backend/app/api/locks.py)
@@ -249,15 +250,41 @@ function ShapeElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   );
 }
 
-function TextElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+// --- Shortcodes de texto (Plugins) --------------------------------------
+// Alcance deliberadamente acotado por decision explicita de Carlos: SOLO
+// variables de texto plano predefinidas, resueltas en el momento de
+// renderizar -- nunca HTML/JS/iframes arbitrarios (superficie de riesgo
+// real si algun dia hay multi-tenant self-service). El texto guardado en
+// props.text conserva el shortcode SIN resolver (p.ej. "Pagina {{numero_pagina}}")
+// -- solo la vista previa en el canvas lo muestra resuelto, para que
+// re-editar el texto siga mostrando la plantilla, no el valor de hoy.
+const SHORTCODES = [
+  { key: 'fecha', label: 'Fecha de hoy', resolve: (ctx) => new Date().toLocaleDateString('es-ES') },
+  { key: 'numero_pagina', label: 'Número de página', resolve: (ctx) => String(ctx.pageNumber ?? '') },
+  { key: 'total_paginas', label: 'Total de páginas', resolve: (ctx) => String(ctx.totalPages ?? '') },
+  { key: 'titulo_publicacion', label: 'Título de la publicación', resolve: (ctx) => ctx.publicationTitle ?? '' },
+];
+
+function resolveShortcodes(text, ctx) {
+  if (!text) return text;
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key) => {
+    const sc = SHORTCODES.find((s) => s.key === key);
+    return sc ? sc.resolve(ctx) : match; // shortcode desconocido: se deja tal cual, no se rompe el texto
+  });
+}
+
+function TextElement({ el, canEdit, onSelect, onChange, shapeRef, shortcodeCtx }) {
   const handleEdit = () => {
     if (!canEdit) return;
     // Edición de texto simplificada para el MVP de Fase B -- ver
     // RECETA-DESARROLLO.md: un editor inline (contentEditable superpuesto al
-    // canvas) queda como refinamiento posterior, no bloqueante.
-    const next = window.prompt('Editar texto:', el.props?.text || '');
+    // canvas) queda como refinamiento posterior, no bloqueante. Se edita la
+    // PLANTILLA con shortcodes sin resolver (p.ej. "{{fecha}}"), no el valor
+    // ya resuelto que se ve en el canvas.
+    const next = window.prompt('Editar texto (admite shortcodes {{fecha}}, {{numero_pagina}}, {{total_paginas}}, {{titulo_publicacion}}):', el.props?.text || '');
     if (next !== null) onChange({ props: { ...el.props, text: next } });
   };
+  const displayText = resolveShortcodes(el.props?.text || 'Texto', shortcodeCtx || {});
   return (
     <KonvaText
       ref={shapeRef}
@@ -266,7 +293,7 @@ function TextElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
-      text={el.props?.text || 'Texto'}
+      text={displayText}
       fontSize={el.props?.fontSize || 24}
       fill={el.props?.fill || '#111111'}
       draggable={canEdit}
@@ -481,6 +508,7 @@ export default function CanvasEditorV2() {
   // el store (no se guarda ni afecta a otras páginas).
   const [marquee, setMarquee] = useState(null); // { x, y, width, height } | null
   const marqueeStartRef = useRef(null);
+  const [pluginsMenuOpen, setPluginsMenuOpen] = useState(false);
 
   const store = usePageEditorStore();
 
@@ -623,6 +651,20 @@ export default function CanvasEditorV2() {
     }
   };
 
+  const handleInsertShortcode = (key) => {
+    if (!canEdit) return;
+    const onlyTextSelected = selectedElements.length === 1 && selectedElements[0].kind === 'text';
+    if (onlyTextSelected) {
+      const el = selectedElements[0];
+      const current = el.props?.text || '';
+      const sep = current && !current.endsWith(' ') ? ' ' : '';
+      store.updateElement(el.id, { props: { ...el.props, text: `${current}${sep}{{${key}}}` } });
+    } else {
+      store.addElement('text', { props: { text: `{{${key}}}`, fontSize: 24, fill: '#111111' } });
+    }
+    setPluginsMenuOpen(false);
+  };
+
   const handleAlign = (type) => {
     const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
     if (selectedElements.length < needs) return;
@@ -670,6 +712,8 @@ export default function CanvasEditorV2() {
   const stageWidthPx = publication.page_width * PX_PER_MM;
   const stageHeightPx = publication.page_height * PX_PER_MM;
   const sortedElements = [...elements].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
+  const activePageNumber = pages.find((p) => p.id === activePageId)?.page_number;
+  const shortcodeCtx = { pageNumber: activePageNumber, totalPages: pages.length, publicationTitle: publication.title };
 
   return (
     <div className="editor-v2-layout">
@@ -744,7 +788,25 @@ export default function CanvasEditorV2() {
         </ToolGroup>
 
         <ToolGroup>
-          <ToolButton icon="plugins" label="Plugins (código / shortcodes)" comingSoon disabled />
+          <div className="editor-v2-plugins-wrap">
+            <ToolButton
+              icon="plugins"
+              label="Plugins (shortcodes)"
+              disabled={!canEdit}
+              active={pluginsMenuOpen}
+              onClick={() => setPluginsMenuOpen((v) => !v)}
+            />
+            {pluginsMenuOpen && (
+              <div className="editor-v2-plugins-menu">
+                <div className="editor-v2-plugins-menu-title">Insertar shortcode</div>
+                {SHORTCODES.map((sc) => (
+                  <button key={sc.key} type="button" onClick={() => handleInsertShortcode(sc.key)}>
+                    {'{{' + sc.key + '}}'} <span>{sc.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </ToolGroup>
 
         <ToolGroup>
@@ -813,7 +875,7 @@ export default function CanvasEditorV2() {
                     },
                   };
                   if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
-                  if (el.kind === 'text') return <TextElement key={el.id} {...shared} />;
+                  if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
                   return <ShapeElement key={el.id} {...shared} />;
                 })}
                 {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}

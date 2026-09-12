@@ -292,3 +292,56 @@
     width: 200px;
   }
 }
+
+/* --- Menu de Plugins/shortcodes (Lote 2) --- */
+.editor-v2-plugins-wrap {
+  position: relative;
+}
+
+.editor-v2-plugins-menu {
+  position: absolute;
+  left: 44px;
+  top: 0;
+  z-index: 20;
+  width: 240px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+}
+
+.editor-v2-plugins-menu-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  padding: 4px 6px 8px;
+}
+
+.editor-v2-plugins-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.editor-v2-plugins-menu button:hover {
+  background: #eef2ff;
+}
+
+.editor-v2-plugins-menu button span {
+  font-family: inherit;
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
