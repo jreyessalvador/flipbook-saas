@@ -382,6 +382,104 @@ Pendientes (próximos lotes, no bloquean lo ya entregado): YouTube/Vimeo
 (Lote 5), SoundCloud + Quick Actions -- Element Settings/Animate
 (Lote 6), Library + Blocks (Lote 7).
 
+## 9b. Vista de hoja doble (spread) + navegación inferior (12-sep-2026)
+
+Feedback textual de Carlos sobre una captura del editor real: retirar la
+barra lateral con la lista de páginas para ganar espacio de canvas,
+mostrar las páginas interiores a doble hoja (portada/contraportada
+siempre a una sola hoja), y sustituir la lista por una navegación inferior
+(Anterior/Siguiente + número de hoja activa/total editable manualmente).
+Al preguntársele explícitamente si ambas páginas del spread debían ser
+editables simultáneamente (como InDesign) o solo una activa con clic para
+enfocar, **eligió explícitamente "Ambas editables simultáneamente"** --
+decisión ya tomada, no revisitar.
+
+**Cambios de layout**: `.editor-v2-sidebar`/`.editor-v2-pagelist` (la lista
+larga de páginas) se retiran por completo. El título de la publicación y
+"Volver a publicaciones" pasan a una franja superior compacta
+(`.editor-v2-header`, oscura, una sola línea). Debajo del canvas se agrega
+`.editor-v2-pagenav`: flecha "← Anterior", campo numérico editable (salta a
+la hoja que contiene esa página al confirmar con Enter/blur, posicionándola
+en el lado que le corresponda del spread) con la posición actual ("2-3 / 4"
+en spread, "1 / 4" en hoja simple), flecha "Siguiente →". Anterior/Siguiente
+avanzan por VISTA (hoja simple o spread completo), no por página individual.
+
+**Agrupación en spreads** (`computeSpreadViews(pages, total)`, función pura
+exportada desde `CanvasEditorV2.jsx`, sin dependencias de React -- fácil de
+razonar/testear en aislamiento): `page_number === 1` (portada) y
+`page_number === total` (contraportada) siempre van solas; el resto se
+agrupa de a 2 EN ORDEN (2,3), (4,5), (6,7)... -- si el número de páginas
+interiores es impar, el último spread interior queda con un solo lado
+(el derecho simplemente no se renderiza, no hay un segundo Stage vacío).
+
+**Refactor de `pageEditorStore.js`: de singleton a fábrica.** Para que
+ambas páginas de un spread sean independiente y SIMULTÁNEAMENTE editables,
+un único store global ya no alcanzaba. `export const usePageEditorStore =
+create(...)` pasó a ser `export function createPageEditorStore() { return
+create(...); }`, manteniendo EXACTAMENTE la misma lógica interna (la
+"regla de oro" de la sección 0 sigue intacta y ahora aplica por instancia:
+cada spread lado tiene su propio `pageId`/`version`/`elements`/`loadToken`,
+estructuralmente aislado del otro). Se conserva `export const
+usePageEditorStore = createPageEditorStore();` como alias de
+compatibilidad -- nada dentro del repo lo usa ya (`CanvasEditorV2.jsx` crea
+sus propias instancias), pero se deja por si algo externo lo importara.
+
+**`CanvasEditorV2.jsx`**: crea `useLeftStore`/`useRightStore` con
+`useState(() => createPageEditorStore())` (estables a través de renders,
+nunca en un array/loop condicional). En hoja simple solo `useLeftStore`
+está en uso; en spread, `useLeftStore` carga la página izquierda y
+`useRightStore` la derecha, cada una con su propio `loadPage`/`save`/ciclo
+de vida, igual que el store único hacía antes para una sola página. El
+bloque de render de UNA página (Stage/Layer/Transformer/marquee-select,
+más los handlers de mouse) se extrajo a `<PageCanvas useStoreHook={...}>`,
+montado una vez (hoja simple) o dos veces lado a lado (spread) -- cada
+instancia tiene sus PROPIOS `stageRef`/`trRef`/`shapeRefs` (nunca
+compartidos entre lados). El lock de edición (`lockAPI`) sigue siendo por
+publicación, sin cambios -- ya cubría ambas páginas del spread. El rail de
+herramientas y el panel de propiedades actúan sobre la página "enfocada"
+(`focusedSide`, estado `'left'`/`'right'` que se actualiza al hacer clic en
+el fondo o al seleccionar un elemento en cualquiera de los dos Stages; se
+resetea a `'left'` al cambiar de vista). "Guardar" persiste ambos lados si
+tienen cambios pendientes (no solo el enfocado).
+
+**Compatibilidad con los scripts de verificación previos**: todos ellos
+(`e2e_editor_v2_regression.js`, `verify_lote1(.js/_visual.js)`,
+`verify_lote2_shortcodes.js`, `verify_lote3_audio.js`,
+`verify_lote4_gallery.js`) usan `window.__pageEditorStore` (sin sufijo)
+como el store "activo" -- ninguno de ellos navega jamás a un spread real
+(siempre portada/contraportada o una página interior solitaria), así que
+`window.__pageEditorStore` se conserva como alias del store izquierdo (el
+único garantizado de existir), junto a `window.__pageEditorStoreLeft`/
+`window.__pageEditorStoreRight` (nuevos, para scripts que sí necesiten
+distinguir ambos lados de un spread, como `verify_spread_view.js`).
+`e2e_editor_v2_regression.js` tuvo que actualizarse aparte: navegaba a la
+contraportada con `page.click('li:has-text("Contraportada")')`, selector
+de la sidebar retirada -- ahora usa el campo de salto de la barra inferior.
+
+**Verificación**: nuevo `frontend/tests/verify_spread_view.js` (publicación
+de 5 hojas: portada + 3 interiores + contraportada) cubre hoja simple en
+portada/contraportada, spread de 2 Stages en interiores, edición
+independiente y simultánea de ambos lados (texto a la izquierda, figura a
+la derecha, sin fuga cruzada verificada vía `window.__pageEditorStoreLeft`/
+`Right`), persistencia tras guardar+recargar, el caso impar (último spread
+interior con un solo lado), y salto manual por número de página
+posicionando la página en el lado correcto. Los 5 scripts de regresión
+existentes se re-ejecutaron uno por uno (nunca en paralelo, por la
+contención ya conocida del lock de edición) tras el cambio: **todos pasan
+limpio, sin errores de consola, sin regresiones**.
+
+**Bug de test (no de producto) encontrado escribiendo `verify_spread_view.js`**:
+`locator.click({ position })` sobre el `<canvas>` de cada Stage del spread
+quedaba reintentando indefinidamente (`'<html>' intercepts pointer
+events`) -- posiblemente por el contenedor `.editor-v2-canvas-wrap-spread`
+con `overflow-x: auto` interfiriendo con el scroll-into-view automático de
+Playwright. Corregido usando el mismo patrón ya probado en
+`verify_lote1_visual.js`: `boundingBox()` + `page.mouse.click()` con
+coordenadas absolutas de pantalla, en vez de `locator.click({position})`.
+
+No hubo bugs reales de producto que corregir en esta ronda (solo el de
+test descrito arriba).
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Seguir con el Lote 5 (YouTube/Vimeo) siguiendo el mismo patrón:
