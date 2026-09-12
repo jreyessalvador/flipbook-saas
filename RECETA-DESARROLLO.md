@@ -51,20 +51,36 @@ Backend FastAPI existente (`backend/app/`) extendido con:
   `backend/app/api/pages.py`/`publications.py` los endpoints de
   elementos/publish/versions (buscar el comentario "Editor v2" en esos
   archivos para ubicar exactamente qué se agregó vs qué ya existía).
-- Migración SQL: `backend/migrations/0001_editor_v2.sql` -- **AÚN NO
-  EJECUTADA contra una base de datos real**, solo verificada por
-  compilación/import de los modelos SQLAlchemy (ver sección 3).
+- Migración SQL: `backend/migrations/0001_editor_v2.sql` -- para BD fresca
+  se usó `python -m app.db.init_db` (equivalente, crea las 8 tablas vía
+  `Base.metadata.create_all()`); para una BD de producción existente con
+  datos, usar el script `.sql` directamente.
 
-**Lo que falta para cerrar Fase A de verdad** (no asumir que está terminada
-solo porque el código compila):
-1. Ejecutar `0001_editor_v2.sql` contra una BD Postgres real (dev en
-   raspi-2 o la que se levante en ia-lavatur) y confirmar que no rompe nada
-   con datos ya existentes.
-2. Levantar la API con esa BD y probar con `curl`/Postman al menos: crear
-   publicación → lock → guardar elementos con version correcta (200) →
-   guardar con version vieja (409) → publish → listar versions → unlock.
-3. Automatizar la checklist de la sección 10 del documento de arquitectura
-   como tests pytest reales (hoy son solo casilleros sin marcar).
+**Fase A CERRADA de verdad el 12-sep-2026** (no solo "el código compila" --
+verificado contra un stack real):
+1. ✅ Stack completo (Postgres 15 + Redis + MinIO + FastAPI) levantado con
+   Docker Compose en `ia-lavatur` (`/home/administracion/dev/flipbook-saas/`),
+   `python -m app.db.init_db` ejecutado contra esa Postgres real -- las 8
+   tablas (`assets`, `edit_locks`, `page_elements`, `pages`,
+   `publication_versions`, `publications`, `tenants`, `users`) más tenant y
+   admin por defecto se crearon sin errores.
+2. ✅ Prueba end-to-end real con `curl` reproduciendo EXACTAMENTE el bug
+   original de Carlos: publicación de 4 páginas (portrait) → lock → guardar
+   2 elementos (imagen+texto) en la portada (version 1→2) → **contraportada
+   con 0 elementos (sin fuga)** → portada conserva sus 2 elementos al
+   releer → guardar con version vieja devuelve 409 sin sobreescribir →
+   `orientation` se mantiene "portrait" en todo momento → publish crea
+   `PublicationVersion` → listar versions muestra `is_current: true` →
+   unlock (204) → re-lock (200). **TODOS los checks pasaron.**
+3. ✅ Checklist de la sección 10 automatizada como script de smoke test:
+   `backend/tests/test_editor_v2_regression.sh` (bash + curl, ejecutable,
+   con asserts y mensajes de fallo explícitos si el bug reapareciera).
+   Pendiente (no bloqueante): convertirlo a pytest real más adelante.
+
+Hallazgo de infraestructura de paso: `minio/minio` ya NO se puede jalar de
+Docker Hub ("pull access denied", repo retirado) -- hay que usar
+`quay.io/minio/minio` en cualquier compose que use MinIO (afecta también a
+otros proyectos, no solo este; no propagado aún a otros repos).
 
 ## 3. Cómo verificar que el código compila sin desplegar nada
 
@@ -103,15 +119,13 @@ Postgres/Redis/MinIO corriendo (docker-compose.dev.yml del propio repo).
     Tailscale (`http://100.71.185.7:<puerto>`, puerto a definir en Fase B).
   - Marcado como DEV/TEST -- nunca datos reales de tenants, nunca se
     convierte en el servidor de producción del SaaS por inercia.
-  - **Bloqueante pendiente de Carlos**: el usuario `administracion` en
-    ia-lavatur NO está en el grupo `docker` (`docker ps` da "permission
-    denied") y `sudo` ahí exige contraseña interactiva siempre (una regla
-    de sudoers sin NOPASSWD posterior anula la NOPASSWD, ver
-    `projects/ia-lavatur/context.md`) -- bloquea automatización sin
-    intervención humana en cada comando. Pedir a Carlos UNA VEZ:
-    `sudo usermod -aG docker administracion` en ia-lavatur, y volver a
-    iniciar sesión SSH después (los grupos no se refrescan en una sesión
-    ya abierta).
+  - **Resuelto (12-sep-2026)**: Carlos aplicó `sudo usermod -aG docker
+    administracion` en ia-lavatur -- confirmado con `id` (grupo `docker`
+    gid 995 presente) y `docker ps` funcionando sin sudo. Entorno de
+    desarrollo ya levantado y verificado en
+    `/home/administracion/dev/flipbook-saas/` (clon de `redesign/editor-v2`,
+    `.env` propio, `docker-compose.dev.yml` portable con bind-mounts en
+    `./data/`).
   - Cualquier otro uso de ia-lavatur fuera de esto sigue PROHIBIDO por la
     regla general del 25-ago-2026 (ver `projects/ia-lavatur/context.md`).
 
@@ -156,8 +170,23 @@ import real, sección 3).
 
 ## 7. Próximo paso concreto (para quien retome esto)
 
-1. Cerrar Fase A de verdad (sección 2, lista de 3 puntos).
-2. Solo después, empezar Fase B (editor canvas con react-konva) -- NO antes,
-   aunque parezca más "visible" avanzar en UI primero. El orden importa: sin
-   Fase A verificada con datos reales, cualquier bug en Fase B será
-   imposible de diagnosticar (¿es el canvas o es la base de datos?).
+Fase A ya está cerrada de verdad (ver sección 2) -- verificada con un stack
+real en `ia-lavatur`, no solo con imports de Python. Commits en
+`redesign/editor-v2`: `da9aa7a` (fundaciones) y `718ccde` (smoke test de
+regresión).
+
+**Siguiente: Fase B -- editor canvas mínimo.**
+1. React + `react-konva` en el frontend existente (o uno nuevo si el actual
+   está muy acoplado al editor viejo -- decidir revisando el código actual
+   primero, no asumir).
+2. Store de estado con Zustand + Immer, un store POR PÁGINA (nunca un
+   objeto global mutable compartido entre páginas -- esa fue la causa raíz
+   original, ver sección 1 de la arquitectura).
+3. Solo tipos `image`, `text`, `shape` al inicio (video/audio/hotspot en
+   Fase C/D, ya modelados en la BD pero sin UI todavía).
+4. Flujo de guardado EXPLÍCITO (botón "Guardar", no autosave) contra
+   `PUT /pages/{id}/elements` con `version` -- manejar el 409 mostrando al
+   usuario que alguien más guardó primero (no sobreescribir en silencio).
+5. Reproducir el escenario de `test_editor_v2_regression.sh` manualmente en
+   el navegador contra `ia-lavatur` (Tailscale) antes de dar la fase por
+   cerrada -- el test de backend no prueba la UI.

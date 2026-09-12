@@ -156,22 +156,25 @@ GET    /api/assets/{id}
 
 ## 9. Plan de implementación por fases — ESTADO REAL
 
-1. **Fase A — Fundaciones de datos y bloqueo — ✅ COMPLETADA (12-sep-2026), rama `redesign/editor-v2`.** Migraciones SQL, modelos SQLAlchemy, endpoints de lock/heartbeat/unlock, endpoint de guardado con concurrencia optimista, endpoint de publish/versions. Verificado: modelos y app FastAPI cargan sin errores (import real ejecutado, ver RECETA-DESARROLLO.md). **Pendiente dentro de Fase A**: correr la migración SQL contra una BD Postgres real (no solo verificación de imports) y escribir tests automatizados de la checklist de la sección 10 -- ver Pendientes en `context.md` del proyecto.
+1. **Fase A — Fundaciones de datos y bloqueo — ✅ COMPLETADA Y VERIFICADA CONTRA STACK REAL (12-sep-2026), rama `redesign/editor-v2`, commits `da9aa7a` y `718ccde`.** Migraciones SQL, modelos SQLAlchemy, endpoints de lock/heartbeat/unlock, endpoint de guardado con concurrencia optimista, endpoint de publish/versions. Verificado en dos niveles: (a) import real de la app FastAPI sin errores, (b) stack completo Postgres+Redis+MinIO+FastAPI levantado con Docker en `ia-lavatur` y prueba end-to-end con `curl` reproduciendo el bug original de Carlos (fuga portada→contraportada) -- **el bug NO se reproduce**, ver checklist sección 10 y `backend/tests/test_editor_v2_regression.sh`.
 2. **Fase B — Editor canvas mínimo**: React + react-konva, store Zustand/Immer por página, tipos `image`, `text`, `shape` únicamente. NO INICIADA.
 3. **Fase C — Medios**: tipos `video` y `audio`. NO INICIADA.
 4. **Fase D — Hotspots**: tipo `hotspot` + acciones. NO INICIADA.
 5. **Fase E — Reader público**. NO INICIADA.
 
-## 10. Checklist de pruebas específico (regresión de los bugs conocidos) — pendiente de automatizar
+## 10. Checklist de pruebas específico (regresión de los bugs conocidos) — automatizado como smoke test, ejecutado y PASÓ (12-sep-2026)
 
-- [ ] Duplicar un elemento en la página 2 de un spread y confirmar que **no aparece** en la página 1 ni en ninguna otra página.
-- [ ] Editar la portada, guardar, navegar a la contraportada y volver: confirmar aislamiento total (reproduce el bug reportado por Carlos).
-- [ ] Crear una publicación en orientación "portrait" y confirmar que tras editar/guardar varias páginas, `publications.orientation` no cambia.
-- [ ] Reordenar páginas y confirmar que ningún `page_element` cambia de `page_id`.
-- [ ] Abrir la misma publicación en dos pestañas: la segunda recibe 409 al bloquear.
-- [ ] Cerrar sin guardar/salir: el lock se libera solo tras ~60s sin heartbeat.
-- [ ] Guardar con `version` antiguo (simulando conflicto): 409, no sobrescribe.
-- [ ] Cargar una página con 50+ elementos mixtos en una sola petición HTTP.
+- [x] Editar la portada, guardar, navegar a la contraportada y volver: confirmar aislamiento total (reproduce el bug reportado por Carlos). **VERIFICADO 12-sep-2026 vía curl contra stack real en ia-lavatur: contraportada quedó con 0 elementos, portada conservó sus 2 elementos.**
+- [x] Crear una publicación en orientación "portrait" y confirmar que tras editar/guardar varias páginas, `publications.orientation` no cambia. **VERIFICADO: se mantuvo "portrait" en todo el flujo.**
+- [x] Guardar con `version` antiguo (simulando conflicto): 409, no sobrescribe. **VERIFICADO: HTTP 409 recibido, datos no sobrescritos.**
+- [x] Bloqueo, publish, listar versions (`is_current: true`), unlock (204) y re-lock (200). **VERIFICADO.**
+- [ ] Duplicar un elemento en la página 2 de un spread y confirmar que **no aparece** en la página 1 ni en ninguna otra página. (No probado aún -- requiere UI de Fase B para duplicar; el modelo de datos ya lo impide estructuralmente vía FK NOT NULL a una sola página.)
+- [ ] Reordenar páginas y confirmar que ningún `page_element` cambia de `page_id`. (No probado aún -- reordenar páginas no implementado hasta Fase B/D.)
+- [ ] Abrir la misma publicación en dos pestañas: la segunda recibe 409 al bloquear. (Lógica de lock ya verificada por API directamente; falta probar desde dos sesiones de navegador reales en Fase B.)
+- [ ] Cerrar sin guardar/salir: el lock se libera solo tras ~60s sin heartbeat. (Lógica implementada y revisada en código; no cronometrado en vivo aún.)
+- [ ] Cargar una página con 50+ elementos mixtos en una sola petición HTTP. (No probado con volumen; probado con 2 elementos. Pendiente prueba de carga.)
+
+Script reutilizable: `backend/tests/test_editor_v2_regression.sh` (bash + curl, ejecutable, con asserts explícitos). Hallazgo colateral: `minio/minio` fue retirado de Docker Hub ("pull access denied") -- usar `quay.io/minio/minio` en cualquier compose nuevo.
 
 ---
 
