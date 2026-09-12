@@ -86,8 +86,19 @@ async def upload_asset(
 ):
     try:
         ensure_bucket()
-        allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-        if file.content_type not in allowed_types:
+        # Tipos permitidos: imagen (Fase B) + audio (Lote 3 -- editor de
+        # página). Cada categoría tiene su propio límite de tamaño en
+        # app.config.settings (MAX_IMAGE_SIZE / MAX_AUDIO_SIZE) -- nunca se
+        # valida el tamaño de audio contra el límite (menor) de imagen.
+        allowed_image_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+        allowed_audio_types = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm"]
+        if file.content_type in allowed_image_types:
+            max_size = settings.MAX_IMAGE_SIZE
+            max_size_label = "10MB"
+        elif file.content_type in allowed_audio_types:
+            max_size = settings.MAX_AUDIO_SIZE
+            max_size_label = "20MB"
+        else:
             raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
 
         file_ext = file.filename.split(".")[-1].lower()
@@ -97,8 +108,8 @@ async def upload_asset(
         file_data = await file.read()
         file_size = len(file_data)
 
-        if file_size > settings.MAX_IMAGE_SIZE:
-            raise HTTPException(status_code=400, detail="Archivo demasiado grande (máx 10MB)")
+        if file_size > max_size:
+            raise HTTPException(status_code=400, detail=f"Archivo demasiado grande (máx {max_size_label})")
 
         minio_client.put_object(
             BUCKET_NAME,

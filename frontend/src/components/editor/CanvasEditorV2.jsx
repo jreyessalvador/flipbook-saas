@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Stage, Layer, Rect, Ellipse, Line, Star, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 import { usePageEditorStore } from '../../store/pageEditorStore';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
@@ -13,10 +13,10 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, Audio, SoundCloud,
-// Library, Blocks y Quick Actions -- quedan para lotes siguientes, no
-// bloquean lo ya verificado. Línea/Círculo/Estrella y Alinear/Distribuir
-// (con selección múltiple, Lote 1) y Plugins/shortcodes de texto (Lote 2)
+// Hotspot, Galería, GIF, Collage, YouTube, Vimeo, SoundCloud, Library,
+// Blocks y Quick Actions -- quedan para lotes siguientes, no bloquean lo ya
+// verificado. Línea/Círculo/Estrella y Alinear/Distribuir (con selección
+// múltiple, Lote 1), Plugins/shortcodes de texto (Lote 2) y Audio (Lote 3)
 // SÍ son funcionales.
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
@@ -160,6 +160,36 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
       onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
     />
+  );
+}
+
+// Elemento de audio (Lote 3): en el canvas se representa con un icono fijo
+// (Group con fondo + icono de altavoz) -- Konva no puede reproducir audio,
+// asi que la reproduccion real de PRUEBA se ofrece en el panel de
+// propiedades (ver PropertiesPanel) via un <audio controls> nativo del
+// navegador. El overlay <audio> sincronizado sobre el propio canvas
+// (como en el Reader final, Fase E) queda fuera de alcance de este lote --
+// ver docs/arquitectura-editor-2026-09-12.md seccion 6.
+function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const accent = '#4f46e5';
+  return (
+    <Group
+      ref={shapeRef}
+      x={el.x}
+      y={el.y}
+      width={el.width}
+      height={el.height}
+      rotation={el.rotation_deg}
+      draggable={canEdit}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+      onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+    >
+      <Rect width={el.width} height={el.height} fill="#eef2ff" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
+      <Path data={ICON_PATHS.audio} x={14} y={el.height / 2 - 10} scaleX={1.1} scaleY={1.1} stroke={accent} strokeWidth={1.8} />
+      <KonvaText text="Audio" x={44} y={el.height / 2 - 8} fontSize={14} fill={accent} />
+    </Group>
   );
 }
 
@@ -346,7 +376,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
         {count === 0 && 'Ningún elemento seleccionado'}
-        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : 'Figura'}`}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : 'Figura'}`}
         {count > 1 && `${count} elementos seleccionados`}
       </div>
 
@@ -422,6 +452,39 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign }) {
             )}
             {!kind && <p className="editor-v2-props-hint">Selecciona un elemento para ver sus opciones.</p>}
           </section>
+
+          {kind === 'audio' && (
+            <section className="editor-v2-props-section">
+              <h4>Audio</h4>
+              <audio
+                key={selectedElement.props?.src}
+                controls
+                style={{ width: '100%', marginBottom: 8 }}
+                src={selectedElement.props?.src?.startsWith('http') ? selectedElement.props.src : `${API_URL}${selectedElement.props?.src || ''}`}
+              />
+              <label className="editor-v2-field editor-v2-field-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={!!selectedElement.props?.autoplay}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, autoplay: e.target.checked } })}
+                />
+                <span>Reproducir automáticamente (Reader)</span>
+              </label>
+              <label className="editor-v2-field editor-v2-field-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={!!selectedElement.props?.loop}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, loop: e.target.checked } })}
+                />
+                <span>Repetir en bucle</span>
+              </label>
+              <p className="editor-v2-props-hint">
+                Vista previa de escucha para validar el archivo -- la reproducción real dentro de la publicación llega con el Reader (Fase E).
+              </p>
+            </section>
+          )}
         </>
       )}
 
@@ -524,6 +587,7 @@ export default function CanvasEditorV2() {
   const trRef = useRef(null);
   const shapeRefs = useRef({});
   const fileInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   const activePageId = pageIdParam || pages[0]?.id;
   const canEdit = lockState === 'held';
@@ -638,6 +702,7 @@ export default function CanvasEditorV2() {
   };
 
   const handleUploadImageClick = () => fileInputRef.current?.click();
+  const handleUploadAudioClick = () => audioInputRef.current?.click();
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -648,6 +713,26 @@ export default function CanvasEditorV2() {
       store.addElement('image', { width: 200, height: 200, props: { src: uploaded.url } });
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir la imagen');
+    }
+  };
+
+  const handleAudioFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      // La validacion real de MIME/tamano ocurre en el backend
+      // (POST /api/assets/upload -- ver allowed_audio_types y
+      // MAX_AUDIO_SIZE en app/api/assets.py); esto es solo para no ni
+      // siquiera intentar la subida con un tipo obviamente incorrecto.
+      if (file.type && !file.type.startsWith('audio/')) {
+        window.alert('Selecciona un archivo de audio (mp3, wav, ogg...).');
+        return;
+      }
+      const uploaded = await assetAPI.upload(file);
+      store.addElement('audio', { width: 220, height: 56, props: { src: uploaded.url, autoplay: false, loop: false } });
+    } catch (err) {
+      window.alert(err?.response?.data?.detail || 'No se pudo subir el audio');
     }
   };
 
@@ -783,7 +868,7 @@ export default function CanvasEditorV2() {
           <ToolButton icon="collage" label="Collage" comingSoon disabled />
           <ToolButton icon="youtube" label="YouTube" comingSoon disabled />
           <ToolButton icon="vimeo" label="Vimeo" comingSoon disabled />
-          <ToolButton icon="audio" label="Audio" comingSoon disabled />
+          <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
           <ToolButton icon="soundcloud" label="SoundCloud" comingSoon disabled />
         </ToolGroup>
 
@@ -815,6 +900,7 @@ export default function CanvasEditorV2() {
         </ToolGroup>
 
         <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+        <input type="file" accept="audio/*" ref={audioInputRef} style={{ display: 'none' }} onChange={handleAudioFileChange} />
       </nav>
 
       <main className="editor-v2-main">
@@ -876,6 +962,7 @@ export default function CanvasEditorV2() {
                   };
                   if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
                   if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
+                  if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
                   return <ShapeElement key={el.id} {...shared} />;
                 })}
                 {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
