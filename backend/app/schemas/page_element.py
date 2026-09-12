@@ -16,9 +16,11 @@ class PageElementKind(str, Enum):
     # comparten este kind (solo difiere props.layout: 'grid'|'mosaic'); GIF
     # sigue usando kind='image' (Konva no anima GIFs, se documenta como
     # limitacion conocida -- ver RECETA-DESARROLLO.md).
-    embed = "embed"  # Lote 5: YouTube/Vimeo -- props: {provider, video_id, url}.
-    # Konva no puede reproducir un iframe real: en el editor se muestra un
-    # placeholder (icono + etiqueta); la reproduccion real via iframe queda
+    embed = "embed"  # Lote 5: YouTube/Vimeo; Lote 6: SoundCloud -- props:
+    # {provider, video_id, url}. provider in ('youtube','vimeo','soundcloud');
+    # para SoundCloud, video_id guarda 'usuario/track-slug' (no hay id numerico).
+    # Konva no puede reproducir un iframe/audio embebido real: en el editor se
+    # muestra un placeholder (icono + etiqueta); la reproduccion real queda
     # diferida al Reader (Fase E).
 
 

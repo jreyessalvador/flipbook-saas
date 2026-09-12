@@ -558,3 +558,37 @@
   border-color: #c7d2fe;
   color: #4338ca;
 }
+
+/* --- Lote 6: SoundCloud reutiliza .editor-v2-embed-menu (sin CSS nuevo) -- */
+
+/* --- Lote 6: Quick Actions > Configuración del elemento --- */
+.editor-v2-element-settings {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-v2-element-settings .editor-v2-field-checkbox {
+  margin-bottom: 0;
+}
+
+.editor-v2-field select {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 13px;
+  color: #111827;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.editor-v2-field select:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}

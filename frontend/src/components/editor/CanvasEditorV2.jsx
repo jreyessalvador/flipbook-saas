@@ -13,18 +13,25 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, SoundCloud, Library, Blocks y Quick Actions -- quedan para lotes
-// siguientes, no bloquean lo ya verificado.
+// Hotspot, Library, Blocks -- quedan para lotes siguientes, no bloquean lo
+// ya verificado.
 // Línea/Círculo/Estrella y Alinear/Distribuir (con selección múltiple,
 // Lote 1), Plugins/shortcodes de texto (Lote 2), Audio (Lote 3),
-// Galería/Collage/GIF (Lote 4) y YouTube/Vimeo (Lote 5) SÍ son funcionales.
+// Galería/Collage/GIF (Lote 4), YouTube/Vimeo (Lote 5) y SoundCloud +
+// Quick Actions (Lote 6) SÍ son funcionales.
 // GIF reutiliza kind='image' (Konva no anima GIFs -- limitación conocida,
 // ver RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y
 // solo difieren en props.layout ('grid'/'mosaic'), intercambiable después
-// desde el panel de propiedades. YouTube/Vimeo usan kind='embed' -- ver
-// parseVideoUrl()/EmbedElement más abajo: en el canvas se muestra un
-// placeholder (Konva no puede reproducir un iframe), la reproducción real
-// queda diferida al Reader (Fase E).
+// desde el panel de propiedades. YouTube/Vimeo/SoundCloud usan kind='embed'
+// -- ver parseVideoUrl()/EmbedElement más abajo: en el canvas se muestra un
+// placeholder (Konva no puede reproducir un iframe/audio embebido), la
+// reproducción real queda diferida al Reader (Fase E). SoundCloud se
+// modeló como un tercer 'provider' de este mismo kind, en vez de un
+// PageElementKind nuevo -- conceptualmente es lo mismo (URL externa, sin
+// archivo que subir, mismo placeholder+enlace) y evita otra migración de
+// CHECK CONSTRAINT en Postgres; ver comentario extenso junto a
+// parseVideoUrl() sobre cómo se extrae el id de una URL de SoundCloud
+// (sin id numérico, a diferencia de YouTube/Vimeo).
 //
 // VISTA DE HOJA DOBLE (spread) -- añadido en esta ronda por pedido explícito
 // de Carlos: se retiró la barra lateral con la lista larga de páginas (para
@@ -176,7 +183,7 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
-      draggable={canEdit}
+      draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
@@ -202,7 +209,7 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
-      draggable={canEdit}
+      draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
@@ -268,7 +275,7 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
-      draggable={canEdit}
+      draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
@@ -283,7 +290,7 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   );
 }
 
-// --- Embeds de video (Lote 5: YouTube/Vimeo) ----------------------------
+// --- Embeds de video/audio (Lote 5: YouTube/Vimeo; Lote 6: SoundCloud) --
 // parseVideoUrl() es una funcion PURA (sin dependencias de React) que
 // reconoce los formatos mas comunes de URL pegados por un usuario y
 // devuelve {provider, video_id}, o null si no se reconoce el formato.
@@ -291,6 +298,19 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // usuario (ver props de kind='embed' en backend/app/schemas/page_element.py)
 // para que un futuro embed real en el Reader (Fase E) no tenga que volver a
 // parsear nada.
+//
+// SoundCloud (Lote 6) no tiene un "video_id" numerico simple como
+// YouTube/Vimeo -- su iframe de embed real (w.soundcloud.com/player/?url=...)
+// solo necesita la URL completa, no un id. Decision de diseno: en vez de
+// dejar video_id vacio, se guarda ahi la ruta "usuario/track-slug" (o
+// "usuario/sets/playlist-slug") extraida de la URL -- sigue siendo un dato
+// util (identifica el track sin volver a parsear la URL completa) aunque no
+// sea un id numerico, y reutiliza el mismo campo del panel de propiedades
+// sin tener que agregar uno nuevo solo para este proveedor. Se exige al
+// menos 2 segmentos de ruta (usuario + algo mas) como validacion minima de
+// formato -- no hay nada tan verificable como el id numerico de Vimeo o el
+// patron alfanumerico de YouTube, pero rechaza al menos un enlace de
+// perfil suelto ("soundcloud.com/usuario") o una URL de otro dominio.
 export function parseVideoUrl(input) {
   if (!input || typeof input !== 'string') return null;
   const trimmed = input.trim();
@@ -342,18 +362,31 @@ export function parseVideoUrl(input) {
     return null;
   }
 
+  if (host === 'soundcloud.com' || host === 'm.soundcloud.com') {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return { provider: 'soundcloud', video_id: parts.join('/') };
+    }
+    return null;
+  }
+
   return null;
 }
 
 // En el canvas se representa igual que AudioElement: Konva no puede
 // reproducir un iframe real, asi que se dibuja un placeholder (Group con
 // fondo + icono del proveedor + etiqueta). La verificacion visual real de
-// que la URL apunta al video correcto se hace desde el panel de propiedades
-// (enlace clicable -- ver PropertiesPanel), no aqui.
+// que la URL apunta al video/track correcto se hace desde el panel de
+// propiedades (enlace clicable -- ver PropertiesPanel), no aqui.
+const EMBED_PROVIDER_META = {
+  youtube: { accent: '#ff0000', label: 'YouTube' },
+  vimeo: { accent: '#1ab7ea', label: 'Vimeo' },
+  soundcloud: { accent: '#ff5500', label: 'SoundCloud' },
+};
+
 function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
-  const provider = el.props?.provider === 'vimeo' ? 'vimeo' : 'youtube';
-  const accent = provider === 'vimeo' ? '#1ab7ea' : '#ff0000';
-  const label = provider === 'vimeo' ? 'Vimeo' : 'YouTube';
+  const provider = EMBED_PROVIDER_META[el.props?.provider] ? el.props.provider : 'youtube';
+  const { accent, label } = EMBED_PROVIDER_META[provider];
   return (
     <Group
       ref={shapeRef}
@@ -362,7 +395,7 @@ function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
-      draggable={canEdit}
+      draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
@@ -393,7 +426,7 @@ function ShapeElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const common = {
     ref: shapeRef,
     rotation: el.rotation_deg,
-    draggable: canEdit,
+    draggable: canEdit && !el.props?.locked,
     onClick: onSelect,
     onTap: onSelect,
   };
@@ -516,7 +549,7 @@ function TextElement({ el, canEdit, onSelect, onChange, shapeRef, shortcodeCtx }
       text={displayText}
       fontSize={el.props?.fontSize || 24}
       fill={el.props?.fill || '#111111'}
-      draggable={canEdit}
+      draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
       onDblClick={handleEdit}
@@ -549,11 +582,45 @@ function NumberField({ label, value, disabled, onCommit, step = 1 }) {
   );
 }
 
+// Igual que NumberField pero para texto libre (Lote 6 -- nombre del
+// elemento en Quick Actions > Configuración del elemento): confirma con
+// onBlur, no en cada tecla, para no disparar un updateElement por letra.
+function TextField({ label, value, disabled, onCommit, placeholder }) {
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => setDraft(value ?? ''), [value]);
+  return (
+    <label className="editor-v2-field">
+      <span>{label}</span>
+      <input
+        type="text"
+        value={draft}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => onCommit(draft)}
+      />
+    </label>
+  );
+}
+
 // Iconos del renglón "Alinear y distribuir" -- alinear necesita 2+
 // elementos seleccionados, distribuir necesita 3+ (con solo 2 no hay nada
 // intermedio que espaciar).
 const ALIGN_ROW_ICONS = ['alignLeft', 'alignCenterH', 'alignRight', 'distributeH', 'alignTop', 'alignMiddleV', 'alignBottom', 'distributeV'];
 const DISTRIBUTE_ICONS = new Set(['distributeH', 'distributeV']);
+
+// Lote 6 -- Quick Actions > Animar: solo guarda la preferencia en
+// props.animation, NO implementa la animación real (eso es Fase E, cuando
+// exista el Reader que pueda reproducirla) -- mismo criterio que el resto
+// de "limitaciones conocidas" documentadas en este archivo (GIF/Konva,
+// iframe de embeds, etc.).
+const ANIMATION_OPTIONS = [
+  { value: 'none', label: 'Ninguna' },
+  { value: 'fade', label: 'Aparecer (fade)' },
+  { value: 'slide-up', label: 'Deslizar desde abajo' },
+  { value: 'slide-left', label: 'Deslizar desde la izquierda' },
+  { value: 'zoom', label: 'Zoom' },
+];
 
 function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick }) {
   const count = selectedElements.length;
@@ -562,11 +629,17 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
   const kind = selectedElement?.kind;
   const shapeType = selectedElement?.props?.shape_type || 'rect';
 
+  // Popover propio de "Configuración del elemento" (Lote 6) -- se cierra
+  // solo al cambiar de elemento seleccionado, para no dejarlo abierto
+  // mostrando los datos de un elemento que ya no está seleccionado.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => setSettingsOpen(false), [selectedElement?.id]);
+
   return (
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
         {count === 0 && 'Ningún elemento seleccionado'}
-        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : kind === 'embed' ? (selectedElement?.props?.provider === 'vimeo' ? 'Vimeo' : 'YouTube') : 'Figura'}`}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : kind === 'embed' ? (EMBED_PROVIDER_META[selectedElement?.props?.provider]?.label || 'YouTube') : 'Figura'}${selectedElement?.props?.element_name ? ` (${selectedElement.props.element_name})` : ''}`}
         {count > 1 && `${count} elementos seleccionados`}
       </div>
 
@@ -732,10 +805,11 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
 
           {kind === 'embed' && (
             <section className="editor-v2-props-section">
-              <h4>{selectedElement.props?.provider === 'vimeo' ? 'Vimeo' : 'YouTube'}</h4>
+              <h4>{EMBED_PROVIDER_META[selectedElement.props?.provider]?.label || 'YouTube'}</h4>
               <p className="editor-v2-props-hint">
-                Konva no puede reproducir el video embebido dentro del editor -- usa este enlace para confirmar
-                que apunta al video correcto. La reproducción real llega con el Reader (Fase E).
+                Konva no puede reproducir el {selectedElement.props?.provider === 'soundcloud' ? 'audio' : 'video'} embebido
+                dentro del editor -- usa este enlace para confirmar que apunta al {selectedElement.props?.provider === 'soundcloud' ? 'track' : 'video'} correcto.
+                La reproducción real llega con el Reader (Fase E).
               </p>
               <a
                 className="editor-v2-embed-link"
@@ -746,7 +820,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 {selectedElement.props?.url || '(sin URL)'}
               </a>
               <label className="editor-v2-field">
-                <span>video_id</span>
+                <span>{selectedElement.props?.provider === 'soundcloud' ? 'usuario/track' : 'video_id'}</span>
                 <input type="text" value={selectedElement.props?.video_id || ''} readOnly disabled />
               </label>
             </section>
@@ -756,15 +830,63 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
 
       <section className="editor-v2-props-section">
         <h4>Quick Actions</h4>
-        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente">
+        <button
+          type="button"
+          className="editor-v2-quickaction"
+          disabled={disabled}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((v) => !v)}
+        >
           Configuración del elemento
         </button>
-        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente">
+        {settingsOpen && selectedElement && (
+          <div className="editor-v2-element-settings">
+            <TextField
+              label="Nombre del elemento"
+              placeholder="Sin nombre"
+              value={selectedElement.props?.element_name || ''}
+              disabled={disabled}
+              onCommit={(name) => onUpdate({ props: { ...selectedElement.props, element_name: name } })}
+            />
+            <label className="editor-v2-field editor-v2-field-checkbox">
+              <input
+                type="checkbox"
+                disabled={disabled}
+                checked={!!selectedElement.props?.locked}
+                onChange={(e) => onUpdate({ props: { ...selectedElement.props, locked: e.target.checked } })}
+              />
+              <span>Bloquear elemento</span>
+            </label>
+            <label className="editor-v2-field editor-v2-field-checkbox">
+              <input
+                type="checkbox"
+                disabled={disabled}
+                checked={!!selectedElement.props?.hidden_in_reader}
+                onChange={(e) => onUpdate({ props: { ...selectedElement.props, hidden_in_reader: e.target.checked } })}
+              />
+              <span>Ocultar en el Reader</span>
+            </label>
+            <p className="editor-v2-props-hint">
+              Bloquear impide mover/redimensionar el elemento en este editor (sigue pudiéndose seleccionar, para
+              desbloquearlo). Ocultar en el Reader solo guarda la preferencia -- todavía no hay Reader real que la respete.
+            </p>
+          </div>
+        )}
+        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente (Lote 7 -- Library/Blocks)">
           Guardar como bloque de plantilla
         </button>
-        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente">
-          Animar
-        </button>
+        <label className="editor-v2-field">
+          <span>Animar</span>
+          <select
+            disabled={disabled}
+            value={selectedElement?.props?.animation || 'none'}
+            onChange={(e) => onUpdate({ props: { ...selectedElement.props, animation: e.target.value } })}
+          >
+            {ANIMATION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
       </section>
     </aside>
   );
@@ -886,7 +1008,14 @@ function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages
   const [marquee, setMarquee] = useState(null);
 
   useEffect(() => {
-    const nodes = selectedElementIds.map((id) => shapeRefs.current[id]).filter(Boolean);
+    // Un elemento bloqueado (props.locked, Lote 6 -- Quick Actions >
+    // Configuración del elemento) sigue siendo SELECCIONABLE (para poder
+    // desbloquearlo desde el panel), pero se excluye deliberadamente de los
+    // nodos que recibe el Transformer -- sin esto, aunque draggable={false}
+    // ya impide arrastrarlo, las asas del Transformer igual permitirían
+    // redimensionarlo/rotarlo.
+    const unlockedIds = selectedElementIds.filter((id) => !elements.find((e) => e.id === id)?.props?.locked);
+    const nodes = unlockedIds.map((id) => shapeRefs.current[id]).filter(Boolean);
     if (trRef.current) {
       trRef.current.nodes(nodes);
       trRef.current.getLayer()?.batchDraw();
@@ -1362,26 +1491,55 @@ export default function CanvasEditorV2() {
   };
 
   // El proveedor guardado es el que parseVideoUrl() detecta a partir de la
-  // URL pegada -- no el boton que abrio el popover. Si Carlos pega por error
-  // una URL de Vimeo tras abrir el popover de "YouTube", se inserta como
-  // Vimeo igual (una URL valida no deberia rechazarse solo porque no
-  // coincide con el boton clicado); si el formato no se reconoce en
-  // absoluto, se muestra el error inline y no se crea ningun elemento.
+  // URL pegada -- no el boton que abrio el popover (mismo criterio del
+  // Lote 5, ahora extendido a SoundCloud). Si Carlos pega por error una URL
+  // de Vimeo tras abrir el popover de "YouTube", se inserta como Vimeo
+  // igual (una URL valida no deberia rechazarse solo porque no coincide con
+  // el boton clicado); si el formato no se reconoce en absoluto (incluido un
+  // campo vacio), se muestra el error inline y no se crea ningun elemento.
   const handleInsertEmbed = () => {
     const parsed = parseVideoUrl(embedUrlDraft);
     if (!parsed) {
-      setEmbedError('No se reconoce esa URL de YouTube o Vimeo. Revisa el formato.');
+      setEmbedError('No se reconoce esa URL de YouTube, Vimeo o SoundCloud. Revisa el formato.');
       return;
     }
+    // SoundCloud es conceptualmente un embed de audio (como AudioElement, no
+    // sube archivo) -- una caja más baja tipo "reproductor" encaja mejor que
+    // el marco 280x160 pensado para video de YouTube/Vimeo.
+    const isAudioEmbed = parsed.provider === 'soundcloud';
     focusedStoreHook.getState().addElement('embed', {
       width: 280,
-      height: 160,
+      height: isAudioEmbed ? 90 : 160,
       props: { provider: parsed.provider, video_id: parsed.video_id, url: embedUrlDraft.trim() },
     });
     setEmbedMenuOpen(null);
     setEmbedUrlDraft('');
     setEmbedError('');
   };
+
+  // Popover compartido por los 3 botones de embed (YouTube/Vimeo/SoundCloud,
+  // Lote 5+6) -- el contenido es idéntico para los tres (un único input de
+  // URL + botón Insertar), solo cambia qué booleano de embedMenuOpen lo abre.
+  // Extraído a una función en vez de triplicar el JSX (como estaba antes de
+  // este lote, cuando solo había 2 proveedores).
+  const renderEmbedPopover = () => (
+    <div className="editor-v2-plugins-menu editor-v2-embed-menu">
+      <div className="editor-v2-plugins-menu-title">Insertar video o audio (YouTube, Vimeo o SoundCloud)</div>
+      <input
+        type="text"
+        className="editor-v2-embed-input"
+        placeholder="Pega la URL…"
+        value={embedUrlDraft}
+        onChange={(e) => { setEmbedUrlDraft(e.target.value); setEmbedError(''); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') handleInsertEmbed(); }}
+        autoFocus
+      />
+      {embedError && <p className="editor-v2-embed-error">{embedError}</p>}
+      <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
+        Insertar
+      </button>
+    </div>
+  );
 
   const handleAlign = (type) => {
     const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
@@ -1469,24 +1627,7 @@ export default function CanvasEditorV2() {
                 active={embedMenuOpen === 'youtube'}
                 onClick={() => handleOpenEmbedMenu('youtube')}
               />
-              {embedMenuOpen === 'youtube' && (
-                <div className="editor-v2-plugins-menu editor-v2-embed-menu">
-                  <div className="editor-v2-plugins-menu-title">Insertar video (YouTube o Vimeo)</div>
-                  <input
-                    type="text"
-                    className="editor-v2-embed-input"
-                    placeholder="Pega la URL del video…"
-                    value={embedUrlDraft}
-                    onChange={(e) => { setEmbedUrlDraft(e.target.value); setEmbedError(''); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleInsertEmbed(); }}
-                    autoFocus
-                  />
-                  {embedError && <p className="editor-v2-embed-error">{embedError}</p>}
-                  <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
-                    Insertar
-                  </button>
-                </div>
-              )}
+              {embedMenuOpen === 'youtube' && renderEmbedPopover()}
             </div>
             <div className="editor-v2-plugins-wrap">
               <ToolButton
@@ -1496,27 +1637,19 @@ export default function CanvasEditorV2() {
                 active={embedMenuOpen === 'vimeo'}
                 onClick={() => handleOpenEmbedMenu('vimeo')}
               />
-              {embedMenuOpen === 'vimeo' && (
-                <div className="editor-v2-plugins-menu editor-v2-embed-menu">
-                  <div className="editor-v2-plugins-menu-title">Insertar video (YouTube o Vimeo)</div>
-                  <input
-                    type="text"
-                    className="editor-v2-embed-input"
-                    placeholder="Pega la URL del video…"
-                    value={embedUrlDraft}
-                    onChange={(e) => { setEmbedUrlDraft(e.target.value); setEmbedError(''); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleInsertEmbed(); }}
-                    autoFocus
-                  />
-                  {embedError && <p className="editor-v2-embed-error">{embedError}</p>}
-                  <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
-                    Insertar
-                  </button>
-                </div>
-              )}
+              {embedMenuOpen === 'vimeo' && renderEmbedPopover()}
             </div>
             <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
-            <ToolButton icon="soundcloud" label="SoundCloud" comingSoon disabled />
+            <div className="editor-v2-plugins-wrap">
+              <ToolButton
+                icon="soundcloud"
+                label="SoundCloud"
+                disabled={!canEdit}
+                active={embedMenuOpen === 'soundcloud'}
+                onClick={() => handleOpenEmbedMenu('soundcloud')}
+              />
+              {embedMenuOpen === 'soundcloud' && renderEmbedPopover()}
+            </div>
           </ToolGroup>
 
           <ToolGroup>
