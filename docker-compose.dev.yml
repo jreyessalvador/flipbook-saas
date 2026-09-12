@@ -1,55 +1,83 @@
-version: '3.8'
+
+# ------------------------------------------------------------------------
+# Stack de desarrollo/pruebas visuales -- ver RECETA-DESARROLLO.md seccion 4
+# y "Incidente de infraestructura" en seccion 9 (Lote 3, 12-sep-2026).
+#
+# Este archivo YA REFLEJA la configuracion real usada en ia-lavatur:
+# nombres de contenedor flipbook-dev-*, datos persistidos en ./data/ (NO
+# volumenes nombrados de Docker, para que "mover de servidor" sea copiar
+# esta carpeta), y todo valor especifico del entorno (credenciales,
+# puertos/IP publicados) en .env -- ver .env.example para la lista
+# completa de variables que hay que definir.
+#
+# IMPORTANTE -- antes de correr `docker compose -f docker-compose.dev.yml up`
+# contra un stack que ya esta corriendo (por ejemplo para reiniciar solo el
+# backend tras un cambio de codigo), verificar primero con
+# `docker inspect <contenedor> --format '{{json .Mounts}}'` que la
+# configuracion real coincide con este archivo. Si no coincide (p.ej. el
+# contenedor no tiene el bind-mount que este archivo declara), NO usar
+# `docker compose up`/`--force-recreate`: usar en su lugar
+# `docker restart <contenedor>` o `docker cp <archivo> <contenedor>:<ruta>`
+# + `docker restart`. Un `docker compose up` contra un archivo desincronizado
+# puede RECREAR el contenedor con otro nombre/config y dejar huerfano (o
+# borrar) el real -- ya paso una vez, ver la seccion 9 mencionada arriba.
+# ------------------------------------------------------------------------
 
 services:
   postgresql:
     image: postgres:15-alpine
-    container_name: flipbook-db
+    container_name: flipbook-dev-postgres
     environment:
-      POSTGRES_DB: flipbook
-      POSTGRES_USER: flipbook
-      POSTGRES_PASSWORD: dev123
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5442}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./backend/migrations:/migrations:ro
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: flipbook-redis
+    container_name: flipbook-dev-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6389}:6379"
+    volumes:
+      - ./data/redis:/data
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
-    container_name: flipbook-minio
+    image: quay.io/minio/minio:latest
+    container_name: flipbook-dev-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_HOST_PORT:-9010}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9011}:9001"
     volumes:
-      - minio_data:/data
+      - ./data/minio:/data
     restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: flipbook-backend
+    container_name: flipbook-dev-backend
     environment:
-      DATABASE_URL: postgresql://flipbook:dev123@postgresql:5432/flipbook
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      JWT_SECRET_KEY: dev-secret-key-change-in-production
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_SECURE: "False"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DEBUG: "True"
     ports:
-      - "8000:8000"
+      - "${API_PORT}:8000"
     depends_on:
       - postgresql
       - redis
@@ -60,20 +88,16 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: flipbook-frontend
+    image: node:20-alpine
+    container_name: flipbook-dev-frontend
+    working_dir: /app
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ${VITE_API_URL}
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT}:5173"
+    depends_on:
+      - backend
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     restart: unless-stopped
-
-volumes:
-  postgres_data:
-  minio_data:
