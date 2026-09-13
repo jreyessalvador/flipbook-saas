@@ -1467,6 +1467,38 @@ revisar el timing del `setInterval`/`requestAnimationFrame` si Carlos u
 otra prueba detecta que la cadencia real se siente mas lenta de lo
 configurado.
 
+## 9n. Fix -- miniatura de portada en blanco cuando la portada usa Galeria/slideshow en vez de imagen fija (13-sep-2026)
+
+**Reporte de Carlos**: tras verificar el Lote UX-11 en su propia sesion,
+reporto que en la ficha de "Mis Publicaciones" las 2 primeras publicaciones
+(con portada de imagen fija) mostraban su miniatura correctamente, pero la
+tercera (con una Galeria/slideshow como portada) se veia en blanco.
+
+**Causa raiz**: `_attach_cover_thumbnails()` (backend, Lote UX-3) filtraba
+`PageElement.kind == "image"` para elegir la miniatura, y leia
+`props.src`. Un elemento `kind="gallery"` (Lote UX-9/UX-10/UX-11) no tiene
+`props.src` -- tiene `props.images[]` (array de `{src, title,
+description}`) -- asi que quedaba simplemente ignorado por el filtro, y si
+la portada solo tenia una Galeria (sin ninguna imagen suelta de tipo
+`image`), `cover_image_url` se quedaba en `None` para esa publicacion.
+
+**Fix**: el filtro ahora incluye tambien `kind == "gallery"`
+(`PageElement.kind.in_(["image", "gallery"])`), y al iterar los elementos
+candidatos, si `el.kind == "gallery"` se usa la primera imagen no vacia de
+`props.images[]` como `src` (en vez de `props.src`). Sin cambios de
+backend adicionales ni migracion -- mismo mecanismo transitorio (no
+persistido en BD) ya documentado para el Lote UX-3.
+
+**Verificacion**: nuevo `frontend/tests/verify_lote_ux3b_gallery_cover_thumbnail.js`
+-- crea una publicacion con una Galeria de 2 imagenes en la portada (sin
+ningun elemento `kind=image` suelto), guarda, confirma via
+`GET /api/publications` que `cover_image_url` ya NO es `None` y apunta a
+una de las imagenes de la galeria, y confirma en la ficha real de
+"Publicaciones" que se renderiza un `<img>` con `src` real (no en blanco).
+Se re-ejecuto TODA la suite de regresion existente (19 scripts en total,
+incluido este nuevo): todos pasan limpio, sin errores de consola, sin
+regresiones.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 **ACTUALIZACIÓN 13-sep-2026 (cierre de UX-2/UX-4)**: los Lotes UX-2 (paleta
@@ -1478,12 +1510,19 @@ IMPLEMENTADOS Y VERIFICADOS -- ver seccion 9l.
 slideshow de Galeria/Collage debia rotar EN VIVO tambien dentro del propio
 editor (no solo en el Reader publico), tras pedirme conectarme a su Chrome
 real y observar el comportamiento de Joomag como referencia. Esto YA ESTA
-IMPLEMENTADO Y VERIFICADO -- ver seccion 9m. Con esto, no queda ningun otro
-lote UX pendiente confirmado por Carlos. El trabajo inmediato a retomar
-ahora es el frente de landing page + Reader público (catálogo público para
-ver revistas ya publicadas, sin login) descrito en la **sección 11** (al
-final de este documento), que Carlos ya habia priorizado por encima de
-UX-2/UX-4/UX-11 y que ahora queda sin nada bloqueandolo.
+IMPLEMENTADO Y VERIFICADO -- ver seccion 9m.
+
+**ACTUALIZACIÓN 13-sep-2026 (fix de miniatura de portada con galeria)**:
+tras verificar UX-11 en vivo, Carlos reporto que la ficha de "Mis
+Publicaciones" mostraba en blanco la miniatura de una portada armada con
+Galeria/slideshow (mientras que las portadas de imagen fija si se veian
+bien). YA ESTA CORREGIDO Y VERIFICADO -- ver seccion 9n. Con esto, no
+queda ningun otro lote UX ni bug pendiente confirmado por Carlos. El
+trabajo inmediato a retomar ahora es el frente de landing page + Reader
+público (catálogo público para ver revistas ya publicadas, sin login)
+descrito en la **sección 11** (al final de este documento), que Carlos ya
+habia priorizado por encima de UX-2/UX-4/UX-11 y que ahora queda sin nada
+bloqueandolo.
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,

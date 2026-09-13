@@ -133,6 +133,14 @@ def _attach_cover_thumbnails(db: Session, publications: List[Publication]):
     Heuristica para elegir CUAL imagen si hay varias en la portada: la de
     mayor area (width * height) -- normalmente es la foto/fondo principal de
     la portada, no un logo o icono decorativo pequeño superpuesto.
+
+    Tambien contempla elementos kind='gallery' (Lote UX-10/UX-11, slideshow):
+    estos NO tienen `props.src` (tienen `props.images[]`, un array de
+    {src, title, description}) -- antes de este fix quedaban simplemente
+    ignorados por el filtro `kind == 'image'`, asi que una portada armada
+    con un slideshow en vez de una imagen fija se veia siempre en blanco en
+    la ficha de "Mis Publicaciones", aunque el visor publico si la mostrara
+    bien. Se usa la primera imagen no vacia del array como miniatura.
     """
     pub_ids = [p.id for p in publications]
     if not pub_ids:
@@ -146,12 +154,16 @@ def _attach_cover_thumbnails(db: Session, publications: List[Publication]):
         return
 
     image_elements = db.query(PageElement)\
-        .filter(PageElement.page_id.in_(page_id_to_pub_id.keys()), PageElement.kind == "image")\
+        .filter(PageElement.page_id.in_(page_id_to_pub_id.keys()), PageElement.kind.in_(["image", "gallery"]))\
         .all()
 
     best_by_pub = {}  # pub_id -> (area, src)
     for el in image_elements:
-        src = (el.props or {}).get("src")
+        if el.kind == "gallery":
+            images = (el.props or {}).get("images") or []
+            src = next((img.get("src") for img in images if img.get("src")), None)
+        else:
+            src = (el.props or {}).get("src")
         if not src:
             continue
         pub_id = page_id_to_pub_id.get(el.page_id)
