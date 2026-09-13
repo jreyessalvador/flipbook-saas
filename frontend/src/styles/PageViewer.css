@@ -98,3 +98,114 @@
   max-width: 500px;
   text-align: center;
 }
+
+/* Lote UX-12 (13-sep-2026): "casi pegadas" + efecto y sonido de pasar
+   pagina, solo en el VISOR publico (nunca en el editor -- selectores con
+   doble clase para tener mas especificidad que .editor-v2-canvas-wrap de
+   CanvasEditorV2.css sin tocar ese archivo compartido). */
+
+/* Reduce el espacio entre las 2 paginas de un spread de 24px (heredado del
+   editor) a solo 3px, para que se vean como una revista real encuadernada
+   en vez de 2 hojas sueltas. PageViewer.jsx tiene su propia constante
+   CANVAS_WRAP_GAP=3 (antes 24) usada en el calculo de fitScale, que debe
+   coincidir con este valor. */
+.editor-v2-canvas-wrap.page-viewer-canvas-wrap {
+  gap: 0;
+}
+
+/* Contenedor de perspectiva 3D para el efecto de pasar pagina -- el
+   `perspective` debe ir en el padre, no en el elemento que rota. */
+.page-viewer-flip-perspective {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  perspective: 2200px;
+}
+
+/* Lote UX-12 (correccion visual, 13-sep-2026): el rotateY 3D se aplica a
+   .page-viewer-flip-inner -- un DIV interno sizeado exactamente al ancho
+   real de la(s) pagina(s) visible(s) (display:flex + flex-shrink:0 en sus
+   hijos .editor-v2-page-slot), NUNCA al .editor-v2-canvas-wrap exterior.
+   Ese wrap exterior sigue siendo el flex:1 de ancho completo (heredado de
+   CanvasEditorV2.css) que centra su contenido con justify-content y que
+   PageViewer.jsx usa para medir el espacio disponible (ResizeObserver
+   sobre canvasWrapRef -> fitScale). Version anterior rotaba el wrap
+   COMPLETO: como es mucho mas ancho que la pagina centrada dentro de el,
+   transform-origin:100%/0% pivotaba sobre el borde de la PANTALLA en vez
+   del borde real de la pagina -- de ahi el trapecio gris gigante y la
+   hoja encogida/sesgada que reporto Carlos ("se ve muy feo"). */
+.page-viewer-flip-inner {
+  display: flex;
+  gap: 3px;
+  position: relative;
+  flex-shrink: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Sombra sutil de "lomo/encuadernacion" en el centro del spread -- refuerza
+   la sensacion de revista fisica ahora que las paginas estan casi pegadas. */
+.page-viewer-flip-inner-spread::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 50%;
+  width: 14px;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.16));
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Fase "out": la hoja actual gira hacia atras sobre su borde (derecho al
+   avanzar, izquierdo al retroceder) hasta quedar de canto (~92 grados,
+   pasado 90 para evitar el instante exactamente perpendicular donde
+   algunos navegadores parpadean). PageViewer.jsx cambia el contenido real
+   justo en ese instante, mientras la hoja esta de canto e invisible, y
+   entonces arranca la fase "in" que la trae de vuelta a plano ya con el
+   contenido nuevo -- efecto visual de "pasar pagina de papel". */
+.page-viewer-flipping-next.page-viewer-flipping-out {
+  transform-origin: 100% 50%;
+  transform: rotateY(-92deg);
+  transition: transform 220ms ease-in;
+}
+.page-viewer-flipping-next.page-viewer-flipping-in {
+  transform-origin: 100% 50%;
+  transform: rotateY(0deg);
+  transition: transform 220ms ease-out;
+}
+.page-viewer-flipping-prev.page-viewer-flipping-out {
+  transform-origin: 0% 50%;
+  transform: rotateY(92deg);
+  transition: transform 220ms ease-in;
+}
+.page-viewer-flipping-prev.page-viewer-flipping-in {
+  transform-origin: 0% 50%;
+  transform: rotateY(0deg);
+  transition: transform 220ms ease-out;
+}
+
+/* Sombreado que se intensifica al levantarse la hoja (fase "out") y se
+   disipa al asentarse (fase "in") -- refuerza la sensacion de que la
+   pagina se separa de la superficie, como papel real. Ahora vive en el
+   DIV INTERNO (sizeado a la pagina real), no en el wrap exterior de ancho
+   completo -- por eso el oscurecido cubre solo la pagina, no toda la
+   franja gris de fondo. */
+.page-viewer-flip-inner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+  transition: opacity 220ms ease-in-out;
+}
+.page-viewer-flipping-out::after {
+  opacity: 1;
+}
+.page-viewer-flipping-in::after {
+  opacity: 0;
+}

@@ -85,6 +85,46 @@ const PageViewer = () => {
 
   const currentView = views[currentViewIndex];
 
+  // Lote UX-12: efecto visual + sonido de "pasar página" al usar
+  // Anterior/Siguiente en el visor público (fuera del editor). El cambio
+  // de contenido real ocurre en el instante en que la hoja queda de canto
+  // (rotateY 90°, invisible), para que el usuario nunca vea un "salto"
+  // brusco de contenido -- ver .page-viewer-flipping* en PageViewer.css.
+  const [flipState, setFlipState] = useState(null); // null | { direction: 'next'|'prev', phase: 'out'|'in' }
+  const flipTimeoutRef = useRef(null);
+  useEffect(() => () => window.clearTimeout(flipTimeoutRef.current), []);
+  const FLIP_HALF_MS = 220;
+
+  const playPageTurnSound = () => {
+    try {
+      const audio = new Audio('/sounds/page-turn.mp3');
+      audio.volume = 0.55;
+      // Los navegadores pueden bloquear el primer play() sin interaccion
+      // previa del usuario -- aqui SIEMPRE hay un click de por medio
+      // (Anterior/Siguiente), pero el .catch() evita un error de consola
+      // sin sentido en el caso raro de que el navegador lo bloquee igual.
+      audio.play().catch(() => {});
+    } catch (_err) {
+      // no-op: el efecto de sonido es un detalle cosmetico, nunca debe
+      // romper la navegacion si el navegador no soporta Audio por algun motivo.
+    }
+  };
+
+  const flipToIndex = (targetIdx, direction) => {
+    if (flipState) return; // ya hay una animacion en curso -- ignora clics repetidos
+    if (targetIdx < 0 || targetIdx >= views.length) return;
+    playPageTurnSound();
+    setFlipState({ direction, phase: 'out' });
+    window.clearTimeout(flipTimeoutRef.current);
+    flipTimeoutRef.current = window.setTimeout(() => {
+      setCurrentViewIndex(targetIdx);
+      setFlipState({ direction, phase: 'in' });
+      flipTimeoutRef.current = window.setTimeout(() => {
+        setFlipState(null);
+      }, FLIP_HALF_MS);
+    }, FLIP_HALF_MS);
+  };
+
   const [useLeftStore] = useState(() => createPageEditorStore());
   const [useRightStore] = useState(() => createPageEditorStore());
   const leftPageId = currentView?.left?.id || null;
@@ -109,9 +149,10 @@ const PageViewer = () => {
     if (idx < 0 || idx >= views.length) return;
     setCurrentViewIndex(idx);
   };
-  const handlePrev = () => goToViewIndex(currentViewIndex - 1);
-  const handleNext = () => goToViewIndex(currentViewIndex + 1);
+  const handlePrev = () => flipToIndex(currentViewIndex - 1, 'prev');
+  const handleNext = () => flipToIndex(currentViewIndex + 1, 'next');
   const commitPageJump = () => {
+    if (flipState) return; // evita pisar el cambio de indice que la animacion en curso hara al terminar
     const n = parseInt(pageJumpDraft, 10);
     if (!Number.isFinite(n) || n < 1 || n > totalPages) {
       setPageJumpDraft(activeLeftPageNumber ? String(activeLeftPageNumber) : '');
@@ -133,7 +174,7 @@ const PageViewer = () => {
       const stageWidthPx = publication.page_width * PX_PER_MM;
       const stageHeightPx = publication.page_height * PX_PER_MM;
       const isSpread = !!currentView.right;
-      const CANVAS_WRAP_GAP = 24;
+      const CANVAS_WRAP_GAP = 3; // Lote UX-12: debe coincidir con el `gap` de .page-viewer-canvas-wrap en PageViewer.css (antes 24, igual que el editor)
       const contentWidthPx = isSpread ? stageWidthPx * 2 + CANVAS_WRAP_GAP : stageWidthPx;
       const availableWidth = wrap.clientWidth - 48;
       const availableHeight = wrap.clientHeight - 48;
@@ -201,31 +242,51 @@ const PageViewer = () => {
         </div>
       </div>
 
-      <div ref={canvasWrapRef} className={`editor-v2-canvas-wrap page-viewer-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}>
-        <div className="editor-v2-page-slot">
-          <PageCanvas
-            useStoreHook={useLeftStore}
-            canEdit={false}
-            publication={publication}
-            pageNumber={activeLeftPageNumber}
-            totalPages={totalPages}
-            onFocus={() => {}}
-            scale={fitScale}
-          />
-        </div>
-        {currentView.right && (
-          <div className="editor-v2-page-slot">
-            <PageCanvas
-              useStoreHook={useRightStore}
-              canEdit={false}
-              publication={publication}
-              pageNumber={activeRightPageNumber}
-              totalPages={totalPages}
-              onFocus={() => {}}
-              scale={fitScale}
-            />
+      <div className="page-viewer-flip-perspective">
+        {/* Lote UX-12 (correccion visual): el rotateY 3D se aplica a este
+            DIV INTERNO, sizeado al contenido real (solo el ancho de la(s)
+            pagina(s)), nunca al wrap exterior de abajo -- ese wrap sigue
+            siendo el flex:1 de ancho completo que CanvasEditorV2.css
+            necesita para el calculo de fitScale (ResizeObserver sobre
+            canvasWrapRef). Rotar el wrap completo (mucho mas ancho que la
+            pagina visible, centrada con justify-content) hacia un
+            transform-origin del 100%/0% terminaba pivotando sobre el borde
+            de la PANTALLA en vez del borde de la PAGINA -- de ahi el
+            trapecio gris gigante y la hoja encogida/sesgada que reporto
+            Carlos. */}
+        <div
+          ref={canvasWrapRef}
+          className={`editor-v2-canvas-wrap page-viewer-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}
+        >
+          <div
+            className={`page-viewer-flip-inner${currentView.right ? ' page-viewer-flip-inner-spread' : ''}${flipState ? ` page-viewer-flipping page-viewer-flipping-${flipState.direction} page-viewer-flipping-${flipState.phase}` : ''}`}
+          >
+            <div className="editor-v2-page-slot">
+              <PageCanvas
+                useStoreHook={useLeftStore}
+                canEdit={false}
+                publication={publication}
+                pageNumber={activeLeftPageNumber}
+                totalPages={totalPages}
+                onFocus={() => {}}
+                scale={fitScale}
+              />
+            </div>
+            {currentView.right && (
+              <div className="editor-v2-page-slot">
+                <PageCanvas
+                  useStoreHook={useRightStore}
+                  canEdit={false}
+                  publication={publication}
+                  pageNumber={activeRightPageNumber}
+                  totalPages={totalPages}
+                  onFocus={() => {}}
+                  scale={fitScale}
+                />
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Barra inferior compacta (Lote UX-3 parte 2): reemplaza la franja
@@ -233,7 +294,7 @@ const PageViewer = () => {
           miniaturas por cada pagina (que ocupaba demasiado alto, reportado
           por Carlos) -- mismas clases .editor-v2-pagenav que el editor. */}
       <div className="editor-v2-pagenav">
-        <button type="button" onClick={handlePrev} disabled={currentViewIndex <= 0} aria-label="Hoja anterior">
+        <button type="button" onClick={handlePrev} disabled={currentViewIndex <= 0 || !!flipState} aria-label="Hoja anterior">
           ← Anterior
         </button>
         <span className="editor-v2-pagenav-position">
@@ -251,7 +312,7 @@ const PageViewer = () => {
           />
           <span className="editor-v2-pagenav-label"> {currentView.right ? `(hoja ${positionLabel})` : `/ ${totalPages}`}</span>
         </span>
-        <button type="button" onClick={handleNext} disabled={currentViewIndex >= views.length - 1} aria-label="Hoja siguiente">
+        <button type="button" onClick={handleNext} disabled={currentViewIndex >= views.length - 1 || !!flipState} aria-label="Hoja siguiente">
           Siguiente →
         </button>
       </div>
