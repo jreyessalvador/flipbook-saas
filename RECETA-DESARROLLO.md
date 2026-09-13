@@ -1388,16 +1388,102 @@ se re-corrieron completos sin regresiones.
   que sigue sin implementar en el rail es "Guardar como bloque de
   plantilla" (Blocks, ver seccion 9e), a la espera de que Carlos lo pida.
 
+## 9m. Lote UX-11 -- slideshow en vivo dentro del propio editor (Galeria/Collage) (13-sep-2026)
+
+**Origen del requisito**: Carlos reporto que el "slider" no funcionaba como
+el pedia -- adjunto 4 capturas del editor de Joomag (la plataforma que usa
+como referencia) donde el MISMO elemento de la pagina se ve mostrando fotos
+distintas en capturas consecutivas, es decir la rotacion de imagenes es
+visible EN VIVO dentro del propio lienzo de edicion, no solo en el visor
+publico. Tras varias preguntas de aclaracion (¿elemento nuevo "Slider"
+distinto de Galeria? ¿la diferencia es cuantas imagenes se ven a la vez?),
+Carlos pidio conectarme directamente a su Chrome real para observar su
+sesion de Joomag en vivo en vez de seguir explicandolo con palabras. La
+investigacion en su propio navegador (mismas cookies/sesion, sin tocar
+credenciales) confirmo dos cosas: (1) Joomag NO tiene una herramienta
+"Slider" separada de "Slideshow" -- el mismo icono de cuadricula abre el
+mismo modal "Slideshow properties" que usamos nosotros para Galeria/
+Collage; (2) observando el lienzo de edicion de Joomag sin ninguna
+interaccion, la imagen visible cambia sola cada X segundos (crossfade),
+confirmando que el requisito real es: nuestro propio elemento Galeria debe
+rotar solo (autoplay) tambien dentro del EDITOR, no solo en el Reader
+publico (Lote UX-10).
+
+**Decision de arquitectura (deliberada, no un descuido)**: el patron ya
+establecido en el codebase es que en modo edicion (`canEdit=true`) TODOS
+los elementos se renderizan como formas Konva puras (para que
+drag/click/Transformer funcionen de forma fiable), y solo en modo lectura
+(`canEdit=false`, Reader publico) se usa DOM real via `<Html>` de
+`react-konva-utils` (asi ya funcionaban Audio/Video/Embed). Se preservo
+este patron: la rotacion en vivo dentro del editor se implemento como un
+crossfade 100% Konva (dos `Konva.Image` superpuestas con opacidad animada
+via `requestAnimationFrame`, replicando un fundido tipo CSS `opacity 0.6s
+ease`), NO con DOM/`<Html>` en modo edicion. El bloque de renderizado en
+modo lectura (`if (!canEdit) { ... }`, con `<img>` reales, transiciones
+CSS, flechas y puntos de navegacion) se dejo completamente intacto.
+
+**Cambios en `frontend/src/components/editor/CanvasEditorV2.jsx`**:
+- `computeCoverCrop(image, boxW, boxH)` (nueva funcion pura): calcula el
+  rectangulo de recorte equivalente a CSS `object-fit: cover` para pasarlo
+  como prop `crop` a `Konva.Image` (Konva no tiene modo "cover" nativo).
+- `GallerySlideLayer({ src, width, height, opacity, offsetX, imageMode })`
+  (nuevo subcomponente): cada imagen del crossfade, con su propio
+  `useHtmlImage(src)`, en modo "fit" (contain, centrado) o "crop" (cover,
+  via `computeCoverCrop`), aplicando la `opacity`/`offsetX` recibidas.
+- `GalleryElement`: el `useEffect` de autoplay ahora corre en AMBOS modos
+  (antes tenia `if (canEdit) return;`), y anima `transitionAlpha` con
+  `requestAnimationFrame`. Se agrego un hook de debug solo-DEV:
+  `window.__gallerySlideDebug[el.id] = { slideIndex, autoplay, canEdit }`
+  (mismo patron que `window.__pageEditorStore`, usado por los scripts
+  Playwright de verificacion). El `return` en modo edicion ahora renderiza
+  un Group 100% Konva: Rect de fondo negro, hasta dos `GallerySlideLayer`
+  en crossfade, leyenda opcional (Rect + Text), y flechas/puntos opcionales
+  (con `e.cancelBubble = true` para no disparar el drag/select del Group
+  padre al hacer clic en ellos).
+
+**Verificacion (Playwright real contra ia-lavatur)**:
+`frontend/tests/verify_lote_ux11_gallery_live_editor.js` -- crea una
+publicacion, sube 3 imagenes a una Galeria, configura
+`transition_duration=1` (para no esperar los 3s por defecto), lee
+`window.__gallerySlideDebug[galleryEl.id]` antes y despues de esperar 4.5s
+SIN NINGUNA interaccion del usuario, y confirma que `slideIndex` cambio
+solo (0->1) -- es decir que el slideshow rota de verdad dentro del propio
+editor, sin publicar ni recargar. Ademas arrastra el elemento con el mouse
+mientras el autoplay sigue corriendo y confirma que se sigue moviendo
+normalmente (drag real de ~40x30px), es decir que la Galeria conserva toda
+su interactividad Konva (seleccionable/arrastrable/transformable) pese a
+estar rotando sola. PASO limpio, sin errores de consola.
+
+**Regresion completa**: se re-ejecutaron los 17 scripts de verificacion
+existentes (Lotes 1-7, spread, UX-1, UX-2/UX-4, UX-3, UX-3b, UX-5/UX-7,
+UX-6, UX-8, UX-9/UX-10, mas este UX-11) contra `ia-lavatur` tras el cambio
+-- todos pasaron sin errores de consola ni regresiones.
+
+**Nota menor sin resolver (no reportada aun como problema)**: en el test
+que paso, `slideIndex` solo avanzo en 1 durante los 4.5s de espera con
+`transition_duration=1`s configurado (se esperarian ~3-4 transiciones). No
+afecta al requisito principal (rotacion autonoma confirmada), pero conviene
+revisar el timing del `setInterval`/`requestAnimationFrame` si Carlos u
+otra prueba detecta que la cadencia real se siente mas lenta de lo
+configurado.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 **ACTUALIZACIÓN 13-sep-2026 (cierre de UX-2/UX-4)**: los Lotes UX-2 (paleta
 editorial navy+dorado) y UX-4 (brillo/contraste + esquinas redondeadas en
 imagenes) que este documento marcaba como pendientes YA ESTAN
-IMPLEMENTADOS Y VERIFICADOS -- ver seccion 9l. El trabajo inmediato a
-retomar ahora es el frente de landing page + Reader público (catálogo
-público para ver revistas ya publicadas, sin login) descrito en la
-**sección 11** (al final de este documento), que Carlos ya habia priorizado
-por encima de UX-2/UX-4 y que ahora queda sin nada bloqueandolo.
+IMPLEMENTADOS Y VERIFICADOS -- ver seccion 9l.
+
+**ACTUALIZACIÓN 13-sep-2026 (cierre de UX-11)**: Carlos reporto que el
+slideshow de Galeria/Collage debia rotar EN VIVO tambien dentro del propio
+editor (no solo en el Reader publico), tras pedirme conectarme a su Chrome
+real y observar el comportamiento de Joomag como referencia. Esto YA ESTA
+IMPLEMENTADO Y VERIFICADO -- ver seccion 9m. Con esto, no queda ningun otro
+lote UX pendiente confirmado por Carlos. El trabajo inmediato a retomar
+ahora es el frente de landing page + Reader público (catálogo público para
+ver revistas ya publicadas, sin login) descrito en la **sección 11** (al
+final de este documento), que Carlos ya habia priorizado por encima de
+UX-2/UX-4/UX-11 y que ahora queda sin nada bloqueandolo.
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
