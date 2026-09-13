@@ -1234,6 +1234,101 @@ Commits en `redesign/editor-v2` (raspi-2, pusheados): `b33c992` (fix del
 posicionamiento de popovers del rail). ia-lavatur resincronizado con
 `git pull --ff-only`.
 
+## 9j. Lote UX-9 -- embed real (iframe) con miniatura en el visor público (13-sep-2026)
+
+**Pedido explícito de Carlos** (con 4 capturas): "ya coloque video tanto en
+archivo mp4 y coloque un enlace de youtube y se ve asi, pero no se muestra
+la miniatura". El mp4 y el audio (Lote UX-7) ya mostraban reproducción real
+en el visor; el embed de YouTube/Vimeo/SoundCloud (Lote 5/6) se había
+quedado con el placeholder estático de Konva (rectángulo + ícono +
+etiqueta) también en modo LECTURA -- nunca recibió el mismo tratamiento
+`canEdit`-branching que Audio/Video.
+
+**Fix** (mismo criterio exacto que AudioElement/VideoElement): `EmbedElement`
+ahora, cuando `canEdit === false` y `el.props.video_id` existe, renderiza un
+`<iframe>` real embebido del proveedor (`youtube-nocookie.com/embed/<id>`,
+`player.vimeo.com/video/<id>`, o el widget de `w.soundcloud.com/player`)
+vía `<Html>` de `react-konva-utils` -- el iframe trae su propia miniatura
+NATIVA del video/track real, sin que el editor tenga que descargar/cachear
+ninguna imagen aparte. En modo EDICIÓN el placeholder de Konva sigue
+exactamente igual (nada cambia ahí).
+
+## 9k. Lote UX-10 -- galería tipo slideshow real + modal "Propiedades de la galería" (13-sep-2026)
+
+**Pedido explícito de Carlos** (con 2 capturas de la plataforma de
+referencia que usa habitualmente, tipo "Creative Studio" con un ícono de
+engranaje sobre el elemento que abre un modal "Slideshow properties"):
+la galería debía comportarse como un slider real -- imágenes rotando una
+a la vez, con un ícono/botón que abre una ventana donde se puede subir o
+seleccionar de biblioteca, ver las imágenes cargadas, y configurar
+controles de transición y tiempo. La implementación anterior (Lote 4) solo
+pintaba todas las imágenes simultáneamente en grid/mosaico (nunca hubo
+lógica de slideshow), y el panel de propiedades solo ofrecía cambiar el
+layout y agregar/quitar imágenes -- sin título/descripción por imagen, sin
+selector de biblioteca, sin ajustes de transición/autoplay/controles.
+
+**Decisión de diseño**: el ícono "engranaje" que abre el modal se puso como
+botón dentro del panel de propiedades derecho (sección de Galería/Collage,
+"⚙ Configurar galería"), NO superpuesto sobre el elemento en el canvas de
+Konva -- superponer un ícono HTML real sobre un `Group` de Konva que
+también es arrastrable/seleccionable habría requerido sincronizar
+manualmente su posición con `getAbsoluteTransform()` en cada frame (similar
+al truco de `<Html>` de Audio/Video/Embed) y arriesgaba interferir con el
+drag/click del elemento mismo -- el panel de propiedades ya es el lugar
+donde viven todos los demás ajustes de cada elemento, así que es
+consistente con el resto del editor.
+
+**Modelo de datos nuevo** en `props` (JSONB sin migración, ver Lote 4/5):
+cada imagen de `props.images[]` ahora es `{ src, title, description }` (antes
+solo `{ src }`, compatible hacia atrás -- `title`/`description` faltantes se
+tratan como `''`), y el elemento `gallery` gana `image_mode` ('crop'|'fit',
+default 'crop'), `transition_effect` ('fade'|'slide'|'none', default
+'fade'), `captions_enabled`/`controls_enabled`/`autoplay` (booleans) y
+`transition_duration` (segundos, default 3).
+
+**`GalleryModal`** (nuevo componente, portal a `document.body` con
+backdrop propio, mismo patrón de `createPortal` que `RailPopover` pero
+centrado en vez de anclado a un botón del rail): botón "Subir imágenes"
+(input file oculto propio, reutiliza `uploadFilesSequentially`) y
+"Seleccionar de biblioteca" (reutiliza el fetch de biblioteca ya
+existente, filtrado a `kind=image`); lista editable de imágenes con
+campos Título/Descripción y botón de quitar; selects de Modo de imagen y
+Efecto de transición; campo numérico de Duración; checkboxes de
+Leyendas/Controles/Autoplay. Los cambios quedan en estado LOCAL
+(`useState`) dentro del modal -- solo se aplican al elemento real al
+presionar "Actualizar" (`onSave`); "Cancelar" descarta todo sin tocar el
+store. Igual que en el modal de referencia de Carlos (Cancel/Update).
+
+**`GalleryElement` en modo LECTURA** (visor público, mismo criterio
+`canEdit`-branching que Audio/Video/Embed): reemplaza el grid/mosaico
+ESTÁTICO (que sigue siendo la vista de EDICIÓN sin cambios) por un
+slideshow real en HTML puro vía `<Html>` -- todas las imágenes se
+posicionan superpuestas (`position: absolute`) y solo la activa tiene
+`opacity: 1`/`transform` neutro; un `setInterval` (activo solo si
+`autoplay !== false` y hay más de 1 imagen) avanza el índice cada
+`transition_duration` segundos; la transición es CSS pura (`opacity` para
+"fade", `opacity` + `translateX` para "slide", sin transición para
+"none"). Si `controls_enabled !== false` se muestran botones prev/next y
+"dots" de navegación (clicables, pausan implícitamente el avance visual
+hasta el siguiente tick del autoplay); si `captions_enabled` está activo
+se muestra un overlay inferior con el título/descripción de la imagen
+activa.
+
+**Verificación**: `frontend/tests/verify_lote_ux9_ux10_embed_gallery.js`
+(Playwright real contra ia-lavatur) -- inserta un embed de YouTube, sube 3
+imágenes para crear una galería, abre el modal y edita título/descripción
+de la 1ra imagen + activa leyendas + transición "Deslizar" + duración 1s,
+guarda, confirma los props guardados, y luego abre el VISOR PÚBLICO (misma
+sesión de navegador autenticada, igual que los demás tests -- una pestaña
+nueva sin login se queda en `/login` porque `/publications/:id/view` es una
+ruta protegida) para confirmar: (a) el `<iframe>` real de YouTube con el
+`video_id` correcto en el `src`, (b) 3 `<img>` del slideshow con
+`object-fit`, botones prev/next, 3 dots, y la leyenda de la imagen activa
+visible, y (c) que la imagen activa efectivamente ROTA tras esperar más del
+intervalo de autoplay configurado (1s). Los 16 scripts de verificación
+previos (Fase B, Lotes 1-7, UX-1/UX-3/UX-5/UX-6/UX-7/UX-8, spread view)
+se re-corrieron completos sin regresiones.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
@@ -1241,13 +1336,15 @@ shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
 SoundCloud+Quick Actions, y Library+video real), los Lotes UX-1/UX-3
 tambien cerrados (Dashboard real, miniaturas de portada, fit-to-screen y
 visor publico con contenido real -- ver seccion 9f), UX-6 (edicion inline
-de texto + miniatura sin recortar -- ver seccion 9g) y ahora UX-5/UX-7
-tambien cerrados (orden de capas + audio/video real en el visor publico
--- ver seccion 9h), el trabajo inmediato pendiente son los Lotes **UX-2 y
-UX-4** descritos al final de la seccion 9f (paleta editorial/corporate
-para "empresa seria, editorial que busca formar mercado digital", y
-brillo/contraste + esquinas redondeadas en imagenes -- SOLO brillo/
-contraste, no retoque completo). Estos ya fueron confirmados
+de texto + miniatura sin recortar -- ver seccion 9g), UX-5/UX-7 (orden de
+capas + audio/video real en el visor publico -- ver seccion 9h), el fix de
+popovers del rail (seccion 9i), y ahora UX-9/UX-10 tambien cerrados (embed
+real con miniatura + galeria tipo slideshow real con modal de propiedades
+-- ver secciones 9j y 9k), el trabajo inmediato pendiente son los Lotes
+**UX-2 y UX-4** descritos al final de la seccion 9f (paleta editorial/
+corporate para "empresa seria, editorial que busca formar mercado
+digital", y brillo/contraste + esquinas redondeadas en imagenes -- SOLO
+brillo/contraste, no retoque completo). Estos ya fueron confirmados
 explicitamente por Carlos, asi que no requieren nueva validacion antes de
 implementarse -- solo notificarlo cuando esten verificados y listos para
 probar.
