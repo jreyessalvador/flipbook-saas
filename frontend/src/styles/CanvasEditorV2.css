@@ -104,7 +104,7 @@
 }
 
 .editor-v2-tool.active {
-  background: #4f46e5;
+  background: var(--color-navy);
   color: #fff;
 }
 
@@ -144,12 +144,17 @@
 }
 
 .editor-v2-save {
-  background: #4f46e5;
-  color: #fff;
+  background: var(--color-gold);
+  color: var(--color-navy-dark);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
+  font-weight: 600;
+}
+
+.editor-v2-save:hover:not(:disabled) {
+  background: var(--color-gold-dark);
 }
 
 .editor-v2-save:disabled,
@@ -192,7 +197,7 @@
    vez -- ayuda a que quede claro a cuál de las dos se le está agregando un
    elemento nuevo desde el rail. */
 .editor-v2-canvas-wrap-spread .editor-v2-page-slot.focused .editor-v2-stage {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }
 
@@ -204,8 +209,8 @@
 .editor-v2-banner {
   padding: 10px 16px;
   font-size: 13px;
-  background: #eef2ff;
-  color: #3730a3;
+  background: var(--color-navy-tint);
+  color: var(--color-navy);
 }
 
 .editor-v2-banner-warn {
@@ -366,6 +371,12 @@
   cursor: not-allowed;
 }
 
+.editor-v2-field-range input[type='range'] {
+  padding: 0;
+  accent-color: var(--color-gold);
+  height: auto;
+}
+
 .editor-v2-quickaction {
   display: block;
   width: 100%;
@@ -441,7 +452,7 @@
 }
 
 .editor-v2-plugins-menu button:hover {
-  background: #eef2ff;
+  background: var(--color-navy-tint);
 }
 
 .editor-v2-plugins-menu button span {
@@ -477,7 +488,7 @@
   display: block;
   word-break: break-all;
   font-size: 12px;
-  color: #4f46e5;
+  color: var(--color-navy);
   margin-bottom: 10px;
 }
 
@@ -513,9 +524,9 @@
 }
 
 .editor-v2-gallery-layout-row .editor-v2-tool.active {
-  background: #4f46e5;
+  background: var(--color-navy);
   color: #fff;
-  border-color: #4f46e5;
+  border-color: var(--color-navy);
 }
 
 .editor-v2-gallery-thumbs {
@@ -569,7 +580,7 @@
 .editor-v2-props-section > button.editor-v2-quickaction:not(:disabled) {
   cursor: pointer;
   opacity: 1;
-  background: #eef2ff;
+  background: var(--color-navy-tint);
   border-color: #c7d2fe;
   color: #4338ca;
 }
@@ -634,9 +645,9 @@
 }
 
 .editor-v2-library-tabs .editor-v2-tool.active {
-  background: #4f46e5;
+  background: var(--color-navy);
   color: #fff;
-  border-color: #4f46e5;
+  border-color: var(--color-navy);
 }
 
 .editor-v2-library-grid {
@@ -668,7 +679,7 @@
 }
 
 .editor-v2-library-item:hover:not(:disabled) {
-  border-color: #4f46e5;
+  border-color: var(--color-navy);
 }
 
 .editor-v2-library-item img {
@@ -695,7 +706,7 @@
 .editor-v2-inline-text-editor {
   margin: 0;
   padding: 0;
-  border: 1px solid #4f46e5;
+  border: 1px solid var(--color-navy);
   border-radius: 2px;
   background: #ffffff;
   outline: none;

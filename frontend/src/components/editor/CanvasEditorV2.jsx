@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
+import Konva from 'konva';
 import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 import { Html } from 'react-konva-utils';
 import { createPageEditorStore } from '../../store/pageEditorStore';
@@ -407,17 +408,51 @@ function handleTransformEndCentered(node, onChange) {
   });
 }
 
+// Lote UX-4 (13-sep-2026): brillo/contraste + esquinas redondeadas en
+// imagenes. `cornerRadius` lo soporta Konva.Image de forma nativa desde
+// hace varias versiones (igual que Rect), asi que NO hace falta un
+// clipFunc a mano. Brillo/contraste SI requieren `node.cache()` -- los
+// filtros de Konva solo se aplican sobre un cache de pixeles de la propia
+// imagen, nunca en tiempo real sin cachear -- por eso el useEffect: hay
+// que re-cachear cada vez que cambia la imagen fuente, el tamaño (afecta
+// el area cacheada) o los propios valores de brillo/contraste; sin este
+// efecto los sliders del panel de propiedades no tendrian ningun efecto
+// visible tras la primera carga.
 function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const image = useHtmlImage(el.props?.src);
+  const nodeRef = useRef(null);
+  const brightness = el.props?.brightness || 0; // Konva.Filters.Brighten: rango util aprox -1..1
+  const contrast = el.props?.contrast || 0; // Konva.Filters.Contrast: rango util aprox -100..100
+  const hasAdjustments = brightness !== 0 || contrast !== 0;
+
+  useEffect(() => {
+    const node = nodeRef.current;
+    if (!node || !image) return;
+    if (hasAdjustments) {
+      node.cache();
+    } else {
+      node.clearCache();
+    }
+    node.getLayer()?.batchDraw();
+  }, [image, brightness, contrast, el.width, el.height, hasAdjustments]);
+
   return (
     <KonvaImage
-      ref={shapeRef}
+      ref={(node) => {
+        nodeRef.current = node;
+        if (typeof shapeRef === 'function') shapeRef(node);
+        else if (shapeRef) shapeRef.current = node;
+      }}
       image={image}
       x={el.x}
       y={el.y}
       width={el.width}
       height={el.height}
       rotation={el.rotation_deg}
+      cornerRadius={el.props?.cornerRadius || 0}
+      filters={hasAdjustments ? [Konva.Filters.Brighten, Konva.Filters.Contrast] : []}
+      brightness={brightness}
+      contrast={contrast}
       draggable={canEdit && !el.props?.locked}
       onClick={onSelect}
       onTap={onSelect}
@@ -435,7 +470,7 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // (como en el Reader final, Fase E) queda fuera de alcance de este lote --
 // ver docs/arquitectura-editor-2026-09-12.md seccion 6.
 function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
-  const accent = '#4f46e5';
+  const accent = '#14213d';
   const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
   // Lote UX-7 (13-sep-2026, pedido explicito de Carlos): en modo LECTURA
   // (visor publico -- todavia no existe un Reader separado de Fase E, asi
@@ -876,7 +911,7 @@ function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // guardado; solo cambia qué nodo Konva se dibuja dentro de esa caja.
 function ShapeElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const shapeType = el.props?.shape_type || 'rect';
-  const fill = el.props?.fill || '#4f46e5';
+  const fill = el.props?.fill || '#14213d';
   const common = {
     ref: shapeRef,
     rotation: el.rotation_deg,
@@ -1225,12 +1260,12 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 <input
                   type="color"
                   disabled={disabled}
-                  value={selectedElement?.props?.fill || '#4f46e5'}
+                  value={selectedElement?.props?.fill || '#14213d'}
                   onChange={(e) => onUpdate({ props: { ...selectedElement.props, fill: e.target.value } })}
                 />
               </label>
             )}
-            {kind === 'shape' && shapeType === 'rect' && (
+            {(kind === 'image' || (kind === 'shape' && shapeType === 'rect')) && (
               <NumberField
                 label="Radio de esquina"
                 value={selectedElement?.props?.cornerRadius || 0}
@@ -1245,6 +1280,39 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 disabled={disabled}
                 onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })}
               />
+            )}
+            {/* Lote UX-4: brillo/contraste via Konva.Filters -- SOLO estos dos
+                ajustes, no un retoque completo de imagen (alcance confirmado
+                por Carlos). Rangos elegidos por lo que produce un resultado
+                util visualmente: Brighten de Konva satura casi por completo
+                fuera de -1..1; Contrast tiene mas margen util, -100..100. */}
+            {kind === 'image' && (
+              <>
+                <label className="editor-v2-field editor-v2-field-range">
+                  <span>Brillo ({(selectedElement?.props?.brightness || 0).toFixed(2)})</span>
+                  <input
+                    type="range"
+                    min={-1}
+                    max={1}
+                    step={0.05}
+                    disabled={disabled}
+                    value={selectedElement?.props?.brightness || 0}
+                    onChange={(e) => onUpdate({ props: { ...selectedElement.props, brightness: parseFloat(e.target.value) } })}
+                  />
+                </label>
+                <label className="editor-v2-field editor-v2-field-range">
+                  <span>Contraste ({selectedElement?.props?.contrast || 0})</span>
+                  <input
+                    type="range"
+                    min={-100}
+                    max={100}
+                    step={1}
+                    disabled={disabled}
+                    value={selectedElement?.props?.contrast || 0}
+                    onChange={(e) => onUpdate({ props: { ...selectedElement.props, contrast: parseInt(e.target.value, 10) } })}
+                  />
+                </label>
+              </>
             )}
             {!kind && <p className="editor-v2-props-hint">Selecciona un elemento para ver sus opciones.</p>}
           </section>
@@ -1716,7 +1784,7 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
             width={marquee.width}
             height={marquee.height}
             fill="rgba(79,70,229,0.15)"
-            stroke="#4f46e5"
+            stroke="#14213d"
             strokeWidth={1}
             listening={false}
           />
@@ -2348,25 +2416,25 @@ export default function CanvasEditorV2() {
               icon="line"
               label="Línea"
               disabled={!canEdit}
-              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 160, height: 4, props: { fill: '#4f46e5', shape_type: 'line', strokeWidth: 4 } })}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 160, height: 4, props: { fill: '#14213d', shape_type: 'line', strokeWidth: 4 } })}
             />
             <ToolButton
               icon="rectangle"
               label="Rectángulo"
               disabled={!canEdit}
-              onClick={() => focusedStoreHook.getState().addElement('shape', { props: { fill: '#4f46e5', shape_type: 'rect' } })}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { props: { fill: '#14213d', shape_type: 'rect' } })}
             />
             <ToolButton
               icon="circle"
               label="Círculo"
               disabled={!canEdit}
-              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'circle' } })}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#14213d', shape_type: 'circle' } })}
             />
             <ToolButton
               icon="star"
               label="Estrella"
               disabled={!canEdit}
-              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#4f46e5', shape_type: 'star' } })}
+              onClick={() => focusedStoreHook.getState().addElement('shape', { width: 120, height: 120, props: { fill: '#14213d', shape_type: 'star' } })}
             />
           </ToolGroup>
 
