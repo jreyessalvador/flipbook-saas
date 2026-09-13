@@ -1329,9 +1329,75 @@ intervalo de autoplay configurado (1s). Los 16 scripts de verificación
 previos (Fase B, Lotes 1-7, UX-1/UX-3/UX-5/UX-6/UX-7/UX-8, spread view)
 se re-corrieron completos sin regresiones.
 
+## 9l. Lote UX-2 (paleta editorial navy+dorado) + Lote UX-4 (brillo/contraste + esquinas redondeadas en imagenes) (13-sep-2026)
+
+- **Contexto**: retomado explicitamente por Carlos ("vamos por el punto 2 a
+  continuar", refiriendose al bloque UX-2/UX-4 que quedaba en pausa por
+  detras del frente de landing+Reader publico de la seccion 11). Al no
+  haber colores definidos aun, se pregunto a Carlos (AskUserQuestion) entre
+  4 opciones de paleta -- eligio explicitamente **"Azul marino + dorado"**
+  (editorial serio/premium).
+- **Lote UX-2 -- paleta**: reemplazado el acento indigo/purpura generico
+  (`#667eea`/`#764ba2` en las paginas de auth/dashboard/publicaciones,
+  `#4f46e5` en el editor) por variables CSS nuevas en `:root` de
+  `global.css` -- `--color-navy` (#14213d), `--color-navy-dark` (#0c1526),
+  `--color-navy-light` (#24365e), `--color-navy-tint` (#e8ebf2),
+  `--color-gold` (#c9a24b), `--color-gold-dark` (#a3822f), `--color-ink`
+  (#1f2430). Regla de uso: navy para superficies solidas/botones
+  primarios/estados activos generales, dorado reservado como acento de
+  foco/CTA principal (boton "Guardar" del editor, KPIs numericos del
+  dashboard, borde de foco de inputs, outline de la pagina enfocada en el
+  spread) -- para que el dorado destaque en vez de diluirse por uso
+  excesivo. Aplicado en `global.css`, `Publications.css`,
+  `CanvasEditorV2.css`, y los fills/strokes por defecto hardcodeados en JS
+  (`CanvasEditorV2.jsx`: figuras nuevas, placeholders de audio/embed,
+  marquee-select) -- estos ultimos como literales hex (`#14213d`), Canvas
+  2D `fillStyle` no resuelve `var()`.
+- **Lote UX-4 -- brillo/contraste + esquinas redondeadas en imagenes**:
+  SOLO estos dos ajustes, no un retoque completo de imagen (alcance ya
+  confirmado por Carlos en la sesion donde se definieron ambos lotes).
+  `ImageElement` en `CanvasEditorV2.jsx` gana `filters={[Konva.Filters.Brighten, Konva.Filters.Contrast]}`
+  + props `brightness`/`contrast`, con un `useEffect` que llama
+  `node.cache()`/`node.clearCache()` -- los filtros de Konva SOLO se
+  aplican sobre pixeles ya cacheados, sin este efecto los sliders no
+  tendrian ningun efecto visible. Rangos elegidos por utilidad visual real:
+  brillo -1..1 (Brighten de Konva satura casi por completo fuera de ese
+  rango), contraste -100..100. Esquinas redondeadas: `Konva.Image` soporta
+  `cornerRadius` nativamente desde hace varias versiones de Konva (igual
+  que `Rect`), asi que NO hizo falta un `clipFunc` manual -- se reutilizo
+  el mismo campo "Radio de esquina" del panel de Apariencia que ya existia
+  para figuras rectangulares, ahora tambien visible para `kind='image'`.
+  Sliders nuevos con clase `.editor-v2-field-range` (`accent-color: var(--color-gold)`).
+- **Sin cambios de backend/BD**: `brightness`/`contrast`/`cornerRadius` son
+  props JSONB de forma libre, igual que otros ajustes de lotes anteriores
+  (locked, hidden_in_reader, animation) -- no requirio migracion.
+- Verificado con nuevo `frontend/tests/verify_lote_ux2_ux4_palette_filters.js`:
+  color de fondo real del navbar (`getComputedStyle`) y del boton Guardar,
+  fill por defecto de una figura nueva, subida de imagen real + ajuste de
+  ambos sliders + radio de esquina desde el panel, y persistencia de los 3
+  valores tras guardar+recargar. Tras esto se re-ejecuto TODA la suite de
+  regresion existente (16 scripts previos): **todos pasan limpio, sin
+  errores de consola, sin regresiones** -- el cambio de paleta no rompio
+  ningun selector ni comportamiento existente.
+- Commits en `redesign/editor-v2` (raspi-2, pusheados): `5516105`
+  (feat: paleta UX-2 + brillo/contraste/esquinas UX-4), `<pendiente>`
+  (test + docs de esta seccion).
+- **Pendiente**: retomar la seccion 11 (landing publica + Reader publico)
+  que Carlos priorizo por encima de este bloque -- con UX-2/UX-4 cerrados
+  ya no queda nada bloqueando ese frente. El unico placeholder deliberado
+  que sigue sin implementar en el rail es "Guardar como bloque de
+  plantilla" (Blocks, ver seccion 9e), a la espera de que Carlos lo pida.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
-**ACTUALIZACIÓN 13-sep-2026**: Carlos pidió priorizar AHORA el frente de landing page + Reader público (catálogo público para ver revistas ya publicadas, sin login) por encima de UX-2/UX-4 descritos abajo. Ver la **sección 11** (al final de este documento) para el plan completo y el diagnóstico de qué falta -- es el trabajo inmediato a implementar primero.
+**ACTUALIZACIÓN 13-sep-2026 (cierre de UX-2/UX-4)**: los Lotes UX-2 (paleta
+editorial navy+dorado) y UX-4 (brillo/contraste + esquinas redondeadas en
+imagenes) que este documento marcaba como pendientes YA ESTAN
+IMPLEMENTADOS Y VERIFICADOS -- ver seccion 9l. El trabajo inmediato a
+retomar ahora es el frente de landing page + Reader público (catálogo
+público para ver revistas ya publicadas, sin login) descrito en la
+**sección 11** (al final de este documento), que Carlos ya habia priorizado
+por encima de UX-2/UX-4 y que ahora queda sin nada bloqueandolo.
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
@@ -1340,16 +1406,10 @@ tambien cerrados (Dashboard real, miniaturas de portada, fit-to-screen y
 visor publico con contenido real -- ver seccion 9f), UX-6 (edicion inline
 de texto + miniatura sin recortar -- ver seccion 9g), UX-5/UX-7 (orden de
 capas + audio/video real en el visor publico -- ver seccion 9h), el fix de
-popovers del rail (seccion 9i), y ahora UX-9/UX-10 tambien cerrados (embed
-real con miniatura + galeria tipo slideshow real con modal de propiedades
--- ver secciones 9j y 9k), el trabajo inmediato pendiente son los Lotes
-**UX-2 y UX-4** descritos al final de la seccion 9f (paleta editorial/
-corporate para "empresa seria, editorial que busca formar mercado
-digital", y brillo/contraste + esquinas redondeadas en imagenes -- SOLO
-brillo/contraste, no retoque completo). Estos ya fueron confirmados
-explicitamente por Carlos, asi que no requieren nueva validacion antes de
-implementarse -- solo notificarlo cuando esten verificados y listos para
-probar.
+popovers del rail (seccion 9i), UX-9/UX-10 (embed real con miniatura +
+galeria tipo slideshow real con modal de propiedades -- ver secciones 9j y
+9k), y ahora UX-2/UX-4 tambien cerrados (ver seccion 9l), no queda ningun
+lote UX pendiente confirmado por Carlos.
 
 El unico otro placeholder que sigue deliberadamente sin implementar en el
 rail es **"Guardar como bloque de plantilla" (Blocks)** -- explicitamente
@@ -1414,4 +1474,4 @@ test de backend por si solo no prueba la UI.
 
 4. **Acceso mientras tanto**: URL de prueba = IP de Tailscale de `ia-lavatur` (`http://100.71.185.7:5173/...`), igual que el resto del stack de desarrollo -- no hay dominio público ni TLS todavía (ver limitación ya documentada en sección 4b, "qué falta antes de usar esto como base de producción real").
 
-**No bloqueante, pero para no perder de vista**: los Lotes UX-2 (paleta editorial corporativa) y UX-4 (brillo/contraste + esquinas redondeadas en imágenes) siguen confirmados y pendientes -- ver sección 10 -- pero Carlos pidió priorizar este frente de landing+reader público ahora. Implementar esto primero salvo que él indique lo contrario.
+**Estado 13-sep-2026**: los Lotes UX-2/UX-4 mencionados como "no bloqueante" ya se implementaron y verificaron (ver sección 9l) -- este frente de landing+Reader público es ahora el ÚNICO trabajo pendiente sin nada por delante.
