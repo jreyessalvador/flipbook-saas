@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import PageCanvas, { computeSpreadViews } from '../editor/CanvasEditorV2';
+import PageCanvas, { computeSpreadViews } from '../components/editor/CanvasEditorV2';
 
 const PublicReader = () => {
   const { id } = useParams();
