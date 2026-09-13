@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
+import { Html } from 'react-konva-utils';
 import { createPageEditorStore } from '../../store/pageEditorStore';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
@@ -92,6 +93,13 @@ const ICON_PATHS = {
   distributeV: 'M4 4h16M4 12h16M4 20h16M12 8v1M12 15v1',
   chevronLeft: 'M15 4l-8 8 8 8',
   chevronRight: 'M9 4l8 8-8 8',
+  // Orden de capas (Lote UX-5) -- iconos de rectangulos apilados, estilo
+  // convencional de "traer al frente/enviar al fondo" de cualquier editor
+  // de diseño.
+  bringFront: 'M7 3h10v10H7V3zM4 8v10h10',
+  sendBack: 'M4 8h10v10H4V8zM7 3h10v10',
+  layerUp: 'M12 3l5 5h-3v5h-4V8H7l5-5zM6 17h12',
+  layerDown: 'M12 3v9h3l-5 5-5-5h3V3zM6 21h12',
 };
 
 function Icon({ name, size = 18 }) {
@@ -212,6 +220,35 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // ver docs/arquitectura-editor-2026-09-12.md seccion 6.
 function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const accent = '#4f46e5';
+  const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
+  // Lote UX-7 (13-sep-2026, pedido explicito de Carlos): en modo LECTURA
+  // (visor publico -- todavia no existe un Reader separado de Fase E, asi
+  // que este es hoy el "frontend" real que ve un lector) se reemplaza el
+  // placeholder de Konva por un <audio> NATIVO real, vía react-konva-utils
+  // Html -- sincroniza automaticamente posicion/tamaño/rotacion con el
+  // scale del Stage (fit-to-screen del Lote UX-3) sin tener que calcularlo
+  // a mano, a diferencia del textarea de edicion inline del Lote UX-6 (ahi
+  // sí hacia falta porque no existia esta libreria todavia). Honra
+  // autoplay/loop guardados desde el panel de propiedades. AVISO
+  // (documentado tambien en RECETA-DESARROLLO.md): los navegadores
+  // bloquean el autoplay CON SONIDO salvo interaccion previa del usuario
+  // -- esto es una politica del navegador, no un bug del editor; si
+  // Carlos quiere autoplay garantizado hay que silenciar el audio (no se
+  // fuerza aqui para no contradecir en silencio el checkbox "Reproducir
+  // automáticamente").
+  if (!canEdit) {
+    return (
+      <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
+        <audio
+          controls
+          autoPlay={!!el.props?.autoplay}
+          loop={!!el.props?.loop}
+          style={{ width: el.width, height: el.height }}
+          src={src}
+        />
+      </Html>
+    );
+  }
   return (
     <Group
       ref={shapeRef}
@@ -244,6 +281,29 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // propiedades via un <video controls> nativo (ver PropertiesPanel).
 function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const accent = '#7c3aed';
+  const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
+  // Lote UX-7: mismo criterio que AudioElement de arriba -- en modo
+  // LECTURA se reemplaza el placeholder por un <video> nativo real (Html
+  // de react-konva-utils), honrando autoplay/loop/muted ya guardados. Con
+  // "muted" activo el autoplay SI funciona de forma confiable (asi lo
+  // permiten los navegadores); sin silenciar, el navegador puede bloquear
+  // el autoplay hasta que el usuario interactue con la pagina -- misma
+  // politica que en AudioElement, documentada en RECETA-DESARROLLO.md.
+  if (!canEdit) {
+    return (
+      <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
+        <video
+          controls
+          autoPlay={!!el.props?.autoplay}
+          loop={!!el.props?.loop}
+          muted={!!el.props?.muted}
+          playsInline
+          style={{ width: el.width, height: el.height, background: '#000' }}
+          src={src}
+        />
+      </Html>
+    );
+  }
   return (
     <Group
       ref={shapeRef}
@@ -744,7 +804,7 @@ const ANIMATION_OPTIONS = [
   { value: 'zoom', label: 'Zoom' },
 ];
 
-function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick }) {
+function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onReorder }) {
   const count = selectedElements.length;
   const selectedElement = count === 1 ? selectedElements[0] : null;
   const disabled = !canEdit || !selectedElement;
@@ -994,6 +1054,23 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
 
       <section className="editor-v2-props-section">
         <h4>Quick Actions</h4>
+        {/* Orden de capas (Lote UX-5, pedido explicito de Carlos): version
+            simple aceptada en vez de un panel de capas completo estilo
+            Photoshop -- reutiliza z_index, ya existente desde la Fase A. */}
+        <div className="editor-v2-order-row">
+          <button type="button" className="editor-v2-tool" disabled={disabled} title="Traer al frente" aria-label="Traer al frente" onClick={() => onReorder('front')}>
+            <Icon name="bringFront" size={16} />
+          </button>
+          <button type="button" className="editor-v2-tool" disabled={disabled} title="Subir un nivel" aria-label="Subir un nivel" onClick={() => onReorder('up')}>
+            <Icon name="layerUp" size={16} />
+          </button>
+          <button type="button" className="editor-v2-tool" disabled={disabled} title="Bajar un nivel" aria-label="Bajar un nivel" onClick={() => onReorder('down')}>
+            <Icon name="layerDown" size={16} />
+          </button>
+          <button type="button" className="editor-v2-tool" disabled={disabled} title="Enviar al fondo" aria-label="Enviar al fondo" onClick={() => onReorder('back')}>
+            <Icon name="sendBack" size={16} />
+          </button>
+        </div>
         <button
           type="button"
           className="editor-v2-quickaction"
@@ -2130,6 +2207,7 @@ export default function CanvasEditorV2() {
           onUpdate={(patch) => selectedElements.length === 1 && focusedStoreHook.getState().updateElement(selectedElements[0].id, patch)}
           onAlign={handleAlign}
           onAppendImagesClick={handleUploadGalleryAppendClick}
+          onReorder={(direction) => selectedElements.length === 1 && focusedStoreHook.getState().reorderElement(selectedElements[0].id, direction)}
         />
       </div>
     </div>

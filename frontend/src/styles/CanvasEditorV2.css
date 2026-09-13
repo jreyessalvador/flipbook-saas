@@ -698,3 +698,19 @@
   z-index: 1000;
   box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
 }
+
+/* Lote UX-5 (13-sep-2026): orden de capas -- fila de 4 botones en Quick
+   Actions (Traer al frente / Subir / Bajar / Enviar al fondo), mismo
+   patron visual que .editor-v2-align-row de Alinear/Distribuir. */
+.editor-v2-order-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.editor-v2-order-row .editor-v2-tool {
+  width: 100%;
+  height: 30px;
+  color: #6b7280;
+}

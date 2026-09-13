@@ -149,6 +149,40 @@ export function createPageEditorStore() {
         });
       },
 
+      // Orden de capas (Lote UX-5, 13-sep-2026) -- pedido explicito de
+      // Carlos: aceptó la version simple (traer al frente / enviar al
+      // fondo, mas subir/bajar un nivel) en vez de un panel de capas
+      // completo estilo Photoshop, por menor costo de implementacion.
+      // Reutiliza el campo z_index que ya existia desde la Fase A (nunca
+      // antes expuesto en la UI) -- sin migracion, sin cambios de schema.
+      // 'front'/'back' saltan al extremo (maxZ+1 / minZ-1); 'up'/'down'
+      // intercambian z_index con el vecino inmediato en el orden actual
+      // (nunca simplemente +1/-1, que podria chocar con un z_index ya
+      // usado por otro elemento y dejar el orden ambiguo).
+      reorderElement: (id, direction) => {
+        set((state) => {
+          const el = state.elements.find((e) => e.id === id);
+          if (!el) return;
+          if (direction === 'front' || direction === 'back') {
+            const zs = state.elements.map((e) => e.z_index ?? 0);
+            const target = direction === 'front' ? Math.max(...zs) : Math.min(...zs);
+            if (el.z_index === target) return; // ya esta en el extremo, nada que hacer
+            el.z_index = direction === 'front' ? target + 1 : target - 1;
+            state.isDirty = true;
+            return;
+          }
+          const sorted = [...state.elements].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
+          const idx = sorted.findIndex((e) => e.id === id);
+          const neighborIdx = direction === 'up' ? idx + 1 : idx - 1;
+          if (neighborIdx < 0 || neighborIdx >= sorted.length) return; // ya esta en ese extremo
+          const neighbor = sorted[neighborIdx];
+          const tmp = el.z_index;
+          el.z_index = neighbor.z_index;
+          neighbor.z_index = tmp;
+          state.isDirty = true;
+        });
+      },
+
       // Elimina TODOS los elementos actualmente seleccionados (boton "Eliminar
       // seleccionado" / tecla Delete con seleccion multiple).
       removeSelectedElements: () => {
