@@ -1170,6 +1170,70 @@ Commits en `redesign/editor-v2` (raspi-2, pusheados): `d320c09` (feat
 Lote UX-5 -- orden de capas + Lote UX-7 -- audio/video real en el visor).
 ia-lavatur resincronizado con `git pull --ff-only`.
 
+## 9i. Fix -- popovers del rail (YouTube/Vimeo/SoundCloud/Plugins/Library) recortados fuera de vista (13-sep-2026)
+
+Carlos reportó con una captura de pantalla que al hacer clic en el icono de
+YouTube para insertar un video, la ventana de "pegar URL" aparecía "oculta,
+fuera del alcance visual" -- una cajita parcialmente visible en la esquina
+inferior izquierda de la ventana del navegador, encimada con los iconos de
+la barra lateral del propio navegador (Opera, en su caso).
+
+**Causa raíz**: `.editor-v2-tools-rail` (el panel de herramientas de 56px de
+ancho a la izquierda) tiene `overflow-y: auto` para poder hacer scroll
+cuando hay muchos grupos de herramientas. Por una regla poco conocida de la
+spec de CSS, cuando UNO de los dos ejes de overflow (`overflow-x` u
+`overflow-y`) se declara distinto de `visible`, el OTRO eje -- aunque nunca
+se haya tocado explícitamente -- deja de comportarse como `visible` también
+y pasa a recortar su contenido igual que si fuera `overflow-x: auto`. Los
+popovers de YouTube/Vimeo/SoundCloud/Plugins/Library (`.editor-v2-plugins-
+menu`, ancho fijo de 240px, `position: absolute` dentro del propio rail de
+solo 56px) quedaban por lo tanto RECORTADOS por el propio rail en vez de
+flotar libremente por encima de todo lo demás -- el popover seguía
+"existiendo" en el DOM (por eso los botones respondían al clic y los
+formularios funcionaban si se interactuaba con ellos a ciegas), pero
+visualmente solo se veía el pequeño trozo que caía dentro de los 56px del
+rail. El botón de YouTube, además, está bastante abajo en un rail alto con
+9+ grupos de herramientas, así que el recorte resultaba aún más notorio y
+confuso (parecía "colgar" cerca del borde inferior de la ventana).
+
+**Por qué ningún test anterior lo detectó**: todos los tests Playwright de
+este proyecto interactúan con los popovers directamente vía selectores CSS
+(`page.fill(...)`, `page.click(...)`), que funcionan sobre el DOM sin
+importar si el elemento es visualmente recortado por el `overflow` de un
+ancestro -- nunca se había verificado con un `boundingBox()` real si el
+popover completo caía dentro del viewport visible.
+
+**Fix**: nuevo componente `RailPopover` (`CanvasEditorV2.jsx`) que saca el
+popover del flujo normal del rail vía un Portal de React (`createPortal`) a
+`document.body`, posicionándolo con `position: fixed` y coordenadas
+calculadas en tiempo de ejecución a partir del `getBoundingClientRect()` del
+botón que lo abrió -- en dos pasadas: (1) al abrir, se coloca pegado al
+borde derecho del botón; (2) tras el primer render (`useLayoutEffect`, que
+corre después de que el DOM ya está pintado), mide su propio tamaño real y
+se reacomoda si se sale del viewport -- lo voltea a la izquierda del botón
+si no cabe a la derecha, y lo pega al borde inferior/superior del viewport
+si no cabe verticalmente. También se reubica en `resize`/`scroll` mientras
+está abierto. Se aplicó a los 5 popovers del rail que compartían el patrón
+recortado: YouTube, Vimeo, SoundCloud, Plugins (shortcodes) y Library. CSS
+de `.editor-v2-plugins-menu` simplificado (ya no lleva `position`/`top`/
+`left`, eso ahora lo controla `RailPopover` vía estilo inline).
+
+**Verificación**: nuevo `frontend/tests/verify_lote_ux8_rail_popover_visibility.js`
+-- a diferencia de los tests anteriores, verifica con `boundingBox()` REAL
+del navegador que cada uno de los 5 popovers cae COMPLETAMENTE dentro del
+viewport (en una ventana angosta de 1024×700 a propósito, el escenario más
+exigente), y que YouTube sigue insertando embeds correctamente tras el
+cambio de posicionamiento. Tras el fix, se re-ejecutó TODA la suite de
+regresión existente (15 scripts en total): todos pasan limpio, sin errores
+de consola, sin regresiones -- en particular los tests que interactúan con
+Plugins/Library/embeds (Lotes 2, 5, 6, 7) siguen funcionando exactamente
+igual, confirmando que el fix es puramente de posicionamiento visual y no
+tocó ninguna lógica funcional.
+
+Commits en `redesign/editor-v2` (raspi-2, pusheados): `b33c992` (fix del
+posicionamiento de popovers del rail). ia-lavatur resincronizado con
+`git pull --ff-only`.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
