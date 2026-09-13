@@ -996,6 +996,88 @@ real), `25b6129` (test Lote UX-3 parte 2). ia-lavatur resincronizado con
 copias sin trackear de scripts de test creados directamente ahi durante
 la verificacion).
 
+## 9g. Lote UX-6 -- edicion inline de texto + miniatura de portada sin recortar (13-sep-2026)
+
+Segunda ronda de feedback de Carlos sobre el shell ya funcional (tras
+verificar los Lotes UX-1/UX-3, ver seccion 9f), otra vez con capturas
+reales: (1) la miniatura de portada en "Publicaciones" mostraba un
+recorte de la imagen en vez de la pagina completa "en tamaño mini" como
+en una de las fichas de referencia que compartio; (2) al editar un texto
+en el editor aparecia una ventana nativa del navegador (window.prompt),
+y preguntó explicitamente si esa era la mejor opcion o si se podia editar
+"en el mismo elemento" (adjunto una captura de otra plataforma con edicion
+inline).
+
+**Miniatura sin recortar**: `.card-header img` usaba `object-fit: cover`
+dentro de una caja de altura fija (200px) mas ancha que alta -- en una
+portada vertical (A4 retrato) eso recorta la parte de arriba/abajo de la
+imagen. Cambiado a `object-fit: contain` (+ `background: #f5f5f7` para la
+franja neutra que queda a los lados cuando la proporcion no coincide) --
+ahora se ve la portada COMPLETA en miniatura, igual que una revista real
+en pequeño.
+
+**Edicion inline de texto (reemplaza `window.prompt()`)**: doble clic
+sobre un texto ya no abre un dialogo nativo -- oculta el nodo de Konva y
+superpone un `<textarea>` HTML posicionado exactamente encima, siguiendo
+el patron oficial de la propia libreria ("Editable Text" de Konva, no una
+libreria de terceros). El calculo de posicion usa
+`node.getAbsolutePosition()`, que YA incluye el scale del Stage (el zoom
+fit-to-screen del Lote UX-3) -- no hace falta multiplicarlo de nuevo --
+mas el `getBoundingClientRect()` del contenedor del Stage correcto
+(funciona igual para el lado izquierdo o derecho de un spread, cada uno
+con su propio contenedor). Ancho/alto/tamaño de fuente del textarea SI se
+multiplican por `stage.scaleX()` porque esos son valores propios del nodo
+en coordenadas de pagina sin escalar. Enter confirma el cambio, Escape
+cancela, y un clic fuera del textarea tambien confirma (evita perder el
+cambio por descuido). Sigue editando la PLANTILLA con shortcodes sin
+resolver (p.ej. `{{fecha}}`), nunca el valor ya resuelto que se ve en el
+canvas -- mismo criterio que tenia el prompt() original.
+
+**Hallazgo importante durante la verificacion -- bug de TEST, no de
+producto**: al re-ejecutar toda la suite de regresion,
+`verify_lote6_soundcloud_quickactions.js` y `verify_lote1_visual.js`
+fallaron en sus aserciones de arrastre con mouse real. La causa: esas
+aserciones asumian una relacion 1:1 entre pixeles de pantalla y
+coordenadas de pagina (guardadas en mm×3), valida solo cuando el zoom
+fit-to-screen del Lote UX-3 no reduce el canvas (`fitScale === 1`). Con
+un canvas escalado hacia abajo para caber en pantalla, un arrastre de
+"60px en pantalla" corresponde a un desplazamiento MAYOR en coordenadas
+de pagina (÷scale) -- el arrastre en la app en si SIEMPRE funciono
+correctamente (Konva ya transforma la posicion del puntero usando el
+propio scale del Stage, que es justamente la razon documentada en la
+seccion 9f para aplicar el scale via las props nativas de Konva y nunca
+via CSS `transform`), pero las aserciones de los tests comparaban mal.
+Corregido calculando el scale real (`stageBox.width / anchoNativoDePagina`)
+y comparando siempre en espacio de PANTALLA (multiplicando el delta
+guardado por ese scale) en vez de comparar unidades de pagina contra
+pixeles de arrastre fijos; en `verify_lote1_visual.js` ademas se alejaron
+las posiciones de las 3 formas de prueba del borde derecho de la pagina,
+que con el canvas reducido dejaban al marquee-select sin margen real para
+cubrir la ultima forma de forma confiable. **Leccion para el futuro**:
+cualquier test Playwright nuevo que calcule una posicion de clic/arrastre
+a partir de `el.x`/`el.y`/`el.width`/`el.height` del store debe multiplicar
+por `stageBox.width / (page_width_mm * 3)` para convertir a espacio de
+pantalla -- NUNCA asumir que 1px de pantalla equivale a 1 unidad de pagina,
+desde que existe el zoom fit-to-screen.
+
+**Verificacion**: nuevo `frontend/tests/verify_lote_ux6_thumbnail_inline_text.js`
+(miniatura con `object-fit: contain`, textarea inline sin dialogo nativo,
+Enter confirma y persiste tras guardar+recargar, Escape cancela sin
+aplicar el cambio). Tras corregir los 2 tests con el bug de scale
+descrito arriba, TODA la suite de regresion existente
+(`e2e_editor_v2_regression.js`, `verify_lote1.js`, `verify_lote1_visual.js`,
+`verify_lote2_shortcodes.js`, `verify_lote3_audio.js`,
+`verify_lote4_gallery.js`, `verify_lote5_embed.js`,
+`verify_lote6_soundcloud_quickactions.js`, `verify_lote7_library_video.js`,
+`verify_spread_view.js`, `verify_lote_ux1_dashboard.js`,
+`verify_lote_ux3_thumbnails.js`, `verify_lote_ux3_fit_and_viewer.js`) se
+re-ejecuto completa: **todos pasan limpio, sin errores de consola, sin
+regresiones**.
+
+Commits en `redesign/editor-v2` (raspi-2, pusheados): `02a3147` (feat
+Lote UX-6 -- edicion inline + miniatura sin recortar + fix de los 2 tests
+de scale). ia-lavatur resincronizado con `git pull --ff-only`.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
