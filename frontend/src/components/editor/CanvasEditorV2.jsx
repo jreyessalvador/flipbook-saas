@@ -711,6 +711,15 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const [prevIndex, setPrevIndex] = useState(null);
   const [transitionAlpha, setTransitionAlpha] = useState(1); // 0=recien entrando, 1=transicion terminada
 
+  // Debug hook SOLO dev, mismo patron que window.__pageEditorStore -- deja
+  // inspeccionar desde Playwright que el slideshow rota solo dentro del
+  // editor sin depender de que las imagenes de prueba tengan colores
+  // distintos (ver verify_lote_ux11_gallery_live_editor.js).
+  if (import.meta.env.DEV) {
+    window.__gallerySlideDebug = window.__gallerySlideDebug || {};
+    window.__gallerySlideDebug[el.id] = { slideIndex, autoplay, canEdit };
+  }
+
   useEffect(() => {
     if (!autoplay || images.length <= 1) return undefined;
     const timer = setInterval(() => {
