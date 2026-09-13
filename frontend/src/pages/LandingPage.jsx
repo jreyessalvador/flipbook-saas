@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../services/AuthContext';
-import { buildAssetUrl } from '../utils/assetUtils';
+import { API_URL } from '../services/api';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -224,7 +224,7 @@ const LandingPage = () => {
                   }}>
                     {pub.cover_url ? (
                       <img
-                        src={buildAssetUrl(pub.cover_url)}
+                        src={pub.cover_url.startsWith('http') ? pub.cover_url : `${API_URL}${pub.cover_url}`}
                         alt={pub.title}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
