@@ -1,15 +1,53 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 
 from app.db.session import get_db
 from app.models.user import User
 from app.models.publication import Publication
 from app.models.page import Page
+from app.models.asset import Asset
 from app.schemas.publication import PublicationCreate, PublicationUpdate, PublicationResponse
 from app.api.auth import get_current_user
 
 router = APIRouter()
+
+
+@router.get("/stats/summary")
+def get_publications_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Resumen para el Dashboard (Lote UX-1) -- antes el Dashboard mostraba
+    0/0/0 MB fijos en el frontend, sin llamar a ningun endpoint. Todo se
+    calcula aqui con agregados de SQL (COUNT/SUM) filtrados por
+    current_user.tenant_id -- nunca se trae la lista completa a Python solo
+    para contarla/sumarla. Ruta declarada ANTES de GET /{publication_id}
+    para que FastAPI no intente interpretar 'stats' como un publication_id
+    (aunque al tener 2 segmentos de ruta no colisiona, se deja aqui arriba
+    por claridad).
+    """
+    tenant_id = current_user.tenant_id
+
+    total_publications = db.query(func.count(Publication.id))\
+        .filter(Publication.tenant_id == tenant_id)\
+        .scalar() or 0
+
+    total_views = db.query(func.coalesce(func.sum(Publication.views_count), 0))\
+        .filter(Publication.tenant_id == tenant_id)\
+        .scalar() or 0
+
+    storage_bytes = db.query(func.coalesce(func.sum(Asset.size_bytes), 0))\
+        .filter(Asset.tenant_id == tenant_id)\
+        .scalar() or 0
+
+    return {
+        "total_publications": int(total_publications),
+        "total_views": int(total_views),
+        "storage_bytes": int(storage_bytes),
+    }
 
 @router.post("/", response_model=PublicationResponse, status_code=status.HTTP_201_CREATED)
 def create_publication(

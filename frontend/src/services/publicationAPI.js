@@ -7,6 +7,14 @@ export const publicationAPI = {
     return response.data;
   },
 
+  // Resumen para el Dashboard (Lote UX-1): total de publicaciones, vistas
+  // acumuladas y almacenamiento usado (bytes) del tenant -- calculado en el
+  // backend con agregados SQL, no en el cliente.
+  statsSummary: async () => {
+    const response = await api.get('/api/publications/stats/summary');
+    return response.data;
+  },
+
   // Crear publicación
   create: async (data) => {
     const response = await api.post('/api/publications', data);
