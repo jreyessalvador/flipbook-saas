@@ -99,15 +99,15 @@ El repo ya traía `publications.orientation` (portrait/landscape) y `total_pages
 
 ---
 
-## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — `image`/`text`/`shape`/`audio`/`gallery`/`embed` con UI (Fases B-C, Lotes 1-6); `video`/`hotspot` modelados en BD, UI pendiente
+## 6. Especificación de cada tipo de elemento (`page_elements.kind`) — `image`/`text`/`shape`/`audio`/`gallery`/`embed`/`video` con UI (Fases B-C, Lotes 1-7); `hotspot` modelado en BD, UI pendiente
 
 **Shell de UI del editor (Fase B, 12-sep-2026)**: layout de dos paneles
 inspirado en Photoshop/Joomag (sin copiarlos), ver
 `frontend/src/components/editor/CanvasEditorV2.jsx`:
 - **Rail de herramientas (izquierda, iconos SVG propios)**: Seleccionar,
   Hotspot*, Texto, Línea, Rectángulo, Círculo, Estrella, Imagen, Galería,
-  GIF, Collage, YouTube, Vimeo, Audio, SoundCloud, Plugins (shortcodes
-  de texto), Library*, Blocks*.
+  GIF, Collage, YouTube, Vimeo, Audio, SoundCloud, Video, Plugins
+  (shortcodes de texto), Library, Blocks*.
 - **Panel de propiedades (derecha)**: Alinear y distribuir (8 operaciones,
   requiere selección múltiple -- funcional, Lote 1), Transformar (X/Y/
   ancho/alto/rotación -- funcional, conectado a `updateElement()`),
@@ -144,7 +144,7 @@ Todos los `kind` comparten `x, y, width, height, rotation_deg, z_index` (columna
 | `image` | `{ asset_id, alt_text, object_fit }` | `Konva.Image` con transformer | `<img>` o `Konva.Image` |
 | `text` | `{ content_html, font_family, font_size, color, align }` | `Konva.Text` + `<textarea>` overlay para edición | Texto estático |
 | `shape` | `{ shape_type: rect\|circle\|line, fill, stroke, stroke_width }` | `Konva.Rect`/`Circle`/`Line` | Igual, estático |
-| `video` | `{ asset_id, autoplay, loop, muted, poster_asset_id }` | `<video>` oculto + `Konva.Image` con `requestAnimationFrame` | Overlay `<video controls>` |
+| `video` | `{ src, autoplay, loop, muted }` (implementado Lote 7 así, no `asset_id`/`poster_asset_id`) | `VideoElement`: ícono fijo (Konva, mismo criterio que `audio`/`embed` -- Konva no reproduce video de forma confiable) + `<video controls>` de vista previa en el panel de propiedades | Overlay `<video>` real sincronizado (Fase E) |
 | `audio` | `{ src, autoplay, loop }` (implementado Lote 3 así, no `asset_id`) | Ícono fijo (Konva) + `<audio controls>` de vista previa en el panel de propiedades | Overlay `<audio>` real sincronizado (Fase E) |
 | `hotspot` | `{ action_type: link\|goto_page\|gallery\|form, target }` | Rectángulo semitransparente con ícono | Zona invisible clicable |
 | `gallery` | `{ images: [{ src }], layout: grid\|mosaic }` (Lote 4; Galería y Collage comparten este kind, solo difiere `layout`) | `GalleryElement`: miniaturas recortadas en cuadrícula o mosaico (`computeGalleryTiles`), panel de propiedades con miniaturas/quitar/agregar/toggle de layout | Igual, estático (Fase E podría agregar lightbox/carrusel) |

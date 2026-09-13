@@ -654,30 +654,135 @@ errores de consola, sin regresiones** -- en particular, el drag por
 defecto de elementos sin `props.locked` (Lote 1, spread view) sigue
 funcionando exactamente igual que antes.
 
+## 9e. Lote 7 -- Library (biblioteca de assets por tenant) + subida de video real (13-sep-2026)
+
+Carlos amplio explicitamente el alcance de este lote antes de empezarlo:
+"para el video tambien habria que considerar el tener una biblioteca que
+se va creando desde el ordenador, lo cual implica toda la logica de
+almacenamiento por tenant, porque muchos videos, audios, gif e imagenes se
+pueden reciclar en un mismo tenant". Preguntado explicitamente (AskUserQuestion)
+si el video debia soportar SOLO reutilizacion de enlaces de YouTube/Vimeo
+o TAMBIEN subida de archivo real, eligio **"Tambien permitir subir video
+real"** -- decision vinculante, ya implementada.
+
+**Backend -- catalogar cada subida en `assets`** (`backend/app/api/assets.py`):
+la tabla `assets` (modelo `backend/app/models/asset.py`) ya existia desde
+antes (tenant-scoped: `tenant_id`, `kind`, `storage_key`, `mime_type`,
+`size_bytes`, `created_by`, `created_at`) pero `POST /api/assets/upload`
+nunca escribia una fila ahi -- solo subia el binario a MinIO. Se agrego el
+`INSERT` (via SQLAlchemy `Asset(...)`) inmediatamente despues de la subida
+exitosa a MinIO, para las 3 categorias (imagen/audio/video). `width_px`,
+`height_px` y `duration_seconds` quedan en `None` por ahora -- extraer
+metadatos del archivo es una mejora futura opcional, no bloqueante.
+
+**Backend -- soporte de subida de VIDEO real**: `upload_asset()` ahora
+acepta `video/mp4`, `video/webm` y `video/quicktime`, validados contra un
+nuevo `MAX_VIDEO_SIZE` (100MB, `backend/app/config.py`) -- mismo patron
+que `MAX_IMAGE_SIZE`/`MAX_AUDIO_SIZE`, nunca se valida el tamano de un
+tipo contra el limite de otro. La tabla `page_elements` YA permitia
+`kind='video'` en su `CHECK CONSTRAINT` desde la Fase A (nunca se habia
+usado) -- este lote NO necesito ninguna migracion SQL nueva, a diferencia
+de los Lotes 4 y 5.
+
+**Backend -- nuevo `GET /api/assets`** (`?kind=image|video|audio`
+opcional): biblioteca de assets del TENANT del usuario autenticado (no
+solo del usuario, a diferencia del legado `GET /api/assets/list` que lista
+objetos de MinIO por usuario desde el editor v1) -- cualquier asset subido
+por cualquier usuario del mismo tenant puede reciclarse. Sin paginacion en
+este MVP (limite fijo de 100, mas reciente primero); si el volumen crece
+lo suficiente para que haga falta, se agrega cursor/paginacion despues.
+
+**Frontend -- boton "Video" en el rail**: sube un archivo real via
+`assetAPI.upload()` con validacion de tipo del lado cliente (mismo patron
+que Audio/GIF -- alert claro, sin llamar a la API, si el archivo no es un
+tipo de video reconocido) y crea `kind='video'` con
+`props={src, autoplay: false, loop: false, muted: false}`.
+
+**Frontend -- `VideoElement`**: placeholder en el canvas (`Group` con
+icono + etiqueta), mismo criterio que `AudioElement`/`EmbedElement` --
+Konva no puede reproducir video de forma confiable entre navegadores, la
+reproduccion real queda para el Reader (Fase E).
+
+**Frontend -- panel de propiedades, seccion "Video"**: `<video controls>`
+nativo (vista previa de ESCUCHA/VISTA para validar el archivo subido, no
+la reproduccion real del Reader) + 3 checkboxes (autoplay/loop/muted) que
+escriben en `props`.
+
+**Frontend -- "Library" (el corazon de este lote)**: el boton de rail deja
+de ser placeholder. Popover (`.editor-v2-library-menu`) que consulta
+`GET /api/assets`, con pestanas de filtro por tipo (Todos/Imagen/Video/
+Audio), miniaturas reales para imagenes y icono+etiqueta para audio/video,
+y al hacer click INSERTA el elemento correspondiente reutilizando la URL
+ya existente -- **sin volver a llamar a `/api/assets/upload`**. Inserta
+siempre en la pagina ENFOCADA del spread (mismo `focusedSide`/store hook
+que usa el resto del rail desde la ronda 11), para respetar la arquitectura
+de dos stores independientes del spread.
+
+**Fuera de alcance, deliberado**: "Blocks" (guardar/reutilizar un bloque de
+plantilla con uno o varios elementos) sigue como placeholder sin cambios
+-- Carlos definio el alcance de este lote solo para Library de assets
+(imagen/audio/video/GIF), no para plantillas de pagina. Queda como lote
+futuro si lo pide.
+
+**Verificacion**: nuevo `frontend/tests/verify_lote7_library_video.js`
+(Playwright real contra ia-lavatur) cubre: rechazo de tipo invalido en el
+boton Video (alert, sin llamar a la API), subida real de un webm VP8
+decodificable (fixture generado con el ffmpeg bundleado de Playwright,
+ver comentario en el propio script), Library mostrando imagen+video
+recien subidos, insercion desde la Library reutilizando la URL sin
+resubir, filtro por tipo, panel de propiedades del elemento video, y
+persistencia de todo tras guardar+recargar. Los 9 scripts de regresion
+existentes (`e2e_editor_v2_regression.js`, `verify_lote1*.js`,
+`verify_lote2_shortcodes.js`, `verify_lote3_audio.js`,
+`verify_lote4_gallery.js`, `verify_spread_view.js`, `verify_lote5_embed.js`,
+`verify_lote6_soundcloud_quickactions.js`) se re-ejecutaron uno por uno
+(nunca en paralelo, mismo criterio de siempre por la contencion del lock
+de edicion): **todos pasan limpio, sin errores de consola, sin
+regresiones**.
+
+**No se encontraron bugs reales en este lote** -- `page_elements` ya
+permitia `kind='video'` desde la Fase A, asi que no hubo sorpresas de
+`CHECK CONSTRAINT` como en los Lotes 4/5.
+
+Commits en `redesign/editor-v2` (todos en raspi-2, pusheados): `88b1590`
+(feat Lote 7 -- video real + Library), `2d09b7a` (test Lote 7). ia-lavatur
+resincronizado con `git pull` (misma limpieza de siempre de copias sin
+trackear de scripts/fixtures de test creados directamente ahi durante la
+verificacion).
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
-Seguir con el Lote 7 (Library + Blocks) siguiendo el mismo patrón:
-implementar, verificar con Playwright real contra `ia-lavatur`
-(screenshots incluidos cuando aplique), commitear+pushear desde `raspi-2`
-(única máquina con credenciales de git para este repo), sincronizar
-`ia-lavatur` con `git pull`, y solo entonces pasar al siguiente lote --
-sin pausar a pedir confirmación salvo que algo requiera de verdad la
-validación de Carlos. Library/Blocks va a necesitar tablas y endpoints
-nuevos (reutilización de assets/plantillas) -- pensar el alcance con
-Carlos si algo no está claro (por ejemplo: ¿un bloque de plantilla puede
-mezclar varios elementos, o es siempre uno solo? ¿Library es solo
-imágenes/assets ya subidos, o también plantillas completas de página?).
-Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
-ia-lavatur, releer el aviso de infraestructura de la sección 9 (Lote 3).
+Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
+shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
+SoundCloud+Quick Actions, y Library+video real), el unico placeholder que
+queda deliberadamente sin implementar en el rail es **"Guardar como bloque
+de plantilla" (Blocks)** -- explicitamente fuera de alcance del Lote 7 por
+decision propia (ver seccion 9e), a la espera de que Carlos lo pida y
+aclare el alcance (¿un bloque puede mezclar varios elementos o es siempre
+uno solo? ¿vive a nivel de tenant como la Library de assets?).
+
+Mientras tanto, seguir con la instruccion general de Carlos ("Adelante
+continua y que todo quede funcional") revisando si queda alguna otra
+categoria del rail o del panel de propiedades sin funcionalidad real
+(Hotspot es el candidato mas probable a revisar a continuacion) --
+implementar, verificar con Playwright real contra `ia-lavatur` (screenshots
+incluidos cuando aplique), commitear+pushear desde `raspi-2` (unica maquina
+con credenciales de git para este repo), sincronizar `ia-lavatur` con
+`git pull`, y solo entonces continuar -- sin pausar a pedir confirmacion
+salvo que algo requiera de verdad la validacion de Carlos.
+
 Si un lote nuevo agrega un `PageElementKind`, recordar el
-`CHECK CONSTRAINT` de la sección de Lote 4/5 -- hace falta una migración
+`CHECK CONSTRAINT` de la seccion de Lote 4/5 -- hace falta una migracion
 SQL (`ALTER TABLE ... DROP/ADD CONSTRAINT`) aplicada tanto en el repo
-(`0001_editor_v2.sql` para bases nuevas + un `000N_*.sql` nuevo para
-bases existentes) como en la base real de ia-lavatur, o el primer guardado
-de ese elemento fallará con 500. (El Lote 6 NO necesitó esto -- SoundCloud
-reutilizó `kind='embed'` y Quick Actions solo agregó campos dentro de
-`props`, que es JSONB libre.)
+(`0001_editor_v2.sql` para bases nuevas + un `000N_*.sql` nuevo para bases
+existentes) como en la base real de ia-lavatur, o el primer guardado de
+ese elemento fallara con 500. (El Lote 6 y el Lote 7 NO necesitaron esto
+-- SoundCloud reutilizo `kind='embed'` y video ya estaba permitido desde
+la Fase A.)
+
+Antes de tocar `docker-compose.dev.yml` o recrear contenedores en
+ia-lavatur, releer el aviso de infraestructura de la seccion 9 (Lote 3).
 
 Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
-vía script Playwright) el escenario de fuga portada→contraportada -- el
-test de backend por sí solo no prueba la UI.
+via script Playwright) el escenario de fuga portada->contraportada -- el
+test de backend por si solo no prueba la UI.
