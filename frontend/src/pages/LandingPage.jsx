@@ -65,7 +65,7 @@ const LandingPage = () => {
           <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--color-gold, #c9a24b), #e5c158)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#000' }}>
             📖
           </div>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Mantyx Flipbooks</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em' }}>CETRIX Flipbooks</span>
         </div>
 
         <nav style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
@@ -339,7 +339,7 @@ const LandingPage = () => {
 
       {/* Footer */}
       <footer style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        © 2026 Mantyx Flipbooks. Todos los derechos reservados.
+        © 2026 CETRIX Software. Todos los derechos reservados.
       </footer>
 
       {/* Modal de Login B2B */}
@@ -384,7 +384,7 @@ const LandingPage = () => {
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', textAlign: 'center' }}>Acceso a Plataforma</h2>
             <p style={{ fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center', marginBottom: '1.5rem' }}>
-              Ingresa tus credenciales B2B provistas por Mantyx
+              Ingresa tus credenciales B2B provistas por CETRIX
             </p>
 
             {loginError && (
