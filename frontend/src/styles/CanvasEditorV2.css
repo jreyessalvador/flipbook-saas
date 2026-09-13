@@ -722,3 +722,97 @@
   height: 30px;
   color: #6b7280;
 }
+
+
+/* Lote UX-9/UX-10 (13-sep-2026): controles del slideshow real de galería
+   en el visor público (botones prev/next, dots, leyenda) + modal
+   "Propiedades de la galería" en el panel de edición. */
+.editor-v2-gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border: 0;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.editor-v2-gallery-nav-prev { left: 6px; }
+.editor-v2-gallery-nav-next { right: 6px; }
+.editor-v2-gallery-dots {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.editor-v2-gallery-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+.editor-v2-gallery-dot.active { background: #ffffff; }
+
+.editor-v2-gallery-configure { margin-top: 6px; }
+
+.editor-v2-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor-v2-modal-gallery {
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+.editor-v2-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.editor-v2-modal-header h3 { margin: 0; font-size: 15px; }
+.editor-v2-modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+}
+.editor-v2-modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.editor-v2-modal-actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.editor-v2-modal-library { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; max-height: 160px; overflow-y: auto; }
+.editor-v2-modal-image-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+.editor-v2-modal-image-row { display: flex; align-items: center; gap: 8px; }
+.editor-v2-modal-image-row img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.editor-v2-modal-image-fields { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.editor-v2-modal-image-fields input { font-size: 12px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; }
+.editor-v2-modal-checkboxes { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.editor-v2-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #e5e7eb;
+}

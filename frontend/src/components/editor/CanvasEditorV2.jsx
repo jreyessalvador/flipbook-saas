@@ -201,6 +201,153 @@ function RailPopover({ anchorRef, className, children }) {
   );
 }
 
+
+// Lote UX-10 (13-sep-2026): modal "Propiedades de la galería", inspirado
+// en el modal de referencia que usa Carlos habitualmente (Upload/
+// "Seleccionar de biblioteca", lista de imágenes con Título/Descripción,
+// modo de imagen, efecto de transición, activar leyendas/controles/
+// autoplay, duración de transición). Cambios en STAGING local (useState)
+// -- solo se aplican al elemento real via onSave() al presionar
+// "Actualizar"; "Cancelar" descarta todo. Reutiliza el mismo <RailPopover>
+// -- no, este es un modal centrado (no un popover de rail) -- via
+// createPortal directo a document.body con backdrop propio.
+function GalleryModal({ el, onClose, onSave, libraryImages, libraryLoading, onUploadFiles }) {
+  const [images, setImages] = useState(() =>
+    (el.props?.images || []).map((img) => ({ src: img.src, title: img.title || '', description: img.description || '' })),
+  );
+  const [imageMode, setImageMode] = useState(el.props?.image_mode || 'crop');
+  const [transitionEffect, setTransitionEffect] = useState(el.props?.transition_effect || 'fade');
+  const [captionsEnabled, setCaptionsEnabled] = useState(!!el.props?.captions_enabled);
+  const [controlsEnabled, setControlsEnabled] = useState(el.props?.controls_enabled !== false);
+  const [autoplay, setAutoplay] = useState(el.props?.autoplay !== false);
+  const [transitionDuration, setTransitionDuration] = useState(el.props?.transition_duration ?? 3);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef(null);
+
+  const updateImageField = (i, field, value) =>
+    setImages((prev) => prev.map((img, idx) => (idx === i ? { ...img, [field]: value } : img)));
+  const removeImage = (i) => setImages((prev) => prev.filter((_, idx) => idx !== i));
+  const addImagesFromUrls = (urls) => setImages((prev) => [...prev, ...urls.map((src) => ({ src, title: '', description: '' }))]);
+
+  const handleUploadChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    setUploading(true);
+    try {
+      const urls = await onUploadFiles(files);
+      if (urls.length > 0) addImagesFromUrls(urls);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUpdate = () => {
+    onSave({
+      images,
+      image_mode: imageMode,
+      transition_effect: transitionEffect,
+      captions_enabled: captionsEnabled,
+      controls_enabled: controlsEnabled,
+      autoplay,
+      transition_duration: Math.max(0.5, Number(transitionDuration) || 3),
+    });
+  };
+
+  return createPortal(
+    <div className="editor-v2-modal-backdrop" onMouseDown={onClose}>
+      <div className="editor-v2-modal-gallery" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="editor-v2-modal-header">
+          <h3>Propiedades de la galería</h3>
+          <button type="button" className="editor-v2-modal-close" onClick={onClose} aria-label="Cerrar">×</button>
+        </div>
+        <div className="editor-v2-modal-body">
+          <div className="editor-v2-modal-actions-row">
+            <button type="button" className="editor-v2-quickaction" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>
+              {uploading ? 'Subiendo…' : 'Subir imágenes'}
+            </button>
+            <input type="file" accept="image/*" multiple ref={uploadInputRef} style={{ display: 'none' }} onChange={handleUploadChange} />
+            <button type="button" className="editor-v2-quickaction" onClick={() => setShowLibrary((v) => !v)}>
+              {showLibrary ? 'Ocultar biblioteca' : 'Seleccionar de biblioteca'}
+            </button>
+          </div>
+          {showLibrary && (
+            <div className="editor-v2-modal-library">
+              {libraryLoading && <p className="editor-v2-props-hint">Cargando biblioteca…</p>}
+              {!libraryLoading && libraryImages.length === 0 && (
+                <p className="editor-v2-props-hint">No hay imágenes en la biblioteca de este tenant todavía.</p>
+              )}
+              {!libraryLoading && libraryImages.length > 0 && (
+                <ul className="editor-v2-library-grid">
+                  {libraryImages.map((asset) => (
+                    <li key={asset.id}>
+                      <button
+                        type="button"
+                        className="editor-v2-library-item"
+                        title="Agregar a la galería"
+                        onClick={() => addImagesFromUrls([asset.url])}
+                      >
+                        <img src={asset.url?.startsWith('http') ? asset.url : `${API_URL}${asset.url}`} alt="" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <ul className="editor-v2-modal-image-list">
+            {images.map((img, i) => (
+              <li key={`${img.src}-${i}`} className="editor-v2-modal-image-row">
+                <img src={img.src?.startsWith('http') ? img.src : `${API_URL}${img.src}`} alt="" />
+                <div className="editor-v2-modal-image-fields">
+                  <input type="text" placeholder="Título" value={img.title} onChange={(e) => updateImageField(i, 'title', e.target.value)} />
+                  <input type="text" placeholder="Descripción" value={img.description} onChange={(e) => updateImageField(i, 'description', e.target.value)} />
+                </div>
+                <button type="button" className="editor-v2-gallery-thumb-remove" title="Quitar" onClick={() => removeImage(i)}>×</button>
+              </li>
+            ))}
+            {images.length === 0 && <p className="editor-v2-props-hint">Sin imágenes -- sube o selecciona de la biblioteca.</p>}
+          </ul>
+
+          <div className="editor-v2-field-grid">
+            <label className="editor-v2-field">
+              <span>Modo de imagen</span>
+              <select value={imageMode} onChange={(e) => setImageMode(e.target.value)}>
+                <option value="crop">Recortar</option>
+                <option value="fit">Ajustar</option>
+              </select>
+            </label>
+            <label className="editor-v2-field">
+              <span>Efecto de transición</span>
+              <select value={transitionEffect} onChange={(e) => setTransitionEffect(e.target.value)}>
+                <option value="fade">Fundido</option>
+                <option value="slide">Deslizar</option>
+                <option value="none">Ninguno</option>
+              </select>
+            </label>
+            <label className="editor-v2-field">
+              <span>Duración de transición (s)</span>
+              <input type="number" min="0.5" step="0.5" value={transitionDuration} onChange={(e) => setTransitionDuration(e.target.value)} />
+            </label>
+          </div>
+          <div className="editor-v2-modal-checkboxes">
+            <label><input type="checkbox" checked={captionsEnabled} onChange={(e) => setCaptionsEnabled(e.target.checked)} /> Activar leyendas</label>
+            <label><input type="checkbox" checked={controlsEnabled} onChange={(e) => setControlsEnabled(e.target.checked)} /> Activar controles</label>
+            <label><input type="checkbox" checked={autoplay} onChange={(e) => setAutoplay(e.target.checked)} /> Reproducción automática</label>
+          </div>
+        </div>
+        <div className="editor-v2-modal-footer">
+          <button type="button" className="editor-v2-tool" onClick={onClose}>Cancelar</button>
+          <button type="button" className="editor-v2-save" onClick={handleUpdate}>Actualizar</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function useHtmlImage(src) {
   const [image, setImage] = useState(null);
   useEffect(() => {
@@ -439,6 +586,109 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const images = el.props?.images || [];
   const layout = el.props?.layout || 'grid';
   const tiles = computeGalleryTiles(layout, images.length, el.width, el.height);
+
+  // Lote UX-10 (13-sep-2026, pedido explicito de Carlos: la galeria debe
+  // comportarse como un slideshow real -- imagenes rotando una a la vez
+  // con efecto de transicion, controles y autoplay, como en la plataforma
+  // de referencia que usa habitualmente -- ver "Propiedades de la
+  // galería" en el panel derecho). Mismo criterio que Audio/Video/Embed
+  // (Lote UX-7/UX-9): Konva no puede animar una transicion CSS entre
+  // imagenes ni un setInterval de forma practica dentro del canvas -- en
+  // modo LECTURA (visor publico) se reemplaza el grid/mosaico ESTATICO
+  // (que sigue siendo la vista de EDICION, sin cambios) por un slideshow
+  // real en HTML puro via <Html> de react-konva-utils.
+  const [slideIndex, setSlideIndex] = useState(0);
+  const autoplay = el.props?.autoplay !== false;
+  const duration = Math.max(0.5, Number(el.props?.transition_duration) || 3);
+  const transitionEffect = el.props?.transition_effect || 'fade';
+  const controlsEnabled = el.props?.controls_enabled !== false;
+  const captionsEnabled = !!el.props?.captions_enabled;
+  const imageMode = el.props?.image_mode || 'crop';
+
+  useEffect(() => {
+    if (canEdit || !autoplay || images.length <= 1) return undefined;
+    const timer = setInterval(() => {
+      setSlideIndex((i) => (i + 1) % images.length);
+    }, duration * 1000);
+    return () => clearInterval(timer);
+  }, [canEdit, autoplay, duration, images.length]);
+
+  useEffect(() => {
+    if (slideIndex >= images.length) setSlideIndex(0);
+  }, [images.length, slideIndex]);
+
+  if (!canEdit) {
+    if (images.length === 0) return null;
+    const safeIndex = slideIndex < images.length ? slideIndex : 0;
+    const current = images[safeIndex];
+    return (
+      <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
+        <div style={{ position: 'relative', width: el.width, height: el.height, overflow: 'hidden', background: '#000', borderRadius: 4 }}>
+          {images.map((img, i) => {
+            const src = img.src?.startsWith('http') ? img.src : `${API_URL}${img.src}`;
+            const isActive = i === safeIndex;
+            const style = {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: imageMode === 'fit' ? 'contain' : 'cover',
+              opacity: isActive ? 1 : 0,
+              zIndex: isActive ? 2 : 1,
+              transition:
+                transitionEffect === 'none'
+                  ? 'none'
+                  : transitionEffect === 'slide'
+                  ? 'transform 0.6s ease, opacity 0.6s ease'
+                  : 'opacity 0.6s ease',
+              transform: transitionEffect === 'slide' ? `translateX(${(i - safeIndex) * 100}%)` : 'none',
+            };
+            return <img key={`${img.src}-${i}`} src={src} alt={img.title || ''} style={style} />;
+          })}
+          {captionsEnabled && (current.title || current.description) && (
+            <div
+              className="editor-v2-gallery-caption"
+              style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '6px 10px', fontSize: 12 }}
+            >
+              {current.title && <strong style={{ display: 'block' }}>{current.title}</strong>}
+              {current.description && <span>{current.description}</span>}
+            </div>
+          )}
+          {controlsEnabled && images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="editor-v2-gallery-nav editor-v2-gallery-nav-prev"
+                aria-label="Imagen anterior"
+                onClick={() => setSlideIndex((i) => (i - 1 + images.length) % images.length)}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="editor-v2-gallery-nav editor-v2-gallery-nav-next"
+                aria-label="Imagen siguiente"
+                onClick={() => setSlideIndex((i) => (i + 1) % images.length)}
+              >
+                ›
+              </button>
+              <div className="editor-v2-gallery-dots">
+                {images.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`editor-v2-gallery-dot ${i === safeIndex ? 'active' : ''}`}
+                    onClick={() => setSlideIndex(i)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </Html>
+    );
+  }
+
   return (
     <Group
       ref={shapeRef}
@@ -556,9 +806,41 @@ const EMBED_PROVIDER_META = {
   soundcloud: { accent: '#ff5500', label: 'SoundCloud' },
 };
 
+// Lote UX-9 (13-sep-2026, reportado por Carlos con captura: "no se
+// muestra la miniatura" del embed de YouTube en el visor publico).
+// Mismo criterio que Audio/Video (Lote UX-7): en modo LECTURA se
+// reemplaza el placeholder de Konva por un <iframe> real embebido del
+// proveedor -- el iframe trae su PROPIA miniatura/thumbnail nativa (la
+// del video real) sin que nosotros tengamos que descargar/cachear
+// ninguna imagen aparte.
+const EMBED_IFRAME_SRC = {
+  youtube: (videoId) => `https://www.youtube-nocookie.com/embed/${videoId}`,
+  vimeo: (videoId) => `https://player.vimeo.com/video/${videoId}`,
+  soundcloud: (path) =>
+    `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com/${path}`)}&color=%23ff5500&auto_play=false&show_comments=false&visual=false`,
+};
+
 function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const provider = EMBED_PROVIDER_META[el.props?.provider] ? el.props.provider : 'youtube';
   const { accent, label } = EMBED_PROVIDER_META[provider];
+
+  if (!canEdit && el.props?.video_id) {
+    const iframeSrc = EMBED_IFRAME_SRC[provider]?.(el.props.video_id);
+    if (iframeSrc) {
+      return (
+        <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
+          <iframe
+            src={iframeSrc}
+            title={label}
+            style={{ width: el.width, height: el.height, border: 0, borderRadius: 8, background: '#000' }}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </Html>
+      );
+    }
+  }
+
   return (
     <Group
       ref={shapeRef}
@@ -873,7 +1155,7 @@ const ANIMATION_OPTIONS = [
   { value: 'zoom', label: 'Zoom' },
 ];
 
-function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onReorder }) {
+function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onOpenGalleryModal, onReorder }) {
   const count = selectedElements.length;
   const selectedElement = count === 1 ? selectedElements[0] : null;
   const disabled = !canEdit || !selectedElement;
@@ -1092,6 +1374,15 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 onClick={onAppendImagesClick}
               >
                 Agregar imágenes
+              </button>
+              <button
+                type="button"
+                className="editor-v2-quickaction editor-v2-gallery-configure"
+                disabled={disabled}
+                onClick={onOpenGalleryModal}
+                title="Título/descripción por imagen, biblioteca, modo de imagen, transición, autoplay y controles"
+              >
+                ⚙ Configurar galería
               </button>
             </section>
           )}
@@ -1708,6 +1999,27 @@ export default function CanvasEditorV2() {
   const handleUploadGifClick = () => gifInputRef.current?.click();
   const handleUploadGalleryAppendClick = () => galleryAppendInputRef.current?.click();
 
+  // Lote UX-10: estado del modal "Propiedades de la galería" -- solo tiene
+  // sentido con exactamente un elemento kind='gallery' seleccionado (mismo
+  // criterio que handleAppendGalleryImages más abajo).
+  const [galleryModalOpen, setGalleryModalOpen] = useState(false);
+  const handleOpenGalleryModal = () => {
+    const onlyGallerySelected = selectedElements.length === 1 && selectedElements[0].kind === 'gallery';
+    if (!onlyGallerySelected) return;
+    fetchLibraryAssets('image');
+    setGalleryModalOpen(true);
+  };
+  const handleSaveGalleryModal = (patch) => {
+    const onlyGallerySelected = selectedElements.length === 1 && selectedElements[0].kind === 'gallery';
+    if (!onlyGallerySelected) {
+      setGalleryModalOpen(false);
+      return;
+    }
+    const el = selectedElements[0];
+    focusedStoreHook.getState().updateElement(el.id, { props: { ...el.props, ...patch } });
+    setGalleryModalOpen(false);
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -2296,9 +2608,20 @@ export default function CanvasEditorV2() {
           onUpdate={(patch) => selectedElements.length === 1 && focusedStoreHook.getState().updateElement(selectedElements[0].id, patch)}
           onAlign={handleAlign}
           onAppendImagesClick={handleUploadGalleryAppendClick}
+          onOpenGalleryModal={handleOpenGalleryModal}
           onReorder={(direction) => selectedElements.length === 1 && focusedStoreHook.getState().reorderElement(selectedElements[0].id, direction)}
         />
       </div>
+      {galleryModalOpen && selectedElements.length === 1 && selectedElements[0].kind === 'gallery' && (
+        <GalleryModal
+          el={selectedElements[0]}
+          onClose={() => setGalleryModalOpen(false)}
+          onSave={handleSaveGalleryModal}
+          libraryImages={libraryAssets.filter((a) => a.kind === 'image')}
+          libraryLoading={libraryLoading}
+          onUploadFiles={uploadFilesSequentially}
+        />
+      )}
     </div>
   );
 }
