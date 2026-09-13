@@ -126,18 +126,26 @@ const OUT_DIR = __dirname;
 
   console.log('9) verificar que sin "locked", el rectangulo SIGUE siendo arrastrable por defecto (props.locked===undefined)');
   const stageBox = await page.locator('.editor-v2-stage').boundingBox();
+  // El editor aplica zoom fit-to-screen (Lote UX-3, Konva Stage
+  // scaleX/scaleY) -- stageBox.width en pantalla ya no es 1:1 con las
+  // coordenadas de pagina (mm*3) que guarda el store, asi que hay que
+  // calcular el scale real para convertir entre ambos espacios, tanto al
+  // apuntar el mouse sobre el elemento como al verificar el delta
+  // arrastrado (comparando siempre en espacio de PANTALLA, multiplicando
+  // por `scale`, nunca comparando unidades de pagina contra pixeles fijos).
+  const scale = stageBox.width / (210 * 3); // publicacion creada como A4 portrait (210mm de ancho) mas arriba
   let before = await page.evaluate((id) => window.__pageEditorStore.elements.find((e) => e.id === id), shapeId);
   if (before.props?.locked !== undefined) throw new Error('Se esperaba props.locked undefined por defecto en un elemento nuevo');
-  let shapeScreenX = stageBox.x + before.x + before.width / 2;
-  let shapeScreenY = stageBox.y + before.y + before.height / 2;
+  let shapeScreenX = stageBox.x + (before.x + before.width / 2) * scale;
+  let shapeScreenY = stageBox.y + (before.y + before.height / 2) * scale;
   await page.mouse.move(shapeScreenX, shapeScreenY);
   await page.mouse.down();
   await page.mouse.move(shapeScreenX + 60, shapeScreenY + 30, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(200);
   let after = await page.evaluate((id) => window.__pageEditorStore.elements.find((e) => e.id === id), shapeId);
-  if (Math.abs(after.x - before.x - 60) > 5 || Math.abs(after.y - before.y - 30) > 5) {
-    throw new Error(`Sin locked, el arrastre deberia funcionar (comportamiento por defecto): antes ${JSON.stringify(before)} despues ${JSON.stringify(after)}`);
+  if (Math.abs((after.x - before.x) * scale - 60) > 5 || Math.abs((after.y - before.y) * scale - 30) > 5) {
+    throw new Error(`Sin locked, el arrastre deberia funcionar (comportamiento por defecto): antes ${JSON.stringify(before)} despues ${JSON.stringify(after)} scale=${scale}`);
   }
   console.log('   OK: draggable=true por defecto (props.locked undefined no se trata como bloqueado)');
 
@@ -150,8 +158,8 @@ const OUT_DIR = __dirname;
   console.log('   OK: props.locked === true');
 
   before = shapeState;
-  shapeScreenX = stageBox.x + before.x + before.width / 2;
-  shapeScreenY = stageBox.y + before.y + before.height / 2;
+  shapeScreenX = stageBox.x + (before.x + before.width / 2) * scale;
+  shapeScreenY = stageBox.y + (before.y + before.height / 2) * scale;
   await page.mouse.move(shapeScreenX, shapeScreenY);
   await page.mouse.down();
   await page.mouse.move(shapeScreenX + 60, shapeScreenY + 30, { steps: 8 });
@@ -176,16 +184,16 @@ const OUT_DIR = __dirname;
   shapeState = await page.evaluate((id) => window.__pageEditorStore.elements.find((e) => e.id === id), shapeId);
   if (shapeState.props?.locked !== false) throw new Error(`props.locked no quedo en false: ${JSON.stringify(shapeState.props)}`);
   before = shapeState;
-  shapeScreenX = stageBox.x + before.x + before.width / 2;
-  shapeScreenY = stageBox.y + before.y + before.height / 2;
+  shapeScreenX = stageBox.x + (before.x + before.width / 2) * scale;
+  shapeScreenY = stageBox.y + (before.y + before.height / 2) * scale;
   await page.mouse.move(shapeScreenX, shapeScreenY);
   await page.mouse.down();
   await page.mouse.move(shapeScreenX + 40, shapeScreenY + 20, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(200);
   after = await page.evaluate((id) => window.__pageEditorStore.elements.find((e) => e.id === id), shapeId);
-  if (Math.abs(after.x - before.x - 40) > 5 || Math.abs(after.y - before.y - 20) > 5) {
-    throw new Error(`Tras desbloquear, el arrastre deberia volver a funcionar: antes ${JSON.stringify(before)} despues ${JSON.stringify(after)}`);
+  if (Math.abs((after.x - before.x) * scale - 40) > 5 || Math.abs((after.y - before.y) * scale - 20) > 5) {
+    throw new Error(`Tras desbloquear, el arrastre deberia volver a funcionar: antes ${JSON.stringify(before)} despues ${JSON.stringify(after)} scale=${scale}`);
   }
   console.log('   OK: desbloqueado -- el arrastre vuelve a funcionar');
 

@@ -569,21 +569,100 @@ function resolveShortcodes(text, ctx) {
   });
 }
 
-function TextElement({ el, canEdit, onSelect, onChange, shapeRef, shortcodeCtx }) {
+// Edicion INLINE de texto (Lote UX-6, 13-sep-2026): reemplaza el
+// window.prompt() original (deuda documentada desde Fase B) por un
+// <textarea> real superpuesto directamente sobre el elemento, al estilo
+// del propio Konva ("editable text" -- patron oficial de la libreria, ver
+// https://konvajs.org/docs/sandbox/Editable_Text.html), no una libreria de
+// terceros. El nodo de texto de Konva se oculta mientras se edita para no
+// duplicar el texto visualmente; el textarea se posiciona con
+// node.getAbsolutePosition() (ya incluye el propio scale del Stage --
+// fit-to-screen, ver CanvasEditorV2.css/PX_PER_MM -- asi que NO hay que
+// multiplicarlo de nuevo) + el bounding rect del contenedor del Stage
+// (funciona igual para el Stage izquierdo o derecho de un spread, cada uno
+// con su propio contenedor). Ancho/alto/tamaño de fuente SI se multiplican
+// por node.getStage().scaleX() porque esos son valores propios del nodo en
+// coordenadas de pagina sin escalar. Sigue editando la PLANTILLA con
+// shortcodes sin resolver (p.ej. "{{fecha}}"), no el valor ya resuelto que
+// se ve en el canvas -- mismo criterio que antes.
+function openInlineTextEditor(node, initialValue, { onCommit, onCancel }) {
+  const stage = node.getStage();
+  if (!stage) return;
+  const stageBox = stage.container().getBoundingClientRect();
+  const absPos = node.getAbsolutePosition(); // ya incluye el scale del Stage (fit-to-screen)
+  const scale = stage.scaleX() || 1;
+
+  node.hide();
+  stage.getLayer && stage.batchDraw && stage.batchDraw();
+
+  const textarea = document.createElement('textarea');
+  document.body.appendChild(textarea);
+  textarea.value = initialValue;
+  textarea.className = 'editor-v2-inline-text-editor';
+  textarea.style.position = 'fixed';
+  textarea.style.top = `${stageBox.top + absPos.y}px`;
+  textarea.style.left = `${stageBox.left + absPos.x}px`;
+  textarea.style.width = `${Math.max(node.width() * scale, 40)}px`;
+  textarea.style.height = `${Math.max(node.height() * scale, 24)}px`;
+  textarea.style.fontSize = `${(node.fontSize() || 24) * scale}px`;
+  textarea.style.color = node.fill() || '#111111';
+  textarea.style.transform = `rotate(${node.rotation() || 0}deg)`;
+  textarea.style.transformOrigin = 'left top';
+
+  let finished = false;
+  const finish = (commit) => {
+    if (finished) return;
+    finished = true;
+    document.removeEventListener('mousedown', handleOutsideClick, true);
+    if (textarea.parentNode) textarea.parentNode.removeChild(textarea);
+    node.show();
+    stage.batchDraw();
+    if (commit) onCommit(textarea.value);
+    else onCancel();
+  };
+
+  const handleOutsideClick = (e) => {
+    if (e.target !== textarea) finish(true);
+  };
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(false);
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter confirma (Shift+Enter inserta salto de linea) -- consistente
+      // con el patron de una sola linea que ya tenia el prompt() original;
+      // el shortcode puede seguir teniendo texto multilinea si se pega.
+      e.preventDefault();
+      finish(true);
+    }
+  });
+  // Se registra en la siguiente vuelta del event loop -- si no, el mismo
+  // dblclick que abre el editor dispara este listener de inmediato y lo
+  // cierra en el acto.
+  setTimeout(() => document.addEventListener('mousedown', handleOutsideClick, true), 0);
+
+  textarea.focus();
+  textarea.select();
+}
+
+function TextElement({ el, canEdit, onSelect, onChange, onEditStart, shapeRef, shortcodeCtx }) {
+  const nodeRef = useRef(null);
   const handleEdit = () => {
-    if (!canEdit) return;
-    // Edición de texto simplificada para el MVP de Fase B -- ver
-    // RECETA-DESARROLLO.md: un editor inline (contentEditable superpuesto al
-    // canvas) queda como refinamiento posterior, no bloqueante. Se edita la
-    // PLANTILLA con shortcodes sin resolver (p.ej. "{{fecha}}"), no el valor
-    // ya resuelto que se ve en el canvas.
-    const next = window.prompt('Editar texto (admite shortcodes {{fecha}}, {{numero_pagina}}, {{total_paginas}}, {{titulo_publicacion}}):', el.props?.text || '');
-    if (next !== null) onChange({ props: { ...el.props, text: next } });
+    if (!canEdit || !nodeRef.current) return;
+    onEditStart?.(); // deselecciona el elemento -- oculta el Transformer mientras se edita
+    openInlineTextEditor(nodeRef.current, el.props?.text || '', {
+      onCommit: (next) => onChange({ props: { ...el.props, text: next } }),
+      onCancel: () => {},
+    });
   };
   const displayText = resolveShortcodes(el.props?.text || 'Texto', shortcodeCtx || {});
   return (
     <KonvaText
-      ref={shapeRef}
+      ref={(node) => {
+        nodeRef.current = node;
+        if (typeof shapeRef === 'function') shapeRef(node);
+        else if (shapeRef) shapeRef.current = node;
+      }}
       x={el.x}
       y={el.y}
       width={el.width}
@@ -1176,6 +1255,10 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
               if (canEdit) useStoreHook.getState().selectElement(el.id, { additive: e?.evt?.shiftKey });
             },
             onChange: (patch) => canEdit && useStoreHook.getState().updateElement(el.id, patch),
+            // Solo TextElement lo usa (Lote UX-6): deselecciona al entrar en
+            // edicion inline para que el Transformer no quede dibujado
+            // encima del <textarea> superpuesto.
+            onEditStart: () => useStoreHook.getState().selectElement(null),
             shapeRef: (node) => {
               shapeRefs.current[el.id] = node;
             },
@@ -1221,13 +1304,14 @@ export default function CanvasEditorV2() {
   const [pluginsMenuOpen, setPluginsMenuOpen] = useState(false);
 
   // Lote 5 (YouTube/Vimeo): popover propio para pegar la URL -- este
-  // proyecto no usa window.prompt/dialogs nativos para nada mas alla de la
-  // edicion de texto simplificada de TextElement (deuda anterior, no se
-  // toca aqui). embedMenuOpen indica cual de los dos botones de rail abrio
-  // el popover ('youtube' | 'vimeo' | null); el proveedor real que se
-  // guarda es siempre el que parseVideoUrl() detecta en la URL pegada, sin
-  // importar cual boton se uso para abrir el popover (ver parseVideoUrl y
-  // handleInsertEmbed mas abajo -- decision documentada en RECETA-DESARROLLO.md).
+  // proyecto ya no usa window.prompt/dialogs nativos para nada (la edicion
+  // de texto de TextElement paso a un <textarea> inline en el Lote UX-6,
+  // ver openInlineTextEditor() mas arriba). embedMenuOpen indica cual de
+  // los dos botones de rail abrio el popover ('youtube' | 'vimeo' | null);
+  // el proveedor real que se guarda es siempre el que parseVideoUrl()
+  // detecta en la URL pegada, sin importar cual boton se uso para abrir el
+  // popover (ver parseVideoUrl y handleInsertEmbed mas abajo -- decision
+  // documentada en RECETA-DESARROLLO.md).
   const [embedMenuOpen, setEmbedMenuOpen] = useState(null);
   const [embedUrlDraft, setEmbedUrlDraft] = useState('');
   const [embedError, setEmbedError] = useState('');

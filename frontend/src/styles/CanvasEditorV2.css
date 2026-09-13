@@ -678,3 +678,23 @@
   color: #6b7280;
   font-size: 10px;
 }
+
+/* Lote UX-6 (13-sep-2026): edicion inline de texto -- reemplaza el
+   window.prompt() original. El textarea se posiciona dinamicamente por JS
+   (top/left/width/height/font-size/transform en linea, ver
+   openInlineTextEditor() en CanvasEditorV2.jsx); aqui solo el resto de la
+   apariencia. */
+.editor-v2-inline-text-editor {
+  margin: 0;
+  padding: 0;
+  border: 1px solid #4f46e5;
+  border-radius: 2px;
+  background: #ffffff;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  line-height: 1.2;
+  z-index: 1000;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
