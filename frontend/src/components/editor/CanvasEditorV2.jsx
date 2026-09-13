@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 import { Html } from 'react-konva-utils';
@@ -130,6 +131,74 @@ function ToolButton({ icon, label, active, disabled, onClick, comingSoon }) {
 
 function ToolGroup({ children }) {
   return <div className="editor-v2-tool-group">{children}</div>;
+}
+
+// Popover "anclado" que se saca del flujo del rail via un Portal a
+// document.body y se posiciona con coordenadas de VIEWPORT (position:fixed),
+// nunca con position:absolute dentro del propio rail. Bug real reportado por
+// Carlos con captura: el rail de herramientas (.editor-v2-tools-rail) tiene
+// `overflow-y: auto` -- y por una regla de la spec de CSS, cuando un eje de
+// overflow es distinto de "visible" el OTRO eje deja de comportarse como
+// "visible" tambien (aunque no se haya declarado overflow-x explicitamente),
+// asi que cualquier popover más ancho que el rail (240px de ancho contra un
+// rail de solo 56px) quedaba RECORTADO por el propio rail en vez de flotar
+// por encima -- por eso a Carlos se le veia "la ventana oculta fuera del
+// alcance visual" al abrir el popover de YouTube (un boton que, ademas,
+// queda bastante abajo en un rail alto con muchos grupos de herramientas,
+// asi que el recorte era aun mas notorio). Los tests Playwright existentes
+// nunca lo detectaron porque interactuan con el DOM directamente sin
+// verificar si el elemento es visualmente clipeado por overflow.
+// Se posiciona en 2 pasadas: 1) al abrir, coloca el popover pegado al borde
+// derecho del boton que lo activo (misma altura); 2) tras el primer render
+// (useLayoutEffect corre después de que el DOM ya está pintado), mide su
+// propio tamaño real y lo reacomoda si se sale del viewport -- lo voltea a
+// la izquierda del boton si no cabe a la derecha, y lo pega al borde inferior
+// (o superior) del viewport si no cabe verticalmente. También se reubica en
+// resize/scroll mientras está abierto (con capture:true, porque el scroll
+// que más le afecta es el del propio rail, un contenedor interno, no el de
+// window).
+function RailPopover({ anchorRef, className, children }) {
+  const popRef = useRef(null);
+  const [style, setStyle] = useState({ position: 'fixed', top: -9999, left: -9999, visibility: 'hidden' });
+
+  useLayoutEffect(() => {
+    const place = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const anchorRect = anchor.getBoundingClientRect();
+      const margin = 8;
+      let top = anchorRect.top;
+      let left = anchorRect.right + margin;
+      const pop = popRef.current;
+      if (pop) {
+        const popRect = pop.getBoundingClientRect();
+        if (left + popRect.width > window.innerWidth - margin) {
+          // No cabe a la derecha del boton -- se voltea a la izquierda.
+          left = Math.max(margin, anchorRect.left - popRect.width - margin);
+        }
+        if (top + popRect.height > window.innerHeight - margin) {
+          top = Math.max(margin, window.innerHeight - popRect.height - margin);
+        }
+        if (top < margin) top = margin;
+      }
+      setStyle({ position: 'fixed', top, left, visibility: 'visible' });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorRef, children]);
+
+  return createPortal(
+    <div ref={popRef} className={className} style={style}>
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 function useHtmlImage(src) {
@@ -1390,6 +1459,14 @@ export default function CanvasEditorV2() {
   // popover (ver parseVideoUrl y handleInsertEmbed mas abajo -- decision
   // documentada en RECETA-DESARROLLO.md).
   const [embedMenuOpen, setEmbedMenuOpen] = useState(null);
+  // Anclas para los popovers del rail (ver RailPopover mas arriba) -- uno
+  // por boton disparador, ya que solo un popover de embed esta abierto a la
+  // vez pero puede ser cualquiera de los 3.
+  const youtubeWrapRef = useRef(null);
+  const vimeoWrapRef = useRef(null);
+  const soundcloudWrapRef = useRef(null);
+  const pluginsWrapRef = useRef(null);
+  const libraryWrapRef = useRef(null);
   const [embedUrlDraft, setEmbedUrlDraft] = useState('');
   const [embedError, setEmbedError] = useState('');
 
@@ -1806,7 +1883,7 @@ export default function CanvasEditorV2() {
   // Extraído a una función en vez de triplicar el JSX (como estaba antes de
   // este lote, cuando solo había 2 proveedores).
   const renderEmbedPopover = () => (
-    <div className="editor-v2-plugins-menu editor-v2-embed-menu">
+    <>
       <div className="editor-v2-plugins-menu-title">Insertar video o audio (YouTube, Vimeo o SoundCloud)</div>
       <input
         type="text"
@@ -1821,7 +1898,7 @@ export default function CanvasEditorV2() {
       <button type="button" className="editor-v2-quickaction" onClick={handleInsertEmbed}>
         Insertar
       </button>
-    </div>
+    </>
   );
 
   const handleAlign = (type) => {
@@ -1986,7 +2063,7 @@ export default function CanvasEditorV2() {
             <ToolButton icon="gallery" label="Galería" disabled={!canEdit} onClick={handleUploadGalleryClick} />
             <ToolButton icon="gif" label="GIF" disabled={!canEdit} onClick={handleUploadGifClick} />
             <ToolButton icon="collage" label="Collage" disabled={!canEdit} onClick={handleUploadCollageClick} />
-            <div className="editor-v2-plugins-wrap">
+            <div className="editor-v2-plugins-wrap" ref={youtubeWrapRef}>
               <ToolButton
                 icon="youtube"
                 label="YouTube"
@@ -1994,9 +2071,13 @@ export default function CanvasEditorV2() {
                 active={embedMenuOpen === 'youtube'}
                 onClick={() => handleOpenEmbedMenu('youtube')}
               />
-              {embedMenuOpen === 'youtube' && renderEmbedPopover()}
+              {embedMenuOpen === 'youtube' && (
+                <RailPopover anchorRef={youtubeWrapRef} className="editor-v2-plugins-menu editor-v2-embed-menu">
+                  {renderEmbedPopover()}
+                </RailPopover>
+              )}
             </div>
-            <div className="editor-v2-plugins-wrap">
+            <div className="editor-v2-plugins-wrap" ref={vimeoWrapRef}>
               <ToolButton
                 icon="vimeo"
                 label="Vimeo"
@@ -2004,11 +2085,15 @@ export default function CanvasEditorV2() {
                 active={embedMenuOpen === 'vimeo'}
                 onClick={() => handleOpenEmbedMenu('vimeo')}
               />
-              {embedMenuOpen === 'vimeo' && renderEmbedPopover()}
+              {embedMenuOpen === 'vimeo' && (
+                <RailPopover anchorRef={vimeoWrapRef} className="editor-v2-plugins-menu editor-v2-embed-menu">
+                  {renderEmbedPopover()}
+                </RailPopover>
+              )}
             </div>
             <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
             <ToolButton icon="video" label="Video" disabled={!canEdit} onClick={handleUploadVideoClick} />
-            <div className="editor-v2-plugins-wrap">
+            <div className="editor-v2-plugins-wrap" ref={soundcloudWrapRef}>
               <ToolButton
                 icon="soundcloud"
                 label="SoundCloud"
@@ -2016,12 +2101,16 @@ export default function CanvasEditorV2() {
                 active={embedMenuOpen === 'soundcloud'}
                 onClick={() => handleOpenEmbedMenu('soundcloud')}
               />
-              {embedMenuOpen === 'soundcloud' && renderEmbedPopover()}
+              {embedMenuOpen === 'soundcloud' && (
+                <RailPopover anchorRef={soundcloudWrapRef} className="editor-v2-plugins-menu editor-v2-embed-menu">
+                  {renderEmbedPopover()}
+                </RailPopover>
+              )}
             </div>
           </ToolGroup>
 
           <ToolGroup>
-            <div className="editor-v2-plugins-wrap">
+            <div className="editor-v2-plugins-wrap" ref={pluginsWrapRef}>
               <ToolButton
                 icon="plugins"
                 label="Plugins (shortcodes)"
@@ -2030,20 +2119,20 @@ export default function CanvasEditorV2() {
                 onClick={() => setPluginsMenuOpen((v) => !v)}
               />
               {pluginsMenuOpen && (
-                <div className="editor-v2-plugins-menu">
+                <RailPopover anchorRef={pluginsWrapRef} className="editor-v2-plugins-menu">
                   <div className="editor-v2-plugins-menu-title">Insertar shortcode</div>
                   {SHORTCODES.map((sc) => (
                     <button key={sc.key} type="button" onClick={() => handleInsertShortcode(sc.key)}>
                       {'{{' + sc.key + '}}'} <span>{sc.label}</span>
                     </button>
                   ))}
-                </div>
+                </RailPopover>
               )}
             </div>
           </ToolGroup>
 
           <ToolGroup>
-            <div className="editor-v2-plugins-wrap">
+            <div className="editor-v2-plugins-wrap" ref={libraryWrapRef}>
               <ToolButton
                 icon="library"
                 label="Library"
@@ -2051,7 +2140,7 @@ export default function CanvasEditorV2() {
                 onClick={handleToggleLibrary}
               />
               {libraryOpen && (
-                <div className="editor-v2-plugins-menu editor-v2-library-menu">
+                <RailPopover anchorRef={libraryWrapRef} className="editor-v2-plugins-menu editor-v2-library-menu">
                   <div className="editor-v2-plugins-menu-title">Biblioteca del tenant</div>
                   <div className="editor-v2-library-tabs">
                     {[
@@ -2101,7 +2190,7 @@ export default function CanvasEditorV2() {
                       ))}
                     </ul>
                   )}
-                </div>
+                </RailPopover>
               )}
             </div>
             <ToolButton icon="blocks" label="Blocks" comingSoon disabled />

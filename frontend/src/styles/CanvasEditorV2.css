@@ -395,11 +395,19 @@
   position: relative;
 }
 
+/* La posicion (top/left/position:fixed) de este popover ya NO se controla
+   aqui -- la calcula RailPopover en tiempo de ejecucion (CanvasEditorV2.jsx)
+   y la aplica como estilo inline sobre este mismo elemento, que ahora vive
+   en un Portal a document.body (ver el comentario extenso junto a
+   RailPopover: el rail de herramientas tiene overflow-y:auto, y por la
+   regla de la spec de CSS que fuerza el otro eje a comportarse como no-
+   visible tambien, cualquier popover mas ancho que el rail (56px) quedaba
+   recortado por el propio rail en vez de flotar libremente por encima --
+   bug real reportado por Carlos con captura). z-index alto porque ahora
+   flota fuera de la jerarquia normal del editor, como hermano directo de
+   <body>. */
 .editor-v2-plugins-menu {
-  position: absolute;
-  left: 44px;
-  top: 0;
-  z-index: 20;
+  z-index: 1000;
   width: 240px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
