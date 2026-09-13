@@ -581,6 +581,30 @@ function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // 'mosaic': una imagen grande a la izquierda + el resto apiladas a la
 // derecha). Sin reordenar por arrastre en este MVP (agregar/quitar y
 // cambiar de layout sí son funcionales).
+// Calcula el rectangulo de recorte (en pixeles de la imagen ORIGINAL) que
+// reproduce el equivalente de `object-fit: cover` de CSS dentro de Konva.Image
+// (que no tiene un modo "cover" nativo -- crop/width/height son literales).
+// Usado por el slideshow en vivo del editor (ver GallerySlideLayer) para
+// respetar "Image mode: Recortar" igual que ya hace el visor publico via CSS.
+function computeCoverCrop(image, boxW, boxH) {
+  if (!image || !image.naturalWidth || !image.naturalHeight) return null;
+  const imgRatio = image.naturalWidth / image.naturalHeight;
+  const boxRatio = boxW / boxH;
+  let cropW = image.naturalWidth;
+  let cropH = image.naturalHeight;
+  if (imgRatio > boxRatio) {
+    cropW = image.naturalHeight * boxRatio;
+  } else {
+    cropH = image.naturalWidth / boxRatio;
+  }
+  return {
+    x: (image.naturalWidth - cropW) / 2,
+    y: (image.naturalHeight - cropH) / 2,
+    width: cropW,
+    height: cropH,
+  };
+}
+
 function computeGalleryTiles(layout, n, w, h) {
   if (n === 0) return [];
   const gap = 4;
@@ -617,10 +641,42 @@ function GalleryTile({ src, x, y, width, height }) {
   return <KonvaImage image={image} x={x} y={y} width={width} height={height} listening={false} />;
 }
 
+function GallerySlideLayer({ src, width, height, opacity, offsetX, imageMode }) {
+  const image = useHtmlImage(src);
+  if (!image) return null;
+  if (imageMode === 'fit') {
+    const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const w = image.naturalWidth * scale;
+    const h = image.naturalHeight * scale;
+    return (
+      <KonvaImage
+        image={image}
+        x={offsetX + (width - w) / 2}
+        y={(height - h) / 2}
+        width={w}
+        height={h}
+        opacity={opacity}
+        listening={false}
+      />
+    );
+  }
+  const crop = computeCoverCrop(image, width, height);
+  return (
+    <KonvaImage
+      image={image}
+      x={offsetX}
+      y={0}
+      width={width}
+      height={height}
+      crop={crop || undefined}
+      opacity={opacity}
+      listening={false}
+    />
+  );
+}
+
 function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const images = el.props?.images || [];
-  const layout = el.props?.layout || 'grid';
-  const tiles = computeGalleryTiles(layout, images.length, el.width, el.height);
 
   // Lote UX-10 (13-sep-2026, pedido explicito de Carlos: la galeria debe
   // comportarse como un slideshow real -- imagenes rotando una a la vez
@@ -640,17 +696,53 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const captionsEnabled = !!el.props?.captions_enabled;
   const imageMode = el.props?.image_mode || 'crop';
 
+  // Lote UX-11 (13-sep-2026, pedido explicito de Carlos tras observar en
+  // vivo la plataforma de referencia -- el elemento de galeria/slideshow
+  // ahi ya rota solo DENTRO del propio lienzo de edicion, sin necesidad de
+  // publicar ni entrar a un visor aparte): el autoplay corre en AMBOS
+  // modos ahora (antes `canEdit ||` lo desactivaba por completo en el
+  // editor). El modo LECTURA (mas abajo) sigue usando <Html>/CSS para el
+  // crossfade -- aqui, para el modo EDICION, el crossfade se hace con
+  // Konva puro (dos <GallerySlideLayer> con opacity animada via
+  // requestAnimationFrame) para poder seguir siendo un nodo Konva real
+  // -- arrastrable/seleccionable/transformable -- cosa que un <Html> de
+  // react-konva-utils no ofrece con la misma fiabilidad que ya usan
+  // Audio/Video/Embed en modo edicion (placeholder 100% Konva, nunca DOM).
+  const [prevIndex, setPrevIndex] = useState(null);
+  const [transitionAlpha, setTransitionAlpha] = useState(1); // 0=recien entrando, 1=transicion terminada
+
   useEffect(() => {
-    if (canEdit || !autoplay || images.length <= 1) return undefined;
+    if (!autoplay || images.length <= 1) return undefined;
     const timer = setInterval(() => {
-      setSlideIndex((i) => (i + 1) % images.length);
+      setSlideIndex((i) => {
+        setPrevIndex(i);
+        setTransitionAlpha(0);
+        return (i + 1) % images.length;
+      });
     }, duration * 1000);
     return () => clearInterval(timer);
-  }, [canEdit, autoplay, duration, images.length]);
+  }, [autoplay, duration, images.length]);
 
   useEffect(() => {
     if (slideIndex >= images.length) setSlideIndex(0);
   }, [images.length, slideIndex]);
+
+  // Anima transitionAlpha de 0 -> 1 en ~500ms cada vez que cambia el slide
+  // -- SOLO relevante para el render Konva-nativo del modo edicion (el
+  // modo lectura sigue animando con `transition` de CSS, no con esto).
+  useEffect(() => {
+    if (transitionAlpha >= 1) return undefined;
+    let raf;
+    const start = performance.now();
+    const DURATION_MS = 500;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / DURATION_MS);
+      setTransitionAlpha(t);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [prevIndex, transitionAlpha < 1]);
 
   if (!canEdit) {
     if (images.length === 0) return null;
@@ -724,6 +816,39 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
     );
   }
 
+  // Modo EDICION -- Lote UX-11: slideshow en vivo con Konva puro (nunca
+  // el grid/mosaico estatico de antes), para que se vea rotar dentro del
+  // propio lienzo tal como pidio Carlos. `tiles`/`layout`/`computeGalleryTiles`
+  // ya no se usan aqui para el render (quedan arriba solo por si algun dia
+  // se reintroduce una vista de cuadricula explicita) -- el modo LECTURA
+  // (mas arriba) tampoco los usa desde el Lote UX-10, mismo criterio.
+  if (images.length === 0) {
+    return (
+      <Group
+        ref={shapeRef}
+        x={el.x}
+        y={el.y}
+        width={el.width}
+        height={el.height}
+        rotation={el.rotation_deg}
+        draggable={canEdit && !el.props?.locked}
+        onClick={onSelect}
+        onTap={onSelect}
+        onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+        onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+      >
+        <Rect width={el.width} height={el.height} fill="#f3f4f6" stroke="#9ca3af" strokeWidth={1} />
+        <KonvaText text="Galería vacía -- agrega imágenes desde el panel" x={10} y={el.height / 2 - 8} width={el.width - 20} fontSize={13} fill="#6b7280" />
+      </Group>
+    );
+  }
+
+  const safeIndex = slideIndex < images.length ? slideIndex : 0;
+  const safePrevIndex = prevIndex !== null && prevIndex < images.length ? prevIndex : null;
+  const inTransition = safePrevIndex !== null && transitionAlpha < 1;
+  const current = images[safeIndex];
+  const slideOffset = transitionEffect === 'slide' ? el.width : 0;
+
   return (
     <Group
       ref={shapeRef}
@@ -738,10 +863,84 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
       onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
     >
-      <Rect width={el.width} height={el.height} fill="#f3f4f6" stroke="#9ca3af" strokeWidth={1} />
-      {images.map((img, i) => tiles[i] && <GalleryTile key={`${img.src}-${i}`} src={img.src} {...tiles[i]} />)}
-      {images.length === 0 && (
-        <KonvaText text="Galería vacía -- agrega imágenes desde el panel" x={10} y={el.height / 2 - 8} width={el.width - 20} fontSize={13} fill="#6b7280" />
+      <Rect width={el.width} height={el.height} fill="#000000" cornerRadius={4} />
+      {inTransition && (
+        <GallerySlideLayer
+          src={images[safePrevIndex].src}
+          width={el.width}
+          height={el.height}
+          imageMode={imageMode}
+          opacity={transitionEffect === 'none' ? 0 : 1 - transitionAlpha}
+          offsetX={transitionEffect === 'slide' ? -slideOffset * transitionAlpha : 0}
+        />
+      )}
+      <GallerySlideLayer
+        src={current.src}
+        width={el.width}
+        height={el.height}
+        imageMode={imageMode}
+        opacity={!inTransition ? 1 : transitionEffect === 'none' ? 1 : transitionAlpha}
+        offsetX={inTransition && transitionEffect === 'slide' ? slideOffset * (1 - transitionAlpha) : 0}
+      />
+      {captionsEnabled && (current.title || current.description) && (
+        <>
+          <Rect y={el.height - 28} width={el.width} height={28} fill="rgba(0,0,0,0.55)" listening={false} />
+          <KonvaText
+            text={[current.title, current.description].filter(Boolean).join(' -- ')}
+            x={10}
+            y={el.height - 22}
+            width={el.width - 20}
+            fontSize={12}
+            fill="#ffffff"
+            listening={false}
+          />
+        </>
+      )}
+      {controlsEnabled && images.length > 1 && (
+        <>
+          <KonvaText
+            text="‹"
+            x={8}
+            y={el.height / 2 - 12}
+            fontSize={24}
+            fill="#ffffff"
+            onClick={(e) => {
+              e.cancelBubble = true;
+              setPrevIndex(safeIndex);
+              setTransitionAlpha(0);
+              setSlideIndex((i) => (i - 1 + images.length) % images.length);
+            }}
+          />
+          <KonvaText
+            text="›"
+            x={el.width - 24}
+            y={el.height / 2 - 12}
+            fontSize={24}
+            fill="#ffffff"
+            onClick={(e) => {
+              e.cancelBubble = true;
+              setPrevIndex(safeIndex);
+              setTransitionAlpha(0);
+              setSlideIndex((i) => (i + 1) % images.length);
+            }}
+          />
+          {images.map((_, i) => (
+            <Ellipse
+              key={i}
+              x={el.width / 2 - ((images.length - 1) * 12) / 2 + i * 12}
+              y={el.height - 10}
+              radiusX={3}
+              radiusY={3}
+              fill={i === safeIndex ? '#ffffff' : 'rgba(255,255,255,0.5)'}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                setPrevIndex(safeIndex);
+                setTransitionAlpha(0);
+                setSlideIndex(i);
+              }}
+            />
+          ))}
+        </>
       )}
     </Group>
   );
