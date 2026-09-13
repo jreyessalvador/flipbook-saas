@@ -9,14 +9,18 @@ import Publications from './pages/Publications';
 import PageViewer from './components/editor/PageViewer';
 import CanvasEditor from './components/editor/CanvasEditor';
 import CanvasEditorV2 from './components/editor/CanvasEditorV2';
+import LandingPage from './pages/LandingPage';
+import PublicReader from './pages/PublicReader';
 
 function App() {
   return (
     <Router>
       <AuthProvider>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/leer/:id" element={<PublicReader />} />
           <Route path="/login" element={<Login />} />
-          
+
           <Route
             path="/dashboard"
             element={
@@ -64,8 +68,7 @@ function App() {
             }
           />
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </Router>
