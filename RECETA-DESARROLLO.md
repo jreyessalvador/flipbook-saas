@@ -1078,19 +1078,115 @@ Commits en `redesign/editor-v2` (raspi-2, pusheados): `02a3147` (feat
 Lote UX-6 -- edicion inline + miniatura sin recortar + fix de los 2 tests
 de scale). ia-lavatur resincronizado con `git pull --ff-only`.
 
+## 9h. Lote UX-5 -- orden de capas + Lote UX-7 -- audio/video real en el visor publico (13-sep-2026)
+
+Tercera ronda de feedback de Carlos sobre el shell ya funcional: pidio (a)
+poder "traer al frente" / "enviar al fondo" los objetos del canvas para
+poder superponerlos, y (b) reporto que al intentar seleccionar un audio
+"simplemente no hace nada", pidiendo ademas que tanto audio como video
+tengan controles reales y se autoreproduzcan "en el frontend".
+
+**Diagnostico del reporte de audio**: se reproducjo primero en el editor
+con un script aislado (clic con coordenadas correctas, considerando el
+`fitScale` del Lote UX-3) -- la seleccion en el EDITOR funciona bien. El
+reporte de Carlos resulto ser sobre el VISOR PUBLICO
+(`PageViewer.jsx`, que renderiza con `canEdit={false}`, donde `onSelect`
+no hace nada a proposito): ahi no existia ninguna reproduccion real de
+audio ni de video, solo el placeholder estatico de Konva (un rectangulo
+con un icono), porque el "Reader" de la Fase E nunca se llego a construir
+-- `PageViewer.jsx` es hoy, de facto, el "frontend" publico. Esto
+reencuadro los puntos (b) y (c) del pedido de Carlos como la MISMA
+funcionalidad faltante.
+
+**Lote UX-5 -- orden de capas**: nueva accion `reorderElement(id,
+direction)` en el store (`pageEditorStore.js`) con 4 direcciones:
+`'front'`/`'back'` saltan al `z_index` maximo+1 / minimo-1 de TODOS los
+elementos de la pagina; `'up'`/`'down'` intercambian el `z_index` con el
+vecino inmediato en el orden actual (nunca `+1`/`-1` a secas, para no
+colisionar con un `z_index` ya usado por otro elemento). Se expuso como 4
+botones nuevos ("Traer al frente", "Subir un nivel", "Bajar un nivel",
+"Enviar al fondo") en una fila "Orden" del panel de Quick Actions,
+siguiendo la preferencia que Carlos ya habia expresado antes por la
+version simple de 4 botones en vez de un panel de capas completo.
+
+**Lote UX-7 -- audio/video real en el visor publico**: se instalo
+`react-konva-utils@2.0.0`, que aporta el componente oficial `<Html>` de
+la propia libreria de react-konva -- envuelve el contenido en un `Group`
+de Konva real y sincroniza un `<div>` HTML pegado a `document.body` con
+el `getAbsoluteTransform()` de ese Group, que YA incluye automaticamente
+TODOS los transforms ancestros, incluido el `scaleX`/`scaleY` del propio
+Stage (el zoom fit-to-screen del Lote UX-3) -- mas simple y menos
+propenso a errores que el calculo manual usado para el editor de texto
+inline del Lote UX-6. `AudioElement` y `VideoElement` ahora, SOLO en modo
+de solo-lectura (`canEdit === false`), renderizan un `<audio>`/`<video>`
+NATIVO real dentro de `<Html>` con `controls`, `autoPlay` y `loop` segun
+`props.autoplay`/`props.loop` (ya editables desde el panel de propiedades
+desde el Lote 3/7); el video ademas honra `props.muted` (checkbox
+"Silenciado" ya existente). En modo edicion (`canEdit === true`) se sigue
+mostrando el placeholder de Konva sin ningun cambio.
+
+**Limite honesto de la plataforma (no es un bug, es politica del
+navegador)**: ningun navegador permite el autoplay CON sonido salvo que
+el elemento este `muted` o el usuario ya haya interactuado con la
+pagina. El video logra autoplay confiable porque ya tenia su propio
+campo "Silenciado" desde antes. El audio NO tiene ese campo -- se dejo el
+atributo `autoplay` tal cual, fiel al checkbox "Reproducir
+automaticamente" que Carlos ya conoce, sin forzar el mute (que
+contradiria silenciosamente la intencion del checkbox); el autoplay CON
+sonido del audio puede ser bloqueado por el navegador si el visitante no
+interactuo antes con la pagina -- esto se le explico a Carlos al
+notificarle.
+
+**Verificacion**: nuevo `frontend/tests/verify_lote_ux5_ux7_layers_media.js`
+(Playwright), 9 pasos: crea una publicacion con fixtures REALES de audio
+(WAV valido de 1 sample) y video (el mismo WEBM VP8 real de 751 bytes que
+ya usa `verify_lote7_library_video.js`) subidos via API; en el editor
+prueba las 4 acciones de orden sobre un rectangulo rojo (`z_index=0`,
+detras de uno verde) verificando el `z_index` tras cada click; guarda,
+recarga la pagina completa y confirma que el orden de capas persistio
+(re-ubicando los elementos por color, ya que el backend regenera los ids
+al guardar -- no hay `id` en `PageElementCreate`); en el VISOR PUBLICO
+confirma que existe un `<audio controls>` real con `src` apuntando a
+`/api/assets/serve/...`, y un `<video controls muted>` real con `src`
+correcto. Paso completo, sin errores de consola en ningun punto.
+
+**Bug de fixture encontrado y corregido (solo del test nuevo, no de
+producto)**: el fixture WEBM reutilizado (string base64 de 1005
+caracteres, `1005 % 4 !== 0`, tecnicamente invalido segun la especificacion
+estricta de base64) decodifica sin problema con `Buffer.from(str,
+'base64')` de Node (tolerante), pero revienta con `InvalidCharacterError`
+si se decodifica con `atob()` DENTRO del navegador (estricto) --
+`verify_lote7_library_video.js` nunca lo sufrio porque escribe el Buffer a
+disco con Node y lo sube via `setInputFiles`, sin pasar nunca por
+`atob()`. Corregido decodificando siempre del lado de Node
+(`Array.from(Buffer.from(b64, 'base64'))`) y pasando el arreglo de bytes
+YA decodificados a `page.evaluate()`, construyendo el `Uint8Array`/`Blob`
+directamente en el navegador sin usar `atob()` en absoluto.
+
+Tras esto se re-ejecuto TODA la suite de regresion existente (14 scripts,
+incluyendo los 2 corregidos en la seccion 9g) sin fallos ni regresiones.
+
+Commits en `redesign/editor-v2` (raspi-2, pusheados): `d320c09` (feat
+Lote UX-5 -- orden de capas + Lote UX-7 -- audio/video real en el visor).
+ia-lavatur resincronizado con `git pull --ff-only`.
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
-SoundCloud+Quick Actions, y Library+video real) y los Lotes UX-1/UX-3
+SoundCloud+Quick Actions, y Library+video real), los Lotes UX-1/UX-3
 tambien cerrados (Dashboard real, miniaturas de portada, fit-to-screen y
-visor publico con contenido real -- ver seccion 9f), el trabajo inmediato
-pendiente son los Lotes **UX-2, UX-4 y UX-5** descritos al final de la
-seccion 9f (paleta editorial, brillo/contraste + esquinas redondeadas en
-imagenes, y orden de capas simple traer-al-frente/enviar-al-fondo). Estos
-ya fueron confirmados explicitamente por Carlos, asi que no requieren
-nueva validacion antes de implementarse -- solo notificarlo cuando esten
-verificados y listos para probar.
+visor publico con contenido real -- ver seccion 9f), UX-6 (edicion inline
+de texto + miniatura sin recortar -- ver seccion 9g) y ahora UX-5/UX-7
+tambien cerrados (orden de capas + audio/video real en el visor publico
+-- ver seccion 9h), el trabajo inmediato pendiente son los Lotes **UX-2 y
+UX-4** descritos al final de la seccion 9f (paleta editorial/corporate
+para "empresa seria, editorial que busca formar mercado digital", y
+brillo/contraste + esquinas redondeadas en imagenes -- SOLO brillo/
+contraste, no retoque completo). Estos ya fueron confirmados
+explicitamente por Carlos, asi que no requieren nueva validacion antes de
+implementarse -- solo notificarlo cuando esten verificados y listos para
+probar.
 
 El unico otro placeholder que sigue deliberadamente sin implementar en el
 rail es **"Guardar como bloque de plantilla" (Blocks)** -- explicitamente
