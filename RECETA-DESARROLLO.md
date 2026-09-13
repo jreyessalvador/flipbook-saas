@@ -872,16 +872,150 @@ resincronizado con `git pull` (misma limpieza de siempre de copias sin
 trackear de scripts/fixtures de test creados directamente ahi durante la
 verificacion).
 
+## 9f. Lotes UX-1, UX-3 y UX-3b -- Dashboard real, miniaturas de portada, fit-to-screen y visor con contenido real (13-sep-2026)
+
+Carlos revisó el shell de UI ya funcional con capturas de pantalla reales
+y dio feedback puntual (sin pedir cambios de codigo todavia -- primero
+"Sin hacer nada lee todo lo que he colocado y dame tus comentarios", luego
+confirmo el plan punto por punto). Instruccion final para arrancar:
+"arranca y asegurate que funciona bien y me notificas para probar".
+
+**Lote UX-1 -- Dashboard conectado a datos reales**: el Dashboard mostraba
+numeros estaticos/de ejemplo, no reflejaba las publicaciones reales del
+tenant. Se agrego `GET /api/publications/stats/summary`
+(`backend/app/api/publications.py`) con agregados SQL tenant-scoped
+(`func.count`, `func.coalesce(func.sum(...), 0)` sobre `Publication` y
+`Asset` -- nunca se trae el resultset completo a Python solo para contar/
+sumar, patron a reutilizar en cualquier endpoint futuro de este tipo).
+`frontend/src/pages/Dashboard.jsx` consume esto via
+`publicationAPI.statsSummary()`, con estado de carga (`'...'`) y de error
+(`'—'`) explicitos, y un helper `formatBytes()` para el storage usado.
+"Plan Actual: Pro" se dejo deliberadamente estatico (comentario en el
+codigo) -- no existe todavia sistema de facturacion/planes.
+
+**Lote UX-3 (parte 1) -- Miniaturas reales de portada en "Publicaciones"**:
+cada ficha de publicacion ahora muestra la imagen real de su portada (si
+existe) en vez de un placeholder generico. Nuevo helper
+`_attach_cover_thumbnails()` en `publications.py`: por cada publicacion,
+busca su pagina `page_number==1`, toma todos sus `page_elements` de
+`kind='image'`, y elige el de **mayor area** (`width*height`) como "foto
+principal" -- evita que un logo o icono pequeno le gane a la foto real de
+portada. El resultado se asigna como atributo transitorio
+(`pub.cover_image_url = ...`) sobre la instancia de SQLAlchemy antes de
+serializar -- funciona sin migracion porque `PublicationResponse` usa
+`from_attributes = True` (lee via `getattr`), patron reutilizable para
+cualquier otro campo "calculado al listar, no almacenado". Si la portada
+no tiene imagen, la ficha queda en blanco/gris (`.placeholder-image-empty`
+en `Publications.css`) tal como pidio Carlos explicitamente -- nunca un
+placeholder generico con icono.
+
+**Lote UX-3 (parte 2) -- Zoom fit-to-screen + visor publico con contenido
+real (el hallazgo mas importante de esta ronda)**: Carlos pidio que al
+entrar al editor la pagina se vea completa sin necesidad de la barra de
+desplazamiento lateral. Se implemento `fitScale` (ResizeObserver sobre
+`.editor-v2-canvas-wrap` + `useLayoutEffect`, recalculado en resize y en
+cambio de pagina/vista) aplicado **siempre via las props nativas de Konva**
+(`Stage` `scaleX`/`scaleY` + `width`/`height` ajustados a
+`stageWidthPx * scale`), **nunca con un `transform: scale()` de CSS** --
+un transform de CSS rompe el calculo de coordenadas de puntero/clic que
+hace Konva internamente. `fitScale` nunca sobre-escala (tope en 1.0, solo
+reduce si no cabe). `PageCanvas` se exporto desde `CanvasEditorV2.jsx`
+para poder reutilizarse.
+
+Al revisar el punto de Carlos sobre el visor publico ("Ver Páginas"
+mostraba "Página vacía" en una portada que SI tenia imagen), se encontro
+que **no era un problema cosmetico sino un bug funcional real**:
+`PageViewer.jsx` (version vieja) revisaba `page.content` -- un campo JSON
+deprecado de la arquitectura original (documentado como deprecated en
+`backend/app/models/page.py`), que el editor v2 basado en `page_elements`
+JAMAS escribe. Es decir, el visor publico SIEMPRE mostraba "Página vacía"
+sin importar el contenido real guardado. Se **reescribio por completo**
+`frontend/src/components/editor/PageViewer.jsx` para reutilizar
+directamente el renderer real del editor (`PageCanvas` + `computeSpreadViews`,
+ambos exportados de `CanvasEditorV2.jsx`) en modo solo-lectura
+(`canEdit={false}`), cargando los `page_elements` reales via el mismo
+`createPageEditorStore()`/`loadPage()` que usa el editor -- nunca logica
+de renderizado duplicada. De paso se reemplazo el footer viejo (barra de
+navegacion separada + franja completa de miniaturas, muy alto en pantalla)
+por el mismo footer compacto `.editor-v2-pagenav` del editor (con salto de
+pagina por numero), y se limpio `PageViewer.css` de reglas muertas.
+
+Carlos tambien referencio 2 capturas de un editor externo (no
+flipbook-saas) como inspiracion de layout -- se le aclaro y confirmo
+explicitamente que la implementacion debia ser **"parecido, no igual"**
+(mismo comportamiento de footer compacto + fit-to-screen), nunca una copia
+visual literal, para evitar cualquier reclamo de "copiar" un producto de
+terceros.
+
+**Verificacion**: `frontend/tests/verify_lote_ux1_dashboard.js` (Dashboard
+vs. stats reales del backend, sin placeholders atascados),
+`verify_lote_ux3_thumbnails.js` (miniatura real vs. blanco segun exista o
+no imagen de portada -- verificado directo contra el backend con
+`GET /api/publications?limit=500` por el volumen acumulado de
+publicaciones de prueba en sesiones previas, mas un chequeo suelto sobre
+lo que renderiza la vista paginada por defecto), y
+`verify_lote_ux3_fit_and_viewer.js` (portada sin scroll vertical al
+entrar al editor, visor sin "Página vacía" con contenido real, footer
+compacto sin la franja vieja de miniaturas, salto manual de pagina, y
+spread interior tambien sin scroll vertical). Se re-ejecutaron ademas
+`e2e_editor_v2_regression.js` y `verify_spread_view.js` completos (el
+cambio toca `PageCanvas`/`CanvasEditorV2.css`, compartidos por editor y
+visor) -- **todos pasan limpio, sin errores de consola, sin regresiones**.
+
+**Hallazgo fuera de alcance (no corregido, solo documentado)**: durante la
+verificacion de UX-3 parte 1 se detecto que `GET /api/publications` no
+tiene paginacion ni un `ORDER BY` explicito (limite fijo de 20, orden no
+garantizado) -- no es un bug bloqueante hoy, pero puede empezar a importar
+segun crezca el volumen de publicaciones por tenant. Queda para cuando
+Carlos lo priorice.
+
+**Pendiente de este mismo bloque de feedback de Carlos (todavia sin
+implementar)**:
+- **Lote UX-2** -- paleta/tipografia mas corporativa para "Publicaciones"
+  y el resto del shell. Carlos confirmo que hoy no existe paleta de marca
+  definida y pidio posicionar el producto como "empresa seria, editorial
+  que busca formar mercado digital" -- sin colores especificos dados, asi
+  que este lote implica proponer una paleta editorial razonable (no solo
+  aplicar valores ya decididos).
+- **Lote UX-4** -- extender el redondeo de esquinas (ya existente para
+  figuras) a imagenes, mas brillo/contraste via `Konva.Filters.Brighten`/
+  `Konva.Filters.Contrast`. Carlos fue explicito: **solo brillo y
+  contraste, no un retoque completo**.
+- **Lote UX-5** -- orden de capas. Carlos preferiria un panel de capas
+  completo estilo Photoshop, pero confirmo que si eso es mucho mas trabajo
+  prefiere la version simple: traer al frente / enviar al fondo (y
+  idealmente subir/bajar un nivel), reutilizando el campo `z_index` que
+  `PageElement` ya tiene desde la Fase A.
+
+Commits en `redesign/editor-v2` (todos en raspi-2, pusheados): `f5dbca3`
+(feat Lote UX-1 -- Dashboard real), `55d454a` (test Lote UX-1), `4ab9c6a`
+(feat Lote UX-3 parte 1 -- miniaturas de portada), `a50bed2` (test Lote
+UX-3 parte 1), `f94f07c` (feat Lote UX-3 parte 2 -- fit-to-screen + visor
+real), `25b6129` (test Lote UX-3 parte 2). ia-lavatur resincronizado con
+`git pull --ff-only` despues de cada tanda (misma limpieza de siempre de
+copias sin trackear de scripts de test creados directamente ahi durante
+la verificacion).
+
 ## 10. Próximo paso concreto (para quien retome esto)
 
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
-SoundCloud+Quick Actions, y Library+video real), el unico placeholder que
-queda deliberadamente sin implementar en el rail es **"Guardar como bloque
-de plantilla" (Blocks)** -- explicitamente fuera de alcance del Lote 7 por
-decision propia (ver seccion 9e), a la espera de que Carlos lo pida y
-aclare el alcance (¿un bloque puede mezclar varios elementos o es siempre
-uno solo? ¿vive a nivel de tenant como la Library de assets?).
+SoundCloud+Quick Actions, y Library+video real) y los Lotes UX-1/UX-3
+tambien cerrados (Dashboard real, miniaturas de portada, fit-to-screen y
+visor publico con contenido real -- ver seccion 9f), el trabajo inmediato
+pendiente son los Lotes **UX-2, UX-4 y UX-5** descritos al final de la
+seccion 9f (paleta editorial, brillo/contraste + esquinas redondeadas en
+imagenes, y orden de capas simple traer-al-frente/enviar-al-fondo). Estos
+ya fueron confirmados explicitamente por Carlos, asi que no requieren
+nueva validacion antes de implementarse -- solo notificarlo cuando esten
+verificados y listos para probar.
+
+El unico otro placeholder que sigue deliberadamente sin implementar en el
+rail es **"Guardar como bloque de plantilla" (Blocks)** -- explicitamente
+fuera de alcance del Lote 7 por decision propia (ver seccion 9e), a la
+espera de que Carlos lo pida y aclare el alcance (¿un bloque puede mezclar
+varios elementos o es siempre uno solo? ¿vive a nivel de tenant como la
+Library de assets?).
 
 Mientras tanto, seguir con la instruccion general de Carlos ("Adelante
 continua y que todo quede funcional") revisando si queda alguna otra

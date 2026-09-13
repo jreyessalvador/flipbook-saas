@@ -234,3 +234,21 @@ Ver `projects/ia-lavatur/context.md` para los guardarraíles completos (Docker p
 - Modelo de planes/precios del SaaS comercial.
 - Migración de contenido histórico desde Joomag.
 - Ejecutar la migración SQL 0001 contra Postgres real y automatizar la checklist de la sección 10 como tests pytest.
+
+## 14. Nota (13-sep-2026): pulido de UX sobre el shell de Fase B, sin cambios de arquitectura
+
+Después de cerrar Fase B, Carlos revisó el shell de UI con capturas reales
+y pidió una ronda de ajustes de experiencia (Dashboard con datos reales,
+miniaturas de portada, zoom fit-to-screen en el editor, visor público que
+realmente renderiza contenido, paleta editorial, brillo/contraste en
+imágenes, orden de capas simple). Ninguno de estos cambios altera el
+modelo de datos ni la arquitectura descrita en este documento (siguen
+usando `page_elements`/`z_index`/lock óptimo tal cual quedaron en Fase A/B)
+-- el detalle de cada lote (UX-1 a UX-5) vive en `RECETA-DESARROLLO.md`,
+sección 9f en adelante, para no duplicar aquí lo que es historial
+operativo de lotes en vez de diseño de arquitectura. Sí vale la pena
+registrar aquí un hallazgo real de arquitectura: el visor público
+(`PageViewer.jsx`) había quedado leyendo el campo deprecado `page.content`
+en vez de `page_elements`, es decir, nunca mostró contenido real desde que
+existe el editor v2 -- ya corregido, reutilizando el mismo `PageCanvas`
+Konva del editor en modo solo-lectura.
