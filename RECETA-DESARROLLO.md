@@ -1331,6 +1331,8 @@ se re-corrieron completos sin regresiones.
 
 ## 10. Próximo paso concreto (para quien retome esto)
 
+**ACTUALIZACIÓN 13-sep-2026**: Carlos pidió priorizar AHORA el frente de landing page + Reader público (catálogo público para ver revistas ya publicadas, sin login) por encima de UX-2/UX-4 descritos abajo. Ver la **sección 11** (al final de este documento) para el plan completo y el diagnóstico de qué falta -- es el trabajo inmediato a implementar primero.
+
 Con los Lotes 1-7 cerrados (seleccion multiple/alinear-distribuir/formas,
 shortcodes, audio, galeria/collage/GIF, vista de hoja doble, YouTube/Vimeo,
 SoundCloud+Quick Actions, y Library+video real), los Lotes UX-1/UX-3
@@ -1381,3 +1383,35 @@ ia-lavatur, releer el aviso de infraestructura de la seccion 9 (Lote 3).
 Antes de dar por cerrado cualquier lote nuevo: reproducir manualmente (o
 via script Playwright) el escenario de fuga portada->contraportada -- el
 test de backend por si solo no prueba la UI.
+
+## 11. Próxima fase -- Landing page + Reader público (frontend de lectura de revistas publicadas, para cualquier agente de IA -- Claude, Codex, Antigravity, Arnes Agent, etc.)
+
+**Contexto (13-sep-2026)**: cerrados los Lotes 1-7 y UX-1/UX-3/UX-5/UX-6/UX-7/UX-8/UX-9/UX-10 (todos sobre el EDITOR interno, que siempre requiere sesión de administrador/editor autenticada -- ver secciones 9 a 9k), Carlos pidió explícitamente empezar YA el siguiente frente: una landing page pública + un frontend de lectura para que cualquier visitante (sin cuenta) pueda entrar y ver las revistas ya publicadas. Por ahora la URL de acceso será la IP de Tailscale de `ia-lavatur` (`100.71.185.7`, puerto `5173` del frontend dev); dominio propio/TLS sigue siendo trabajo futuro no implementado (ver limitación ya documentada en la sección 4b).
+
+**Diagnóstico -- por qué esto es trabajo nuevo, no solo "reusar el visor que ya existe"**:
+- El componente `PageViewer.jsx` (`/publications/:id/view`) que se construyó en los Lotes UX-3/UX-7/UX-9/UX-10 para previsualizar el contenido real (iframes de embed, audio/video nativos, slideshow de galería, etc.) está **envuelto en `<ProtectedRoute>`** en `App.jsx` -- exige el mismo login de administrador que el editor. Es un visor interno de verificación, NO un lector público.
+- **TODOS los endpoints del backend exigen `Depends(get_current_user)`** (JWT de sesión), sin excepción, en `publications.py` y `pages.py` -- confirmado por grep, no queda ningún endpoint de lectura sin auth para publicaciones/páginas/elementos. Hoy es físicamente imposible ver una revista sin loguearse primero.
+- La única excepción ya pública es `GET /api/assets/serve/{object_name}` (`assets.py`) -- sirve cualquier archivo de MinIO (imagen/audio/video/portada) **sin ningún `Depends`**, ya pensado como proxy público de binarios. Esto simplifica el trabajo: solo faltan endpoints públicos de METADATOS (qué páginas/elementos tiene la revista), no de binarios.
+- El modelo `PublicationVersion` (`backend/app/models/publication_version.py`) **ya fue diseñado desde la Fase A específicamente para esto** -- su propio docstring dice literalmente: *"Snapshot inmutable de una publicacion completa (todas sus paginas + elementos) en el momento de 'Publicar'. El Reader publico SIEMPRE lee de aqui, nunca de las tablas editables -- asi una edicion a medias nunca llega a un lector, y queda historial para poder revertir."* `POST /api/publications/{id}/publish` ya congela un snapshot completo (`{orientation, page_width, page_height, pages: [{page_number, page_type, elements: [...]}]}`) en `PublicationVersion.snapshot` (JSONB) y actualiza `Publication.published_version_id`. Es decir: la arquitectura de datos para separar "borrador en edición" de "lo que ve el público" **ya existe y ya se usa** -- solo falta el endpoint público que la lea y el frontend que la muestre.
+- `Publication.is_public` (booleano, columna + campo de schema + checkbox ya en el formulario de `Publications.jsx`) **existe pero hoy no lo usa ni lo respeta ningún endpoint** -- es decorativo. Debe ser el filtro real que decide si una publicación aparece en el catálogo público.
+- `Tenant.subdomain` (columna `unique`) ya existe en el modelo pero tampoco se usa aún para namespacing del catálogo público -- decidir con Carlos si el catálogo público se separa por tenant (subdominio/slug en la URL) o si por ahora (single-tenant real en producción) el catálogo es global; no bloquear el arranque del trabajo por esto, implementar server-side ya filtrando por `tenant_id` aunque el frontend aún no exponga selector de tenant.
+
+**Plan concreto (seguir el mismo flujo de siempre: por lotes, verificando cada uno contra `ia-lavatur`, sin tocar el editor/rail ya cerrado)**:
+
+1. **Backend -- nuevo router público, sin auth** (`backend/app/api/public.py`, registrado en `main.py` bajo `/api/public`, SIN `Depends(get_current_user)` en ningún endpoint de este router):
+   - `GET /api/public/publications` -- catálogo: publicaciones con `is_public=True` **y** `published_version_id IS NOT NULL` (nunca listar un borrador sin publicar). Devolver id, title, orientation, miniatura de portada (mismo criterio de mayor-área ya usado en `_attach_cover_thumbnails()`, pero leyendo la portada DESDE el snapshot publicado, no desde `page_elements` en vivo).
+   - `GET /api/public/publications/{id}` -- metadatos de una publicación pública+publicada (404 si `is_public=False` o si no tiene `published_version_id`, para no filtrar títulos de revistas privadas).
+   - `GET /api/public/publications/{id}/pages` -- **leer directamente `PublicationVersion.snapshot` del `published_version_id` vigente**, nunca `page_elements`/`pages` en vivo (así una edición a medias jamás se le muestra a un lector real -- es literalmente para lo que se diseñó el snapshot).
+   - Reusar `PageElementsResponse`/`PageResponse` (schemas ya existentes) como forma de respuesta para poder reutilizar el mismo parser del lado del frontend sin reescribirlo.
+
+2. **Frontend -- nueva superficie pública, separada del SPA protegido**:
+   - Landing page pública nueva (ruta `/` o `/catalogo`, fuera de `<ProtectedRoute>`) que liste el catálogo (`GET /api/public/publications`) con las miniaturas reales ya construidas en UX-3.
+   - Reader público nuevo (ruta nueva, p.ej. `/leer/:id`, TAMBIÉN fuera de `<ProtectedRoute>`) que reutilice `PageCanvas`/`computeSpreadViews` (ya exportados de `CanvasEditorV2.jsx` para este fin exacto desde UX-3) en modo `canEdit={false}` -- el mismo componente que ya renderiza iframes reales de embed, audio/video nativo y slideshow de galería (Lotes UX-7/UX-9/UX-10) -- pero alimentado por `/api/public/publications/{id}/pages` (snapshot publicado) en vez de `/api/pages/{pageId}/elements` (contenido en vivo, que exige token).
+   - **Importante**: `PageViewer.jsx` actual (el interno, protegido) NO se toca/rompe -- sigue siendo la herramienta de verificación del editor. El Reader público es un componente/ruta nueva que puede compartir subcomponentes de renderizado (`PageCanvas`) pero no la fuente de datos ni el guard de ruta.
+   - Ruta raíz `/` de la SPA hoy redirige a `/dashboard` (que exige login) -- decidir con el plan de Carlos si la landing pública toma la raíz del dominio y el dashboard de administración pasa a vivir en `/admin` (o similar), o si se sirve como un build/puerto separado. No asumir unilateralmente un cambio de esa magnitud en las rutas del panel de administración sin dejarlo explícito en el commit/documentación -- es una decisión de producto, no solo técnica.
+
+3. **Verificación**: mismo patrón Playwright de siempre -- un script nuevo que, SIN loguearse (sin `localStorage.setItem('token', ...)` ni `page.fill('input[type=email]'...)`), navegue directo a la landing pública y al reader público de una publicación marcada `is_public=True` y publicada, y confirme que carga contenido real (imagen de portada, texto, y al menos un embed/audio/video/galería reales) -- exactamente el mismo tipo de aserciones ya usadas en `verify_lote_ux9_ux10_embed_gallery.js` pero SIN el paso de login. Correr también toda la suite de regresión existente para confirmar que las rutas protegidas siguen intactas.
+
+4. **Acceso mientras tanto**: URL de prueba = IP de Tailscale de `ia-lavatur` (`http://100.71.185.7:5173/...`), igual que el resto del stack de desarrollo -- no hay dominio público ni TLS todavía (ver limitación ya documentada en sección 4b, "qué falta antes de usar esto como base de producción real").
+
+**No bloqueante, pero para no perder de vista**: los Lotes UX-2 (paleta editorial corporativa) y UX-4 (brillo/contraste + esquinas redondeadas en imágenes) siguen confirmados y pendientes -- ver sección 10 -- pero Carlos pidió priorizar este frente de landing+reader público ahora. Implementar esto primero salvo que él indique lo contrario.
