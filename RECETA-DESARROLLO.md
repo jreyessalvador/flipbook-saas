@@ -129,6 +129,128 @@ Postgres/Redis/MinIO corriendo (docker-compose.dev.yml del propio repo).
   - Cualquier otro uso de ia-lavatur fuera de esto sigue PROHIBIDO por la
     regla general del 25-ago-2026 (ver `projects/ia-lavatur/context.md`).
 
+## 4b. Cómo desplegar/migrar este proyecto a un servidor nuevo (receta para cualquier agente de IA -- Claude, Codex, Antigravity, Arnes Agent, etc.)
+
+Esta sección existe para que CUALQUIER agente de IA, sin contexto previo
+de esta conversación, pueda levantar una copia de este proyecto en un
+servidor distinto (otro VPS, otro entorno de pruebas, o producción el día
+que exista) sin adivinar nada. El proyecto está diseñado deliberadamente
+para que esto sea "copiar una carpeta + un archivo de variables", no una
+instalación manual pieza por pieza -- ver también la sección 4 (reglas de
+infraestructura) y el encabezado de `docker-compose.dev.yml`.
+
+### Requisitos del servidor destino
+
+- Linux (Ubuntu 22.04/24.04 LTS o Debian 12 recomendado).
+- **Docker Engine + el plugin `docker compose`** (el comando es
+  `docker compose ...`, NO el binario viejo `docker-compose` standalone).
+  Esto es la ÚNICA dependencia de sistema real -- todo lo demás (Python,
+  Node, Postgres, Redis, MinIO, y las librerías de sistema que necesita
+  el backend como `poppler-utils`/`libpango` para generación de PDF) vive
+  dentro de las imágenes de los contenedores y se instala solo al hacer
+  `docker compose build`/`up`. NO instalar Python/Node/Postgres/Redis a
+  mano en el host -- no hace falta y rompe la portabilidad del diseño.
+- Git.
+- Tamaño mínimo razonable para esta etapa (proyecto en desarrollo, sin
+  carga real de tenants todavía): 2 vCPU / 4 GB RAM / 40-60 GB disco SSD.
+  El disco es lo único que puede crecer con el tiempo (los assets subidos
+  por los tenants -- imágenes/audio/video -- se guardan en MinIO, dentro
+  de `data/minio/`).
+- Si el servidor va a quedar en red privada (como ia-lavatur): cliente
+  `tailscale` instalado y unido al mismo tailnet.
+- Si el servidor va a tener IP pública/dominio propio (escenario NO usado
+  todavía en este proyecto): además hace falta un reverse proxy con TLS
+  (nginx o Caddy) delante de los puertos publicados -- hoy no existe
+  ningún proxy de este tipo en el stack porque ia-lavatur solo se usa por
+  Tailscale.
+
+### Qué mover desde el servidor origen
+
+1. **El repositorio completo** -- preferir `git clone` de la rama
+   correspondiente (`redesign/editor-v2` a la fecha de este documento) en
+   el servidor nuevo, en vez de copiar archivos a mano: trae el historial
+   completo y evita arrastrar basura (`node_modules`, `__pycache__`, etc.,
+   ya cubiertos por `.gitignore`).
+2. **La carpeta `data/`** (`data/postgres`, `data/redis`, `data/minio`) --
+   AQUÍ VIVEN LOS DATOS REALES (la base de datos completa y los archivos
+   subidos por los tenants). NO está en git a propósito (son datos, no
+   código). Copiar con `rsync -av` o `tar` + `scp`, y SIEMPRE con los
+   contenedores origen DETENIDOS (`docker compose stop`) antes de copiar
+   `data/postgres` -- copiar Postgres con el proceso corriendo puede
+   producir un backup corrupto/inconsistente.
+3. **El archivo `.env` real** -- tampoco está en git (solo existe
+   `.env.example` como plantilla documentada, con explicación de cada
+   variable). Hay que crear un `.env` nuevo en el servidor destino
+   copiando `.env.example` y rellenando con: credenciales reales
+   (Postgres/MinIO/JWT -- generar nuevas, no reutilizar las del servidor
+   origen si el destino no es una réplica de confianza equivalente), y
+   sobre todo actualizar `API_PORT`, `FRONTEND_PORT`, `CORS_ORIGINS` y
+   `VITE_API_URL` para que apunten a la IP/dominio del SERVIDOR NUEVO
+   (nunca dejar la IP de Tailscale del servidor origen, ni usar
+   `localhost` -- el navegador del usuario no corre en el servidor).
+
+### Pasos de despliegue (servidor destino)
+
+```bash
+# 1. Dependencias de sistema (una sola vez)
+curl -fsSL https://get.docker.com | sh   # o el método oficial de Docker para la distro
+sudo usermod -aG docker $USER            # cerrar sesión/reconectar para que aplique
+sudo apt-get install -y git
+
+# 2. Clonar el repo
+git clone <url-del-repo> flipbook-saas
+cd flipbook-saas
+git checkout redesign/editor-v2   # o la rama que corresponda en ese momento
+
+# 3. Traer los datos y el .env desde el servidor origen (con los
+#    contenedores origen detenidos antes del paso de datos)
+rsync -av origen:/ruta/al/proyecto/data/ ./data/
+cp .env.example .env
+nano .env   # rellenar credenciales + IP/dominio/puertos del servidor NUEVO
+
+# 4. Levantar el stack (primera vez en este servidor -- SÍ corresponde
+#    `up`/`build` normal aquí, a diferencia de un restart de un stack ya
+#    corriendo en el MISMO servidor, ver advertencia de la sección 4/9)
+docker compose -f docker-compose.dev.yml up -d --build
+
+# 5. Verificar
+docker ps --format '{{.Names}}	{{.Status}}'
+docker inspect flipbook-dev-backend --format '{{json .Mounts}}'   # confirmar bind-mounts correctos
+curl http://<ip-o-dominio>:<API_PORT>/health
+```
+
+### Qué NO hace falta instalar a mano
+
+`backend/requirements.txt` (FastAPI, SQLAlchemy, Pillow, WeasyPrint,
+python-jose, etc.) se instala solo al construir la imagen del backend
+(`docker compose build` ejecuta el `Dockerfile`, que ya incluye
+`apt-get install poppler-utils libpango-1.0-0 libpangoft2-1.0-0` -- las
+dependencias de sistema que necesita `pdf2image`/`weasyprint`). El
+frontend (React + Vite + Konva + Zustand, ver `frontend/package.json`) se
+instala solo al arrancar el contenedor `frontend`
+(`npm install && npm run dev`, ver el `command:` del servicio en
+`docker-compose.dev.yml`). Ningún agente de IA debe intentar `pip install`
+o `npm install` en el host -- todo corre dentro de los contenedores.
+
+### Si el destino es PRODUCCIÓN real (no otro entorno de pruebas)
+
+`docker-compose.dev.yml` es justamente eso, de DESARROLLO: `DEBUG=True`,
+`uvicorn --reload` (recarga en caliente, no apto para producción),
+credenciales pensadas para ser rotadas fácilmente. Antes de usar esto
+como base de producción real (con tenants/datos reales), hace falta un
+lote aparte, no implementado todavía a la fecha de este documento:
+- Un `docker-compose.prod.yml` separado sin `--reload`/`DEBUG=True`, con
+  un proceso de arranque de producción (p.ej. `uvicorn` sin `--reload`,
+  o `gunicorn` con workers uvicorn).
+- Secretos rotados y gestionados fuera del repo (nunca reutilizar los
+  valores de ejemplo ni los de un entorno de pruebas).
+- Backups automáticos y probados de `data/postgres` (y de `data/minio` si
+  el volumen de assets lo justifica).
+- Reverse proxy con TLS real si el servidor tiene IP pública/dominio.
+- Revisar la sección 11 de `docs/arquitectura-editor-2026-09-12.md`
+  (aislamiento de Contabo 2 para cómputo pesado de imagen/video) antes de
+  asumir que todo corre en una sola máquina.
+
 ## 5. Uso de LLMs locales para ahorrar tokens de Claude/Codex
 
 ia-lavatur tiene modelos Ollama locales (namespace `ai-platform-v2`,
