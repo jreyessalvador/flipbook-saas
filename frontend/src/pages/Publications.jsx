@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { publicationAPI } from '../services/publicationAPI';
+import { API_URL } from '../services/api';
 import '../styles/Publications.css';
 
 const Publications = () => {
@@ -176,11 +177,15 @@ const Publications = () => {
             <div key={pub.id} className="publication-card">
               <div className="card-header">
                 {pub.cover_image_url ? (
-                  <img src={pub.cover_image_url} alt={pub.title} />
+                  <img
+                    src={pub.cover_image_url.startsWith('http') ? pub.cover_image_url : `${API_URL}${pub.cover_image_url}`}
+                    alt={pub.title}
+                  />
                 ) : (
-                  <div className="placeholder-image">
-                    <span>📖</span>
-                  </div>
+                  // Lote UX-3: si la portada todavia no tiene ningun elemento
+                  // de imagen, se deja en blanco -- a proposito, ya no un
+                  // icono generico de libro (pedido explicito de Carlos).
+                  <div className="placeholder-image placeholder-image-empty" />
                 )}
               </div>
               <div className="card-body">

@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.publication import Publication
 from app.models.page import Page
+from app.models.page_element import PageElement
 from app.models.asset import Asset
 from app.schemas.publication import PublicationCreate, PublicationUpdate, PublicationResponse
 from app.api.auth import get_current_user
@@ -108,7 +109,62 @@ def list_publications(
         .limit(limit)\
         .all()
 
+    _attach_cover_thumbnails(db, publications)
     return publications
+
+
+def _attach_cover_thumbnails(db: Session, publications: List[Publication]):
+    """
+    Miniatura de portada para las fichas de "Mis Publicaciones" (Lote UX-3) --
+    antes cada ficha mostraba siempre el mismo icono de libro generico
+    (Publications.jsx ya sabia renderizar `cover_image_url` si existiera, pero
+    NADA lo poblaba jamas -- el campo existe en el modelo desde el diseño
+    original y siempre quedaba en NULL).
+
+    No persiste nada en la BD (Publication.cover_image_url sigue en NULL) --
+    se calcula al vuelo en cada listado y se asigna como atributo transitorio
+    del objeto ORM antes de serializar (Pydantic con from_attributes=True lo
+    lee vía getattr, funciona igual que una columna real sin necesitar
+    migracion ni mantener el dato sincronizado cuando el usuario edita la
+    portada). Si la pagina 1 (portada) no tiene ningun elemento kind='image',
+    se deja cover_image_url en None -- el frontend ya sabe caer a un estado
+    vacio/blanco en ese caso, no a un icono generico (ver Publications.jsx).
+
+    Heuristica para elegir CUAL imagen si hay varias en la portada: la de
+    mayor area (width * height) -- normalmente es la foto/fondo principal de
+    la portada, no un logo o icono decorativo pequeño superpuesto.
+    """
+    pub_ids = [p.id for p in publications]
+    if not pub_ids:
+        return
+
+    cover_pages = db.query(Page.id, Page.publication_id)\
+        .filter(Page.publication_id.in_(pub_ids), Page.page_number == 1)\
+        .all()
+    page_id_to_pub_id = {page_id: pub_id for page_id, pub_id in cover_pages}
+    if not page_id_to_pub_id:
+        return
+
+    image_elements = db.query(PageElement)\
+        .filter(PageElement.page_id.in_(page_id_to_pub_id.keys()), PageElement.kind == "image")\
+        .all()
+
+    best_by_pub = {}  # pub_id -> (area, src)
+    for el in image_elements:
+        src = (el.props or {}).get("src")
+        if not src:
+            continue
+        pub_id = page_id_to_pub_id.get(el.page_id)
+        if pub_id is None:
+            continue
+        area = float(el.width or 0) * float(el.height or 0)
+        current = best_by_pub.get(pub_id)
+        if current is None or area > current[0]:
+            best_by_pub[pub_id] = (area, src)
+
+    for pub in publications:
+        best = best_by_pub.get(pub.id)
+        pub.cover_image_url = best[1] if best else None
 
 @router.get("/{publication_id}", response_model=PublicationResponse)
 def get_publication(
