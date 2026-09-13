@@ -13,12 +13,22 @@ import '../../styles/CanvasEditorV2.css';
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
 // sección 8. Herramientas marcadas "próximamente" son placeholders visuales:
-// Hotspot, Library, Blocks -- quedan para lotes siguientes, no bloquean lo
-// ya verificado.
+// Hotspot y Blocks -- quedan para lotes siguientes (Blocks se evaluo para
+// este mismo lote y se decidio dejarlo fuera, ver RECETA-DESARROLLO.md),
+// no bloquean lo ya verificado.
 // Línea/Círculo/Estrella y Alinear/Distribuir (con selección múltiple,
 // Lote 1), Plugins/shortcodes de texto (Lote 2), Audio (Lote 3),
-// Galería/Collage/GIF (Lote 4), YouTube/Vimeo (Lote 5) y SoundCloud +
-// Quick Actions (Lote 6) SÍ son funcionales.
+// Galería/Collage/GIF (Lote 4), YouTube/Vimeo (Lote 5), SoundCloud +
+// Quick Actions (Lote 6) y Video real + Library (Lote 7) SÍ son
+// funcionales.
+// Video (Lote 7): subida real de archivo (mp4/webm/mov) via el mismo
+// patron que Audio -- kind='video', props={src, autoplay, loop, muted},
+// placeholder en canvas (ver VideoElement), <video controls> nativo en el
+// panel de propiedades. Library (Lote 7): biblioteca de assets del TENANT
+// (tabla `assets`, poblada por primera vez en este lote desde
+// POST /api/assets/upload) -- permite reutilizar imagenes/audio/video ya
+// subidos sin volver a subir el archivo; ver GET /api/assets y el popover
+// abierto por el boton "Library" del rail mas abajo.
 // GIF reutiliza kind='image' (Konva no anima GIFs -- limitación conocida,
 // ver RECETA-DESARROLLO.md); Galería y Collage comparten kind='gallery' y
 // solo difieren en props.layout ('grid'/'mosaic'), intercambiable después
@@ -67,6 +77,7 @@ const ICON_PATHS = {
   youtube: 'M22 12s0-3.2-.4-4.7a2.9 2.9 0 0 0-2-2C17.9 5 12 5 12 5s-5.9 0-7.6.3a2.9 2.9 0 0 0-2 2C2 8.8 2 12 2 12s0 3.2.4 4.7a2.9 2.9 0 0 0 2 2C6.1 19 12 19 12 19s5.9 0 7.6-.3a2.9 2.9 0 0 0 2-2C22 15.2 22 12 22 12zM10 15.5v-7l6 3.5-6 3.5z',
   vimeo: 'M22 7.4c-.1 2-1.5 4.6-4.1 8-2.7 3.5-5 5.2-6.9 5.2-1.2 0-2.1-1.1-2.9-3.2C7.4 15 6.6 11 5.6 11c-.2 0-.9.4-2.1 1.3L2.6 11c1.4-1.2 2.7-2.5 4-3.7 1.8-1.6 3.1-2.4 4-2.5 2.1-.2 3.4 1.2 3.8 4.3.5 3.3.9 5.3 1.3 6 .3.7.7 1.1 1.2 1.1.4 0 1-.5 1.8-1.5.8-1 1.2-1.8 1.3-2.4.1-1-.3-1.5-1.3-1.5-.5 0-1 .1-1.5.3C18 8 20.2 6.6 22 7.4z',
   audio: 'M11 4L6 8H3v8h3l5 4V4zm5.5 3.5a7 7 0 0 1 0 9m-2.5-7a4 4 0 0 1 0 5',
+  video: 'M3 6h13v12H3V6zm13 4l5-3v10l-5-3v-4z',
   soundcloud: 'M3 15v-3M6 16v-6M9 16.5v-8M12 16.5v-9M15 16.5A3.5 3.5 0 0 0 15 9.5v7z',
   plugins: 'M8 4l-4 4 4 4M16 4l4 4-4 4M14 3l-4 18',
   library: 'M4 4h4v16H4V4zm6 1l4-1 3.5 15.5-4 1L10 5zM16 4h4v16h-4V4z',
@@ -218,6 +229,38 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       <Rect width={el.width} height={el.height} fill="#eef2ff" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
       <Path data={ICON_PATHS.audio} x={14} y={el.height / 2 - 10} scaleX={1.1} scaleY={1.1} stroke={accent} strokeWidth={1.8} />
       <KonvaText text="Audio" x={44} y={el.height / 2 - 8} fontSize={14} fill={accent} />
+    </Group>
+  );
+}
+
+// Elemento de video (Lote 7 -- subida de video real, pedido explicito de
+// Carlos: "Tambien permitir subir video real"). Mismo criterio que
+// AudioElement: Konva no puede reproducir un archivo de video dentro del
+// canvas de forma sencilla y confiable entre navegadores (habria que armar
+// un <video> oculto + Konva.Image + requestAnimationFrame sincronizado,
+// demasiado alcance para este lote y nunca implementado antes) -- se
+// dibuja un placeholder (Group con fondo + icono + etiqueta), igual que
+// Audio/Embed. La reproduccion real de PRUEBA vive en el panel de
+// propiedades via un <video controls> nativo (ver PropertiesPanel).
+function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const accent = '#7c3aed';
+  return (
+    <Group
+      ref={shapeRef}
+      x={el.x}
+      y={el.y}
+      width={el.width}
+      height={el.height}
+      rotation={el.rotation_deg}
+      draggable={canEdit && !el.props?.locked}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
+      onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
+    >
+      <Rect width={el.width} height={el.height} fill="#f5f3ff" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
+      <Path data={ICON_PATHS.video} x={el.width / 2 - 20} y={el.height / 2 - 20} scaleX={1.4} scaleY={1.4} stroke={accent} strokeWidth={1.6} />
+      <KonvaText text="Video" x={0} y={el.height / 2 + 16} width={el.width} align="center" fontSize={14} fill={accent} />
     </Group>
   );
 }
@@ -639,7 +682,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
     <aside className="editor-v2-properties">
       <div className="editor-v2-props-header">
         {count === 0 && 'Ningún elemento seleccionado'}
-        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : kind === 'embed' ? (EMBED_PROVIDER_META[selectedElement?.props?.provider]?.label || 'YouTube') : 'Figura'}${selectedElement?.props?.element_name ? ` (${selectedElement.props.element_name})` : ''}`}
+        {count === 1 && `Elemento: ${kind === 'image' ? 'Imagen' : kind === 'text' ? 'Texto' : kind === 'audio' ? 'Audio' : kind === 'video' ? 'Video' : kind === 'gallery' ? (selectedElement?.props?.layout === 'mosaic' ? 'Collage' : 'Galería') : kind === 'embed' ? (EMBED_PROVIDER_META[selectedElement?.props?.provider]?.label || 'YouTube') : 'Figura'}${selectedElement?.props?.element_name ? ` (${selectedElement.props.element_name})` : ''}`}
         {count > 1 && `${count} elementos seleccionados`}
       </div>
 
@@ -745,6 +788,48 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
               </label>
               <p className="editor-v2-props-hint">
                 Vista previa de escucha para validar el archivo -- la reproducción real dentro de la publicación llega con el Reader (Fase E).
+              </p>
+            </section>
+          )}
+
+          {kind === 'video' && (
+            <section className="editor-v2-props-section">
+              <h4>Video</h4>
+              <video
+                key={selectedElement.props?.src}
+                controls
+                style={{ width: '100%', marginBottom: 8, background: '#000' }}
+                src={selectedElement.props?.src?.startsWith('http') ? selectedElement.props.src : `${API_URL}${selectedElement.props?.src || ''}`}
+              />
+              <label className="editor-v2-field editor-v2-field-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={!!selectedElement.props?.autoplay}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, autoplay: e.target.checked } })}
+                />
+                <span>Reproducir automáticamente (Reader)</span>
+              </label>
+              <label className="editor-v2-field editor-v2-field-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={!!selectedElement.props?.loop}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, loop: e.target.checked } })}
+                />
+                <span>Repetir en bucle</span>
+              </label>
+              <label className="editor-v2-field editor-v2-field-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={!!selectedElement.props?.muted}
+                  onChange={(e) => onUpdate({ props: { ...selectedElement.props, muted: e.target.checked } })}
+                />
+                <span>Silenciado</span>
+              </label>
+              <p className="editor-v2-props-hint">
+                Vista previa para validar el archivo -- la reproducción real dentro de la publicación llega con el Reader (Fase E).
               </p>
             </section>
           )}
@@ -872,7 +957,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
             </p>
           </div>
         )}
-        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente (Lote 7 -- Library/Blocks)">
+        <button type="button" className="editor-v2-quickaction coming-soon" disabled title="Próximamente (Blocks -- lote aparte, fuera de alcance del Lote 7)">
           Guardar como bloque de plantilla
         </button>
         <label className="editor-v2-field">
@@ -1096,6 +1181,7 @@ function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages
           if (el.kind === 'image') return <ImageElement key={el.id} {...shared} />;
           if (el.kind === 'text') return <TextElement key={el.id} {...shared} shortcodeCtx={shortcodeCtx} />;
           if (el.kind === 'audio') return <AudioElement key={el.id} {...shared} />;
+          if (el.kind === 'video') return <VideoElement key={el.id} {...shared} />;
           if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
           if (el.kind === 'embed') return <EmbedElement key={el.id} {...shared} />;
           return <ShapeElement key={el.id} {...shared} />;
@@ -1183,10 +1269,22 @@ export default function CanvasEditorV2() {
 
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const collageInputRef = useRef(null);
   const gifInputRef = useRef(null);
   const galleryAppendInputRef = useRef(null);
+
+  // Lote 7 -- Library: popover propio (mismo lenguaje visual que
+  // Plugins/Embed) con la biblioteca de assets del tenant (GET /api/assets).
+  // Se recarga cada vez que se abre (no se cachea entre aperturas -- el
+  // tenant puede haber subido algo nuevo desde la ultima vez) y respeta el
+  // filtro por tipo elegido en el propio popover.
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryAssets, setLibraryAssets] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState('all');
 
   const canEdit = lockState === 'held';
   const selectedElements = focusedState.elements.filter((e) => focusedState.selectedElementIds.includes(e.id));
@@ -1364,6 +1462,7 @@ export default function CanvasEditorV2() {
 
   const handleUploadImageClick = () => fileInputRef.current?.click();
   const handleUploadAudioClick = () => audioInputRef.current?.click();
+  const handleUploadVideoClick = () => videoInputRef.current?.click();
   const handleUploadGalleryClick = () => galleryInputRef.current?.click();
   const handleUploadCollageClick = () => collageInputRef.current?.click();
   const handleUploadGifClick = () => gifInputRef.current?.click();
@@ -1398,6 +1497,27 @@ export default function CanvasEditorV2() {
       focusedStoreHook.getState().addElement('audio', { width: 220, height: 56, props: { src: uploaded.url, autoplay: false, loop: false } });
     } catch (err) {
       window.alert(err?.response?.data?.detail || 'No se pudo subir el audio');
+    }
+  };
+
+  const handleVideoFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    // Igual criterio que Audio/GIF: validacion de tipo del lado cliente antes
+    // de intentar la subida (la validacion real de MIME/tamano ocurre en el
+    // backend -- ver allowed_video_types y MAX_VIDEO_SIZE en
+    // app/api/assets.py). Un .txt (o cualquier tipo no reconocido) nunca
+    // llega a llamar assetAPI.upload().
+    if (file.type && !file.type.startsWith('video/')) {
+      window.alert('Selecciona un archivo de video (mp4, webm, mov...).');
+      return;
+    }
+    try {
+      const uploaded = await assetAPI.upload(file);
+      focusedStoreHook.getState().addElement('video', { width: 280, height: 160, props: { src: uploaded.url, autoplay: false, loop: false, muted: false } });
+    } catch (err) {
+      window.alert(err?.response?.data?.detail || 'No se pudo subir el video');
     }
   };
 
@@ -1547,6 +1667,54 @@ export default function CanvasEditorV2() {
     focusedStoreHook.getState().updateElements(computeAlignPatches(type, selectedElements));
   };
 
+  // --- Library (Lote 7) ---------------------------------------------------
+  const fetchLibraryAssets = async (kindFilter) => {
+    setLibraryLoading(true);
+    setLibraryError('');
+    try {
+      const params = kindFilter && kindFilter !== 'all' ? `?kind=${kindFilter}` : '';
+      const res = await fetch(`${API_URL}/api/assets${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setLibraryAssets(data.assets || []);
+    } catch (err) {
+      setLibraryError('No se pudo cargar la biblioteca.');
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  const handleToggleLibrary = () => {
+    setLibraryOpen((v) => {
+      const next = !v;
+      if (next) fetchLibraryAssets(libraryFilter);
+      return next;
+    });
+  };
+
+  const handleLibraryFilterChange = (kindFilter) => {
+    setLibraryFilter(kindFilter);
+    fetchLibraryAssets(kindFilter);
+  };
+
+  // Inserta el asset elegido reutilizando su URL -- NUNCA vuelve a subir el
+  // archivo. Mismo `props` que cada tipo usa cuando SÍ se sube (Imagen/
+  // Audio/Video de este mismo rail), para que el elemento resultante sea
+  // indistinguible de uno recien subido salvo por compartir el mismo src.
+  const handleInsertFromLibrary = (asset) => {
+    if (!canEdit) return;
+    if (asset.kind === 'image') {
+      focusedStoreHook.getState().addElement('image', { width: 200, height: 200, props: { src: asset.url } });
+    } else if (asset.kind === 'audio') {
+      focusedStoreHook.getState().addElement('audio', { width: 220, height: 56, props: { src: asset.url, autoplay: false, loop: false } });
+    } else if (asset.kind === 'video') {
+      focusedStoreHook.getState().addElement('video', { width: 280, height: 160, props: { src: asset.url, autoplay: false, loop: false, muted: false } });
+    }
+    setLibraryOpen(false);
+  };
+
   if (loadErr) {
     return <div className="editor-v2-error">Error: {loadErr}</div>;
   }
@@ -1640,6 +1808,7 @@ export default function CanvasEditorV2() {
               {embedMenuOpen === 'vimeo' && renderEmbedPopover()}
             </div>
             <ToolButton icon="audio" label="Audio" disabled={!canEdit} onClick={handleUploadAudioClick} />
+            <ToolButton icon="video" label="Video" disabled={!canEdit} onClick={handleUploadVideoClick} />
             <div className="editor-v2-plugins-wrap">
               <ToolButton
                 icon="soundcloud"
@@ -1675,12 +1844,73 @@ export default function CanvasEditorV2() {
           </ToolGroup>
 
           <ToolGroup>
-            <ToolButton icon="library" label="Library" comingSoon disabled />
+            <div className="editor-v2-plugins-wrap">
+              <ToolButton
+                icon="library"
+                label="Library"
+                active={libraryOpen}
+                onClick={handleToggleLibrary}
+              />
+              {libraryOpen && (
+                <div className="editor-v2-plugins-menu editor-v2-library-menu">
+                  <div className="editor-v2-plugins-menu-title">Biblioteca del tenant</div>
+                  <div className="editor-v2-library-tabs">
+                    {[
+                      { key: 'all', label: 'Todos' },
+                      { key: 'image', label: 'Imágenes' },
+                      { key: 'audio', label: 'Audio' },
+                      { key: 'video', label: 'Video' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        className={`editor-v2-tool ${libraryFilter === tab.key ? 'active' : ''}`}
+                        onClick={() => handleLibraryFilterChange(tab.key)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  {libraryLoading && <p className="editor-v2-props-hint">Cargando biblioteca…</p>}
+                  {!libraryLoading && libraryError && <p className="editor-v2-embed-error">{libraryError}</p>}
+                  {!libraryLoading && !libraryError && libraryAssets.length === 0 && (
+                    <p className="editor-v2-props-hint">
+                      Todavía no hay assets en la biblioteca de este tenant -- sube una imagen, audio o video desde el rail y aparecerá aquí para reutilizarse.
+                    </p>
+                  )}
+                  {!libraryLoading && !libraryError && libraryAssets.length > 0 && (
+                    <ul className="editor-v2-library-grid">
+                      {libraryAssets.map((asset) => (
+                        <li key={asset.id}>
+                          <button
+                            type="button"
+                            className="editor-v2-library-item"
+                            disabled={!canEdit}
+                            title={`Insertar ${asset.kind}`}
+                            onClick={() => handleInsertFromLibrary(asset)}
+                          >
+                            {asset.kind === 'image' ? (
+                              <img src={asset.url?.startsWith('http') ? asset.url : `${API_URL}${asset.url}`} alt="" />
+                            ) : (
+                              <span className="editor-v2-library-item-icon">
+                                <Icon name={asset.kind === 'video' ? 'video' : 'audio'} size={22} />
+                                <span>{asset.kind === 'video' ? 'Video' : 'Audio'}</span>
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
             <ToolButton icon="blocks" label="Blocks" comingSoon disabled />
           </ToolGroup>
 
           <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
           <input type="file" accept="audio/*" ref={audioInputRef} style={{ display: 'none' }} onChange={handleAudioFileChange} />
+          <input type="file" accept="video/*" ref={videoInputRef} style={{ display: 'none' }} onChange={handleVideoFileChange} />
           <input type="file" accept="image/*" multiple ref={galleryInputRef} style={{ display: 'none' }} onChange={handleGalleryFileChange} />
           <input type="file" accept="image/*" multiple ref={collageInputRef} style={{ display: 'none' }} onChange={handleCollageFileChange} />
           <input type="file" accept="image/gif" ref={gifInputRef} style={{ display: 'none' }} onChange={handleGifFileChange} />

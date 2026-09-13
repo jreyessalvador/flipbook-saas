@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from minio import Minio
 from minio.error import S3Error
 import uuid
@@ -13,6 +14,7 @@ import os
 from app.db.session import get_db
 from app.api.auth import get_current_user
 from app.models.user import User
+from app.models.asset import Asset
 from app.config import settings
 
 logger = logging.getLogger("flipbook.assets")
@@ -86,18 +88,27 @@ async def upload_asset(
 ):
     try:
         ensure_bucket()
-        # Tipos permitidos: imagen (Fase B) + audio (Lote 3 -- editor de
-        # página). Cada categoría tiene su propio límite de tamaño en
-        # app.config.settings (MAX_IMAGE_SIZE / MAX_AUDIO_SIZE) -- nunca se
-        # valida el tamaño de audio contra el límite (menor) de imagen.
+        # Tipos permitidos: imagen (Fase B) + audio (Lote 3) + video (Lote 7
+        # -- subida de video real, pedido explicito de Carlos: "Tambien
+        # permitir subir video real"). Cada categoria tiene su propio limite
+        # de tamano en app.config.settings (MAX_IMAGE_SIZE / MAX_AUDIO_SIZE /
+        # MAX_VIDEO_SIZE) -- nunca se valida el tamano de un tipo contra el
+        # limite de otro.
         allowed_image_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
         allowed_audio_types = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm"]
+        allowed_video_types = ["video/mp4", "video/webm", "video/quicktime"]
         if file.content_type in allowed_image_types:
+            asset_kind = "image"
             max_size = settings.MAX_IMAGE_SIZE
             max_size_label = "10MB"
         elif file.content_type in allowed_audio_types:
+            asset_kind = "audio"
             max_size = settings.MAX_AUDIO_SIZE
             max_size_label = "20MB"
+        elif file.content_type in allowed_video_types:
+            asset_kind = "video"
+            max_size = settings.MAX_VIDEO_SIZE
+            max_size_label = "100MB"
         else:
             raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
 
@@ -119,13 +130,32 @@ async def upload_asset(
             content_type=file.content_type
         )
 
+        # Catalogar la subida en `assets` (tabla ya existente, hasta ahora
+        # nunca poblada -- Lote 7). Es la pieza que permite reciclar
+        # imagenes/audio/video ya subidos por el tenant en vez de resubirlos
+        # (biblioteca, GET /assets abajo). width_px/height_px/duration_seconds
+        # quedan en None por ahora -- extraer metadatos del archivo (dimension
+        # de imagen, duracion de audio/video) es una mejora futura opcional,
+        # no bloqueante para este lote.
+        asset_row = Asset(
+            tenant_id=current_user.tenant_id,
+            kind=asset_kind,
+            storage_key=object_name,
+            mime_type=file.content_type,
+            size_bytes=file_size,
+            created_by=current_user.id,
+        )
+        db.add(asset_row)
+        db.commit()
+
         return {
             "success": True,
             "filename": file.filename,
             "object_name": object_name,
             "url": build_asset_url(object_name),
             "size": file_size,
-            "content_type": file.content_type
+            "content_type": file.content_type,
+            "asset_id": str(asset_row.id)
         }
 
     except HTTPException:
@@ -140,6 +170,45 @@ async def upload_asset(
         raise HTTPException(status_code=500, detail=f"Error MinIO: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.get("")
+async def list_library_assets(
+    kind: Optional[str] = Query(None, description="Filtrar por tipo: image, video o audio"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Biblioteca de assets reciclables del tenant (Lote 7) -- a diferencia de
+    /assets/list (legado, lista objetos de MinIO por USUARIO desde el
+    editor v1), esto lee la tabla `assets` y es por TENANT: cualquier
+    imagen/audio/video subido por cualquier usuario del mismo tenant puede
+    reutilizarse sin volver a subir el archivo. Sin paginacion en este MVP
+    (limite fijo de 100, orden mas reciente primero) -- si el volumen crece
+    lo suficiente para que haga falta, se agrega cursor/paginacion despues.
+    """
+    query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
+    if kind:
+        if kind not in ("image", "video", "audio"):
+            raise HTTPException(status_code=400, detail="kind debe ser image, video o audio")
+        query = query.filter(Asset.kind == kind)
+    rows = query.order_by(desc(Asset.created_at)).limit(100).all()
+
+    return {
+        "success": True,
+        "count": len(rows),
+        "assets": [
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "url": build_asset_url(row.storage_key),
+                "mime_type": row.mime_type,
+                "size_bytes": row.size_bytes,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+    }
 
 
 @router.get("/list")
