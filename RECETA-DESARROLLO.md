@@ -1499,7 +1499,83 @@ Se re-ejecuto TODA la suite de regresion existente (19 scripts en total,
 incluido este nuevo): todos pasan limpio, sin errores de consola, sin
 regresiones.
 
+## 9o. Lote UX-12 -- efecto y sonido de pasar pagina + spread "casi pegado" en el visor publico (13-sep-2026)
+
+**Reporte de Carlos** (con capturas del visor `/view`, no del editor): al
+usar el control de Siguiente en cualquier revista, entre la portada y el
+spread interior 2-3 se veia un hueco grande entre ambas paginas (heredado
+del `gap:24px` del editor), y no habia ningun efecto de transicion al
+cambiar de pagina. Pidio que las 2 paginas de un spread se vean "casi
+pegadas a efecto de revista" y que el cambio de pagina tenga efecto visual
++ sonido de pagina de papel, tipo Joomag/Issuu.
+
+**Decisiones tomadas sin bloquear en Carlos** (via `AskUserQuestion`):
+sonido unico por defecto para todas las publicaciones (no upload por
+publicacion -- el campo `Publication.page_turn_sound_asset_id` existe en
+el modelo desde antes pero se deja sin usar), y efecto de curva/doblez 3D
+(no un simple deslizamiento lateral).
+
+**Implementacion (solo en el visor publico -- `PageViewer.jsx`/`PageViewer.css`,
+nunca en `CanvasEditorV2.jsx`/`.css` compartidos con el editor interno)**:
+- `gap` del wrap de 24px a 3px (constante `CANVAS_WRAP_GAP` en el .jsx debe
+  coincidir con el CSS), mas una sombra sutil de "lomo" en el centro del
+  spread.
+- Efecto de flip 3D (`rotateY`, maquina de estados `flipState` de 2 fases
+  "out"/"in" de 220ms cada una, con el swap de `currentViewIndex` ocurriendo
+  justo en el instante en que la hoja esta de canto/invisible) + sonido
+  `.mp3` sintetizado con ffmpeg (ruido filtrado, sin fuente externa por
+  tema de licencias) servido como estatico desde `frontend/public/sounds/`.
+
+**Bug de la primera version -- reportado por el propio Carlos tras
+revisarlo** ("el efecto de cambio de pagina no quedo bien, se ve muy
+feo"): el `rotateY` se aplicaba a `.editor-v2-canvas-wrap`, el DIV que
+`CanvasEditorV2.css` define con `flex:1` para ocupar TODO el ancho
+disponible y centrar la(s) pagina(s) adentro con `justify-content`. Como
+ese wrap es mucho mas ancho que la pagina real (sobre todo en
+portada/contraportada, una sola hoja centrada en pantalla completa),
+`transform-origin:100%/0%` pivotaba sobre el borde de la PANTALLA, no el
+borde de la PAGINA -- resultado visual: un trapecio gris gigante de fondo
+y la hoja real encogida/sesgada en el centro.
+
+**Fix** (verificado conectandome al navegador -- Claude in Chrome -- en
+vivo contra `ia-lavatur`, no solo con Playwright: se creo una publicacion
+de prueba con rectangulos de color de fondo en cada pagina para que el
+efecto fuera visible, y se congelo la animacion a mitad de vuelo con
+`element.getAnimations()[0].pause()` para inspeccionar geometria y
+`transform-origin` reales durante la transicion): se agrego un DIV interno
+nuevo, `.page-viewer-flip-inner`, que envuelve solo la(s) pagina(s) --
+sizeado a su ancho real (`display:flex`, `flex-shrink:0` en sus hijos
+`.editor-v2-page-slot`) -- y es este el que ahora rota. El wrap exterior
+(`.editor-v2-canvas-wrap`, con `canvasWrapRef`) se deja SIN rotar y sigue
+siendo el `flex:1` de ancho completo que `PageViewer.jsx` necesita intacto
+para el calculo de `fitScale` (el `ResizeObserver` mide su
+`clientWidth`/`clientHeight`). El oscurecido (`::after`) y la sombra de
+lomo (`::before`) se movieron del wrap exterior al div interno para que
+cubran solo la pagina, no toda la franja gris de fondo.
+
+**Verificacion**: `frontend/tests/verify_lote_ux12_page_flip.js` --
+crea una publicacion de 4 paginas, mide el gap del spread (<=15px), hace
+clic en "Siguiente" y verifica geometricamente que el DIV que rota
+(`.page-viewer-flip-inner`) sea sustancialmente MAS ANGOSTO que el wrap
+exterior de medicion (nueva asercion agregada especificamente como
+regresion contra el bug del "trapecio gigante"), detecta la clase de
+flipping y una transformacion 3D real durante la transicion, confirma que
+el contenido avanza correctamente pese a la animacion, que se crea un
+`Audio()` con el src correcto en cada cambio de pagina, y que
+`/sounds/page-turn.mp3` se sirve con HTTP 200. Se re-ejecuto TODA la
+suite de regresion existente (21 scripts en total, incluido este):
+todos pasan limpio, sin errores de consola, sin regresiones.
+
 ## 10. Próximo paso concreto (para quien retome esto)
+
+**ACTUALIZACIÓN 13-sep-2026 (cierre de UX-12)**: Carlos pidio que el
+spread se viera "casi pegado" tipo revista real y que el cambio de pagina
+en el visor publico tuviera efecto visual + sonido de pasar pagina. Se
+implemento y, tras un primer intento reportado por Carlos como "se ve muy
+feo" (el trapecio gris gigante descrito en detalle en la seccion 9o), se
+corrigio conectandome en vivo a su Chrome real para verificarlo con la
+animacion congelada a mitad de vuelo. YA ESTA IMPLEMENTADO, CORREGIDO Y
+VERIFICADO -- ver seccion 9o.
 
 **ACTUALIZACIÓN 13-sep-2026 (cierre de UX-2/UX-4)**: los Lotes UX-2 (paleta
 editorial navy+dorado) y UX-4 (brillo/contraste + esquinas redondeadas en
