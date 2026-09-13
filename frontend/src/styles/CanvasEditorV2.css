@@ -163,8 +163,15 @@
   padding: 24px;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  /* Lote UX-3 (parte 2): centrado tambien en vertical -- ahora que el
+     Stage se escala para caber siempre en el espacio disponible
+     (ver fitScale en CanvasEditorV2.jsx), ya no hace falta anclar arriba
+     para dar lugar al scroll; overflow:auto se conserva como red de
+     seguridad para ventanas extremadamente pequenas, no como mecanismo
+     normal de visualizacion. */
+  align-items: center;
   gap: 24px;
+  overflow: auto;
 }
 
 /* Vista de hoja doble (spread): ambas páginas lado a lado, cada una con su

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Rect, Ellipse, Line, Star, Path, Group, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 import { createPageEditorStore } from '../../store/pageEditorStore';
@@ -1083,7 +1083,7 @@ function findViewIndexForPageNumber(views, pageNumber) {
 // createPageEditorStore()) que gobierna esta página -- ella misma es un
 // hook de Zustand, así que se llama directamente en el cuerpo del
 // componente como cualquier otro hook.
-function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages, onFocus }) {
+export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages, onFocus, scale = 1 }) {
   const { elements, isLoading, loadError, selectedElementIds } = useStoreHook();
 
   const stageRef = useRef(null);
@@ -1144,17 +1144,19 @@ function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages
   };
 
   if (isLoading) {
-    return <div className="editor-v2-loading editor-v2-page-slot" style={{ width: stageWidthPx, height: stageHeightPx }}>Cargando página…</div>;
+    return <div className="editor-v2-loading editor-v2-page-slot" style={{ width: stageWidthPx * scale, height: stageHeightPx * scale }}>Cargando página…</div>;
   }
   if (loadError) {
-    return <div className="editor-v2-error editor-v2-page-slot" style={{ width: stageWidthPx, height: stageHeightPx }}>{loadError}</div>;
+    return <div className="editor-v2-error editor-v2-page-slot" style={{ width: stageWidthPx * scale, height: stageHeightPx * scale }}>{loadError}</div>;
   }
 
   return (
     <Stage
       ref={stageRef}
-      width={stageWidthPx}
-      height={stageHeightPx}
+      width={stageWidthPx * scale}
+      height={stageHeightPx * scale}
+      scaleX={scale}
+      scaleY={scale}
       className="editor-v2-stage"
       onMouseDown={handleStageMouseDown}
       onMouseMove={handleStageMouseMove}
@@ -1715,6 +1717,42 @@ export default function CanvasEditorV2() {
     setLibraryOpen(false);
   };
 
+  // Lote UX-3 (parte 2): ajustar el zoom para que la pagina (o el spread
+  // completo) quepa en el area visible SIN scroll al entrar -- antes el
+  // Stage se dibujaba siempre a PX_PER_MM fijo (3px/mm), mas alto que el
+  // espacio disponible para casi cualquier tamano de pagina real (A4 a
+  // 3px/mm = 891px de alto), forzando scroll vertical constante apenas se
+  // abria una pagina (reportado por Carlos con capturas). El escalado se
+  // aplica de forma NATIVA de Konva (Stage scaleX/scaleY dentro de
+  // PageCanvas), nunca con un transform CSS por fuera -- asi Konva sigue
+  // calculando correctamente la posicion del puntero al hacer click o
+  // arrastrar un elemento, sin desalinearse respecto a lo que se ve.
+  const canvasWrapRef = useRef(null);
+  const [fitScale, setFitScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const wrap = canvasWrapRef.current;
+    if (!wrap || !publication || !currentView) return;
+
+    const recomputeScale = () => {
+      const stageWidthPx = publication.page_width * PX_PER_MM;
+      const stageHeightPx = publication.page_height * PX_PER_MM;
+      const isSpread = !!currentView.right;
+      const CANVAS_WRAP_GAP = 24; // debe coincidir con el `gap` de .editor-v2-canvas-wrap en CanvasEditorV2.css
+      const contentWidthPx = isSpread ? stageWidthPx * 2 + CANVAS_WRAP_GAP : stageWidthPx;
+      const availableWidth = wrap.clientWidth - 48; // padding horizontal del wrap (24px a cada lado)
+      const availableHeight = wrap.clientHeight - 48; // padding vertical del wrap
+      if (availableWidth <= 0 || availableHeight <= 0) return;
+      const scale = Math.min(availableWidth / contentWidthPx, availableHeight / stageHeightPx, 1);
+      setFitScale(scale > 0 ? scale : 1);
+    };
+
+    recomputeScale();
+    const observer = new ResizeObserver(recomputeScale);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, [publication, currentView?.right, currentView?.left?.id]);
+
   if (loadErr) {
     return <div className="editor-v2-error">Error: {loadErr}</div>;
   }
@@ -1948,7 +1986,7 @@ export default function CanvasEditorV2() {
             </button>
           </div>
 
-          <div className={`editor-v2-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}>
+          <div ref={canvasWrapRef} className={`editor-v2-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}>
             <div className={`editor-v2-page-slot${focusedSide === 'left' ? ' focused' : ''}`}>
               <PageCanvas
                 useStoreHook={useLeftStore}
@@ -1957,6 +1995,7 @@ export default function CanvasEditorV2() {
                 pageNumber={activeLeftPageNumber}
                 totalPages={totalPages}
                 onFocus={() => setFocusedSide('left')}
+                scale={fitScale}
               />
             </div>
             {currentView.right && (
@@ -1968,6 +2007,7 @@ export default function CanvasEditorV2() {
                   pageNumber={activeRightPageNumber}
                   totalPages={totalPages}
                   onFocus={() => setFocusedSide('right')}
+                  scale={fitScale}
                 />
               </div>
             )}
