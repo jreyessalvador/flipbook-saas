@@ -61,13 +61,20 @@ def list_public_publications(db: Session = Depends(get_db)):
                     # Buscar el elemento de imagen con mayor área
                     best_area = 0
                     for el in elements:
-                        if el.get("kind") == "image" and el.get("props", {}).get("src"):
+                        props = el.get("props", {})
+                        image_src = props.get("src")
+                        if el.get("kind") == "gallery":
+                            image_src = next(
+                                (item.get("src") for item in props.get("images", []) if item.get("src")),
+                                None,
+                            )
+                        if image_src:
                             w = el.get("width", 0)
                             h = el.get("height", 0)
                             area = w * h
                             if area > best_area or cover_url is None:
                                 best_area = area
-                                cover_url = el["props"]["src"]
+                                cover_url = image_src
                     if cover_url:
                         break
 

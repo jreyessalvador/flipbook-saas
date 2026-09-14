@@ -187,8 +187,8 @@ const LandingPage = () => {
           ) : (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '2rem'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '1.5rem'
             }}>
               {publications.map((pub) => (
                 <div
@@ -196,7 +196,7 @@ const LandingPage = () => {
                   onClick={() => navigate(`/leer/${pub.id}`)}
                   style={{
                     backgroundColor: 'var(--color-navy-dark, #0c1526)',
-                    borderRadius: '12px',
+                    borderRadius: '10px',
                     overflow: 'hidden',
                     border: '1px solid rgba(255,255,255,0.08)',
                     cursor: 'pointer',
@@ -214,8 +214,9 @@ const LandingPage = () => {
                   }}
                 >
                   <div style={{
-                    height: '240px',
-                    backgroundColor: '#1e293b',
+                    aspectRatio: `${pub.page_width || 210} / ${pub.page_height || 297}`,
+                    maxHeight: '440px',
+                    backgroundColor: '#17243a',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -226,7 +227,7 @@ const LandingPage = () => {
                       <img
                         src={pub.cover_url.startsWith('http') ? pub.cover_url : `${API_URL}${pub.cover_url}`}
                         alt={pub.title}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                       />
                     ) : (
                       <div style={{ fontSize: '3rem' }}>📘</div>
@@ -246,28 +247,8 @@ const LandingPage = () => {
                     </div>
                   </div>
 
-                  <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.5rem', color: '#ffffff' }}>{pub.title}</h3>
-                      <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {pub.description || 'Publicación digital interactiva.'}
-                      </p>
-                    </div>
-
-                    <button style={{
-                      marginTop: '1.25rem',
-                      backgroundColor: 'transparent',
-                      color: 'var(--color-gold, #c9a24b)',
-                      border: '1px solid var(--color-gold, #c9a24b)',
-                      padding: '0.5rem',
-                      borderRadius: '6px',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      width: '100%',
-                      cursor: 'pointer'
-                    }}>
-                      Abrir Revista 📖
-                    </button>
+                  <div style={{ padding: '0.85rem 1rem 1rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 650, margin: 0, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pub.title}</h3>
                   </div>
                 </div>
               ))}
