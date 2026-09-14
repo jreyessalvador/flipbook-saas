@@ -88,7 +88,8 @@ const PublicReader = () => {
   }
 
   const spreadViews = computeSpreadViews(pages);
-  const currentSpread = spreadViews[currentSpreadIndex] || { pages: [] };
+  const currentSpread = spreadViews[currentSpreadIndex] || { left: null, right: null };
+  const currentPages = [currentSpread.left, currentSpread.right].filter(Boolean);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -121,7 +122,7 @@ const PublicReader = () => {
       {/* Main Canvas Display (Modo Lectura / Spread View) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', overflow: 'auto' }}>
         <div style={{ display: 'flex', gap: '2px', backgroundColor: '#000', padding: '4px', borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
-          {currentSpread.pages.map((p) => (
+          {currentPages.map((p) => (
             <div key={p.id || p.page_number} style={{ backgroundColor: '#fff' }}>
               <ReaderPage page={p} publication={publication} totalPages={pages.length} />
             </div>
@@ -157,7 +158,7 @@ const PublicReader = () => {
         </button>
 
         <span style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>
-          Página {currentSpread.pages.map(p => p.page_number).join('-')}
+          Página {currentPages.map(p => p.page_number).join('-')}
         </span>
 
         <button
