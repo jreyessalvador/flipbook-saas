@@ -9,7 +9,6 @@ from app.models.publication import Publication
 from app.models.publication_version import PublicationVersion
 from app.schemas.publication import PublicationResponse
 from app.schemas.page import PageResponse
-from app.schemas.page_element import PageElementResponse
 
 router = APIRouter()
 
@@ -17,13 +16,18 @@ def _get_snapshot_pages(snapshot: dict) -> List[dict]:
     """Helper para extraer y formatear páginas desde el snapshot congelado."""
     pages_data = snapshot.get("pages", [])
     result = []
-    for p in pages_data:
+    for page_index, p in enumerate(pages_data):
+        # El snapshot no conserva las claves de base de datos de Page ni de
+        # PageElement: son datos inmutables del Reader. Se asignan claves
+        # estables de lectura para React/Konva, sin intentar validarlos como
+        # registros editables (lo que provocaba un 500 al abrir el Reader).
         elements = [
-            PageElementResponse(**el) if isinstance(el, dict) else el
-            for el in p.get("elements", [])
+            {**el, "id": el.get("id") or f"snapshot-{page_index}-{element_index}"}
+            for element_index, el in enumerate(p.get("elements", []))
+            if isinstance(el, dict)
         ]
         page_dict = {
-            "id": p.get("id", 0),
+            "id": p.get("id") or f"snapshot-page-{page_index}",
             "publication_id": snapshot.get("publication_id", 0),
             "page_number": p.get("page_number", 1),
             "page_type": p.get("page_type", "inner"),

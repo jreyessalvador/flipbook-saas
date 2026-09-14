@@ -2,6 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import PageCanvas, { computeSpreadViews } from '../components/editor/CanvasEditorV2';
+import { createPageEditorStore } from '../store/pageEditorStore';
+
+const ReaderPage = ({ page, publication, totalPages }) => {
+  const [useStore] = useState(() => createPageEditorStore());
+
+  useEffect(() => {
+    useStore.setState({
+      pageId: page.id || `public-${page.page_number}`,
+      version: 0,
+      elements: (page.elements || []).map((element) => ({ ...element })),
+      selectedElementIds: [],
+      isLoading: false,
+      loadError: null,
+    });
+  }, [page, useStore]);
+
+  return (
+    <PageCanvas
+      useStoreHook={useStore}
+      canEdit={false}
+      publication={publication}
+      pageNumber={page.page_number}
+      totalPages={totalPages}
+      onFocus={() => {}}
+      scale={0.72}
+    />
+  );
+};
 
 const PublicReader = () => {
   const { id } = useParams();
@@ -94,14 +122,8 @@ const PublicReader = () => {
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', overflow: 'auto' }}>
         <div style={{ display: 'flex', gap: '2px', backgroundColor: '#000', padding: '4px', borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
           {currentSpread.pages.map((p) => (
-            <div key={p.id || p.page_number} style={{ width: `${publication.page_width}px`, height: `${publication.page_height}px`, backgroundColor: '#fff' }}>
-              <PageCanvas
-                page={p}
-                width={publication.page_width}
-                height={publication.page_height}
-                elements={p.elements || []}
-                canEdit={false}
-              />
+            <div key={p.id || p.page_number} style={{ backgroundColor: '#fff' }}>
+              <ReaderPage page={p} publication={publication} totalPages={pages.length} />
             </div>
           ))}
         </div>
