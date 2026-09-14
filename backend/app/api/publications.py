@@ -153,11 +153,11 @@ def list_publications(
     current_user: User = Depends(get_current_user)
 ):
     """Listar publicaciones del tenant"""
+    # Sin un ORDER BY PostgreSQL puede devolver las filas en distinto orden
+    # después de un UPDATE (por ejemplo, al activar is_public). Con LIMIT,
+    # eso hacía que una revista publicada pareciera "desaparecer" del panel.
     publications = db.query(Publication)\
         .filter(Publication.tenant_id == current_user.tenant_id)\
-        # Sin un ORDER BY PostgreSQL puede devolver las filas en distinto orden
-        # después de un UPDATE (por ejemplo, al activar is_public). Con LIMIT,
-        # eso hacía que una revista publicada pareciera "desaparecer" del panel.
         .order_by(Publication.updated_at.desc(), Publication.id.desc())\
         .offset(skip)\
         .limit(limit)\
