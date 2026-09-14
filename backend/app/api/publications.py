@@ -17,6 +17,7 @@ from app.schemas.publication import (
 )
 from app.api.auth import get_current_user
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
+from app.config import settings
 from io import BytesIO
 import uuid
 
