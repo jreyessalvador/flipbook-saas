@@ -1,4 +1,5 @@
 from typing import List, Optional
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
@@ -94,7 +95,7 @@ def list_public_publications(db: Session = Depends(get_db)):
 
 
 @router.get("/publications/{id}", response_model=dict)
-def get_public_publication(id: int, db: Session = Depends(get_db)):
+def get_public_publication(id: uuid.UUID, db: Session = Depends(get_db)):
     """
     Obtiene metadatos de una publicación pública. 404 si es privada o sin publicar.
     """
@@ -130,7 +131,7 @@ def get_public_publication(id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/publications/{id}/pages", response_model=List[dict])
-def get_public_publication_pages(id: int, db: Session = Depends(get_db)):
+def get_public_publication_pages(id: uuid.UUID, db: Session = Depends(get_db)):
     """
     Lee las páginas y elementos congelados en el snapshot publicado de la revista.
     Nunca lee borradores en vivo.
