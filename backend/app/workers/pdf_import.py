@@ -10,6 +10,10 @@ from app.models.page import Page
 from app.models.page_element import PageElement
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
 
+# Los elementos usan unidades de lienzo y las medidas de la publicación se
+# almacenan en milímetros. Debe coincidir con CanvasEditorV2 para llenar hoja.
+PX_PER_MM = 3
+
 
 @celery_app.task(name="flipbook.pdf_import")
 def import_pdf_task(publication_id: str, source_key: str):
@@ -37,8 +41,13 @@ def import_pdf_task(publication_id: str, source_key: str):
             minio_client.put_object(BUCKET_NAME, key, data, data.getbuffer().nbytes, content_type="image/jpeg")
             page = Page(publication_id=publication.id, page_number=index, page_type="cover" if index == 1 else "back_cover" if index == len(images) else "content", content={})
             db.add(page); db.flush()
-            PageElement(page_id=page.id, kind="image", x=0, y=0, width=publication.page_width, height=publication.page_height, z_index=0, props={"src": build_asset_url(key), "locked": True, "pdf_background": True})
-            db.add(PageElement(page_id=page.id, kind="image", x=0, y=0, width=publication.page_width, height=publication.page_height, z_index=0, props={"src": build_asset_url(key), "locked": True, "pdf_background": True}))
+            db.add(PageElement(
+                page_id=page.id, kind="image", x=0, y=0,
+                width=publication.page_width * PX_PER_MM,
+                height=publication.page_height * PX_PER_MM,
+                z_index=0,
+                props={"src": build_asset_url(key), "locked": True, "pdf_background": True},
+            ))
         publication.status = "draft"
         db.commit()
     except Exception:

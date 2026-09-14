@@ -31,6 +31,17 @@
   margin-bottom: 1rem;
 }
 
+.import-notice {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.import-notice-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.import-notice-success { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.import-notice-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
@@ -189,6 +200,9 @@
   background: #e5e7eb;
   color: #374151;
 }
+
+.badge-processing { background: #dbeafe; color: #1d4ed8; }
+.badge-failed { background: #fee2e2; color: #b91c1c; }
 
 .card-actions {
   justify-content: flex-start;

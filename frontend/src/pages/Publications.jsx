@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { publicationAPI } from '../services/publicationAPI';
 import { API_URL } from '../services/api';
 import '../styles/Publications.css';
@@ -10,6 +10,8 @@ const Publications = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showConfigStep, setShowConfigStep] = useState(false);
   const [pdfFile, setPdfFile] = useState(null);
+  const [importNotice, setImportNotice] = useState(null);
+  const importPollRef = useRef(null);
   
   const [newPublication, setNewPublication] = useState({
     title: '',
@@ -34,6 +36,7 @@ const Publications = () => {
 
   useEffect(() => {
     loadPublications();
+    return () => window.clearTimeout(importPollRef.current);
   }, []);
 
   const loadPublications = async () => {
@@ -78,6 +81,30 @@ const Publications = () => {
     setShowConfigStep(true);
   };
 
+  const pollPdfImport = async (publicationId, attempt = 0) => {
+    try {
+      const imported = await publicationAPI.get(publicationId);
+      if (imported.status === 'draft') {
+        setImportNotice({ type: 'success', text: `“${imported.title}” se importó correctamente con ${imported.total_pages} páginas. Ya puedes abrirla y editar sus capas.` });
+        await loadPublications();
+        return;
+      }
+      if (imported.status === 'failed') {
+        setImportNotice({ type: 'error', text: `No se pudo convertir “${imported.title}”. Puedes eliminarla e intentar de nuevo.` });
+        await loadPublications();
+        return;
+      }
+      if (attempt >= 120) {
+        setImportNotice({ type: 'info', text: 'La conversión continúa en segundo plano. Actualiza la página en unos minutos para consultar el resultado.' });
+        return;
+      }
+      importPollRef.current = window.setTimeout(() => pollPdfImport(publicationId, attempt + 1), 2500);
+    } catch (err) {
+      console.error('Error consultando la importación PDF:', err);
+      setImportNotice({ type: 'error', text: 'No se pudo consultar el estado de la importación. Actualiza la página para revisarlo.' });
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
@@ -85,7 +112,10 @@ const Publications = () => {
         if (!pdfFile) throw new Error('Selecciona un PDF');
         const data = new FormData();
         data.append('file', pdfFile); data.append('title', newPublication.title); data.append('description', newPublication.description || '');
-        await publicationAPI.importPdf(data);
+        const imported = await publicationAPI.importPdf(data);
+        setImportNotice({ type: 'info', text: 'PDF recibido. Estamos convirtiendo sus páginas; la revista aparecerá en cuanto termine.' });
+        window.clearTimeout(importPollRef.current);
+        pollPdfImport(imported.publication_id);
       } else await publicationAPI.create(newPublication);
       setShowCreateModal(false);
       setShowConfigStep(false);
@@ -160,6 +190,8 @@ const Publications = () => {
   const getStatusBadge = (status) => {
     const badges = {
       draft: { text: 'Borrador', class: 'badge-draft' },
+      processing: { text: 'Procesando PDF', class: 'badge-processing' },
+      failed: { text: 'Error de importación', class: 'badge-failed' },
       published: { text: 'Publicado', class: 'badge-published' },
       archived: { text: 'Archivado', class: 'badge-archived' }
     };
@@ -204,6 +236,7 @@ const Publications = () => {
       </div>
 
       {error && <div className="error-message">{error}</div>}
+      {importNotice && <div className={`import-notice import-notice-${importNotice.type}`}>{importNotice.text}</div>}
 
       {publications.length === 0 ? (
         <div className="empty-state">
