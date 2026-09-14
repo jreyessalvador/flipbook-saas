@@ -47,6 +47,11 @@ services:
       - ./data/redis:/data
     restart: unless-stopped
 
+  pdf-queue:
+    image: redis:7-alpine
+    container_name: flipbook-dev-pdf-queue
+    restart: unless-stopped
+
   minio:
     image: quay.io/minio/minio:latest
     container_name: flipbook-dev-minio
