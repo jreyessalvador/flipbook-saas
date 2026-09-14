@@ -1566,7 +1566,94 @@ el contenido avanza correctamente pese a la animacion, que se crea un
 suite de regresion existente (21 scripts en total, incluido este):
 todos pasan limpio, sin errores de consola, sin regresiones.
 
+## 9p. Investigacion -- opciones para efecto de curl real de pagina (14-sep-2026, SIN decision tomada)
+
+**Contexto**: tras el fix de UX-12 (seccion 9o, giro rigido de hoja completa
+con `rotateY`, ya corregido y funcionando), Carlos revizo el resultado en
+`http://100.71.185.7:5173` y dio feedback: "mejoro bastante pero aun tenemos
+area de oportunidad" -- quiere el efecto de **curl real de esquina** (la hoja
+se curva/dobla como papel fisico al pasar, tipo Issuu/Joomag/PubHTML5), no
+solo un giro de plano rigido tipo puerta. Para acordar el objetivo visual
+exacto, Claude (Cowork) se conecto en vivo por Chrome (Claude in Chrome) a
+`pubhtml5.com` -- Carlos mostro el visor de "KARE Magazine" ahi como
+referencia del efecto deseado.
+
+**Diagnostico del efecto de referencia (observado en vivo, no solo leido en
+documentacion)**: el curl de PubHTML5 NO es un solo `rotateY` -- es una
+aproximacion poligonal: la hoja se corta en varias franjas y cada una rota
+un angulo ligeramente distinto (simulando una curva), mas 3-4 capas de
+sombra superpuestas (`outerShadow`, `innerShadow`, `hardShadow`,
+`hardInnerShadow`) con gradientes y `clip-path` dinamico para el borde
+curvo. Sigue siendo CSS/DOM -- no usa WebGL ni recanvasea las paginas a
+imagen.
+
+**Opciones investigadas** (busqueda web + lectura de codigo fuente/READMEs,
+NO se instalo ni prototipo nada aun):
+
+1. **Turn.js** -- jQuery, en mantenimiento inactivo desde hace años.
+   Descartada de entrada.
+
+2. **StPageFlip / paquete npm `page-flip`** (repo `Nodlik/StPageFlip`,
+   MIT, cero dependencias) -- tiene modo `loadFromHtml()` que renderiza
+   HTML real (no solo imagenes), lo que en teoria permitiria seguir usando
+   `PageCanvas`/Konva como contenido de cada hoja. Pero: mantenimiento
+   debil (hay un issue pidiendo marcarlo como abandonado), varios issues
+   abiertos sin respuesta del autor (fuga de memoria en `destroy()` --
+   issue #71 --, roturas en limites de spread -- issues #66/#70 --,
+   corrupcion en Shadow DOM -- issue #69). Riesgo alto para produccion.
+
+3. **`@gullabs/flipbook`** (fork activo de StPageFlip, TypeScript, con
+   changelog/ROADMAP/CI) -- el mas solido de los tres:
+   - Corrige bugs concretos del original: el "pliegue transparente" (se
+     veia el texto de abajo a traves del doblez), el evento de
+     actualizacion (`onUpdate`) que nunca disparaba bien, animacion de
+     retroceso poco realista en portrait.
+   - **Elimino el modo canvas a proposito** (ADR 0002: "HTML mode delega
+     en el navegador; canvas reimplementa el navegador") -- ahora es 100%
+     HTML mode, paginas como DOM vivo. Esto es justo lo que se necesita:
+     el contenido interactivo (Konva, audio, video, iframes de embed)
+     seguiria siendo DOM real dentro de cada hoja, en principio
+     interactivo incluso durante el giro.
+   - Soporta Pointer Events, `ResizeObserver`, `prefers-reduced-motion`,
+     navegacion por teclado, RTL.
+   - Licencia MIT.
+
+**Limitacion real de las 3 opciones, no resuelta por ninguna**: ninguna
+libreria modela nativamente el "spread" (dos paginas visibles a la vez como
+interior de revista) que ya usamos en `computeSpreadViews`
+(`CanvasEditorV2.jsx`). Su modelo mental es un libro pagina-por-pagina con
+portada/contraportada especiales -- adaptar esto a nuestro spread es trabajo
+de integracion real, no es plug-and-play aunque se elija adoptar una
+libreria.
+
+**Opciones concretas presentadas a Carlos (esperando su decision)**:
+- **A (recomendada por Claude)**: prototipo aislado (fuera del editor real)
+  con `@gullabs/flipbook` en modo HTML + `PageCanvas`/Konva + el sonido de
+  pagina, para validar en un par de horas si Konva se mantiene interactivo
+  y sin glitches durante el giro, ANTES de tocar `PageViewer.jsx`.
+- **B**: saltar el prototipo e integrar `@gullabs/flipbook` directo en
+  `PageViewer.jsx`, adaptando `computeSpreadViews` a su modelo de
+  pagina-por-pagina. Mas rapido si sale bien, mas riesgo si no.
+- **C**: NO adoptar libreria nueva -- refinar el efecto `rotateY` actual
+  dividiendo la hoja en 2-3 franjas verticales con `clip-path` y angulos
+  de rotacion ligeramente distintos por franja + sombra con gradiente en
+  el borde, acercandose visualmente al curl real sin nueva dependencia ni
+  riesgo arquitectonico.
+- **D**: dejar el efecto actual (ya corregido en UX-12) como esta, sin mas
+  trabajo en esto por ahora.
+
+**Estado**: ninguna opcion fue implementada ni elegida en esta ronda -- es
+investigacion pura para que Carlos y el equipo decidan con contexto
+completo. Nada de esto esta commiteado en codigo.
+
+
 ## 10. Próximo paso concreto (para quien retome esto)
+
+**ACTUALIZACIÓN 14-sep-2026**: ver seccion 9p -- Carlos pidio investigar
+opciones para un efecto de curl real de pagina (mas alla del giro rigido
+ya corregido en UX-12); se documentaron 4 opciones (A/B/C/D) y quedan
+pendientes de que Carlos decida cual seguir. No implementar nada de esto
+sin su decision explicita.
 
 **ACTUALIZACIÓN 13-sep-2026 (cierre de UX-12)**: Carlos pidio que el
 spread se viera "casi pegado" tipo revista real y que el cambio de pagina
