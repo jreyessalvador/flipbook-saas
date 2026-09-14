@@ -9,6 +9,7 @@ const Publications = () => {
   const [error, setError] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showConfigStep, setShowConfigStep] = useState(false);
+  const [pdfFile, setPdfFile] = useState(null);
   
   const [newPublication, setNewPublication] = useState({
     title: '',
@@ -80,7 +81,12 @@ const Publications = () => {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      await publicationAPI.create(newPublication);
+      if (newPublication.creation_type === 'pdf') {
+        if (!pdfFile) throw new Error('Selecciona un PDF');
+        const data = new FormData();
+        data.append('file', pdfFile); data.append('title', newPublication.title); data.append('description', newPublication.description || '');
+        await publicationAPI.importPdf(data);
+      } else await publicationAPI.create(newPublication);
       setShowCreateModal(false);
       setShowConfigStep(false);
       setNewPublication({
@@ -97,7 +103,7 @@ const Publications = () => {
       loadPublications();
     } catch (err) {
       console.error('Error creating publication:', err);
-      alert('Error al crear la publicación');
+      alert(err?.response?.data?.detail || err.message || 'Error al crear la publicación');
     }
   };
 
@@ -290,6 +296,10 @@ const Publications = () => {
               // Paso 1: Información básica
               <form onSubmit={(e) => { e.preventDefault(); handleNextStep(); }}>
                 <div className="form-group">
+                  <label>Origen</label>
+                  <div className="radio-group"><label><input type="radio" checked={newPublication.creation_type === 'blank'} onChange={() => setNewPublication({...newPublication, creation_type:'blank'})} /> En blanco</label><label><input type="radio" checked={newPublication.creation_type === 'pdf'} onChange={() => setNewPublication({...newPublication, creation_type:'pdf'})} /> Importar PDF</label><label><input type="radio" disabled /> Plantilla (próximamente)</label></div>
+                </div>
+                <div className="form-group">
                   <label>Título *</label>
                   <input
                     type="text"
@@ -345,7 +355,7 @@ const Publications = () => {
             ) : (
               // Paso 2: Configuración de revista
               <form onSubmit={handleCreate}>
-                <div className="config-grid">
+                {newPublication.creation_type === 'pdf' ? <div className="form-group"><label>Archivo PDF (máx. 50 MB)</label><input type="file" accept="application/pdf,.pdf" onChange={(e) => setPdfFile(e.target.files?.[0] || null)} /><small>Las páginas se crearán automáticamente al terminar la conversión.</small></div> : <div className="config-grid">
                   <div className="form-group">
                     <label>Tamaño de Página</label>
                     <select
@@ -428,19 +438,17 @@ const Publications = () => {
                     />
                     <small>Mínimo 2 (portada + contraportada)</small>
                   </div>
-                </div>
+                </div>}
 
                 <div className="config-preview">
                   <h4>Vista Previa</h4>
                   <div className="preview-info">
-                    <p><strong>Tamaño:</strong> {newPublication.page_size}</p>
+                    <p><strong>Tipo:</strong> {newPublication.creation_type === 'pdf' ? 'Importación PDF' : 'Revista en blanco'}</p>
+                    {newPublication.creation_type !== 'pdf' && <><p><strong>Tamaño:</strong> {newPublication.page_size}</p>
                     <p><strong>Dimensiones:</strong> {newPublication.page_width} x {newPublication.page_height} mm</p>
                     <p><strong>Orientación:</strong> {newPublication.orientation === 'portrait' ? 'Vertical' : 'Horizontal'}</p>
                     <p><strong>Total de páginas:</strong> {newPublication.total_pages}</p>
-                    <p><strong>Tipo:</strong> Revista en blanco</p>
-                  </div>
-                  <div className="preview-note">
-                    <small>💡 La importación desde PDF estará disponible en la próxima versión</small>
+                    </>}
                   </div>
                 </div>
 
@@ -453,7 +461,7 @@ const Publications = () => {
                     ← Anterior
                   </button>
                   <button type="submit" className="btn-primary">
-                    Crear Revista
+                    {newPublication.creation_type === 'pdf' ? 'Importar PDF' : 'Crear Revista'}
                   </button>
                 </div>
               </form>

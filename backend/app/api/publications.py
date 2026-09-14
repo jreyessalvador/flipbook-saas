@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
@@ -16,6 +16,9 @@ from app.schemas.publication import (
     PublicationResponse,
 )
 from app.api.auth import get_current_user
+from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
+from io import BytesIO
+import uuid
 
 router = APIRouter()
 
@@ -99,6 +102,47 @@ def create_publication(
     db.refresh(new_publication)
 
     return new_publication
+
+
+@router.post("/import-pdf", status_code=status.HTTP_202_ACCEPTED)
+async def import_pdf_publication(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    description: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Encola un PDF y crea la publicación solo cuando sus páginas estén listas.
+
+    El API nunca rasteriza el documento: su única responsabilidad es validar,
+    guardar el original y crear un trabajo durable en la cola Celery.
+    """
+    if file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(status_code=400, detail="Selecciona un archivo PDF válido")
+    raw_pdf = await file.read()
+    if not raw_pdf.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="El archivo no contiene una cabecera PDF válida")
+    if len(raw_pdf) > settings.MAX_PDF_SIZE:
+        raise HTTPException(status_code=400, detail="PDF demasiado grande (máximo 50 MB)")
+    if not title.strip():
+        raise HTTPException(status_code=400, detail="El título es obligatorio")
+
+    ensure_bucket()
+    source_key = f"tenant-{current_user.tenant_id}/imports/{uuid.uuid4()}.pdf"
+    minio_client.put_object(BUCKET_NAME, source_key, BytesIO(raw_pdf), len(raw_pdf), content_type="application/pdf")
+
+    publication = Publication(
+        title=title.strip(), description=description, creation_type="pdf",
+        status="processing", total_pages=0, pdf_url=build_asset_url(source_key),
+        is_public=False, tenant_id=current_user.tenant_id, created_by=current_user.id,
+    )
+    db.add(publication)
+    db.commit()
+    db.refresh(publication)
+
+    from app.workers.pdf_import import import_pdf_task
+    import_pdf_task.delay(str(publication.id), source_key)
+    return {"publication_id": str(publication.id), "status": "processing"}
 
 @router.get("/", response_model=List[PublicationResponse])
 def list_publications(

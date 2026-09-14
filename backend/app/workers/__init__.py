@@ -1,0 +1,1 @@
+"""Trabajadores asíncronos del producto."""

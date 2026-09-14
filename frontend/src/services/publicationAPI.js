@@ -33,6 +33,11 @@ export const publicationAPI = {
     return response.data;
   },
 
+  importPdf: async (formData) => {
+    const response = await api.post('/api/publications/import-pdf', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return response.data;
+  },
+
   // Congelar la versión vigente para el Reader.
   publish: async (id) => {
     const response = await api.post(`/api/publications/${id}/publish`);
