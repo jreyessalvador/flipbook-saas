@@ -137,11 +137,35 @@
 }
 
 .card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  gap: 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid #eee;
+}
+
+.publication-state,
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.visibility-badge {
+  padding: 0.25rem 0.55rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.visibility-public {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.visibility-private {
+  background: #f3f4f6;
+  color: #4b5563;
 }
 
 .badge {
@@ -167,8 +191,7 @@
 }
 
 .card-actions {
-  display: flex;
-  gap: 0.5rem;
+  justify-content: flex-start;
 }
 
 /* Botones */
@@ -215,6 +238,26 @@
 
 .btn-danger:hover {
   background: #fdd;
+}
+
+.btn-warning {
+  background: #fff7ed;
+  color: #9a3412;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-warning:hover {
+  background: #ffedd5;
+}
+
+.btn-card-action {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
 }
 
 /* Modal */

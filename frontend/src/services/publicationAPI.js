@@ -33,6 +33,26 @@ export const publicationAPI = {
     return response.data;
   },
 
+  // Congelar la versión vigente para el Reader.
+  publish: async (id) => {
+    const response = await api.post(`/api/publications/${id}/publish`);
+    return response.data;
+  },
+
+  // Retirar la versión vigente sin eliminar el historial de versiones.
+  unpublish: async (id) => {
+    const response = await api.post(`/api/publications/${id}/unpublish`);
+    return response.data;
+  },
+
+  // Control independiente de visibilidad pública.
+  setVisibility: async (id, isPublic) => {
+    const response = await api.put(`/api/publications/${id}/visibility`, {
+      is_public: isPublic,
+    });
+    return response.data;
+  },
+
   // Eliminar publicación
   delete: async (id) => {
     await api.delete(`/api/publications/${id}`);

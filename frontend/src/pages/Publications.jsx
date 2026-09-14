@@ -113,6 +113,44 @@ const Publications = () => {
     }
   };
 
+  const handlePublish = async (pub) => {
+    if (!window.confirm(`¿Publicar los cambios guardados de “${pub.title}”? Se creará una versión para el Reader.`)) return;
+
+    try {
+      await publicationAPI.publish(pub.id);
+      await loadPublications();
+    } catch (err) {
+      console.error('Error publishing publication:', err);
+      alert(err?.response?.data?.detail || 'No se pudo publicar la revista');
+    }
+  };
+
+  const handleUnpublish = async (pub) => {
+    if (!window.confirm(`¿Volver “${pub.title}” a borrador? Se retirará del Reader y del catálogo público, pero se conservará su historial de versiones.`)) return;
+
+    try {
+      await publicationAPI.unpublish(pub.id);
+      await loadPublications();
+    } catch (err) {
+      console.error('Error unpublishing publication:', err);
+      alert(err?.response?.data?.detail || 'No se pudo volver la revista a borrador');
+    }
+  };
+
+  const handleVisibility = async (pub) => {
+    const nextVisibility = !pub.is_public;
+    const action = nextVisibility ? 'mostrarla en el catálogo y Reader públicos' : 'ocultarla del catálogo y Reader públicos';
+    if (!window.confirm(`¿Quieres ${action}?`)) return;
+
+    try {
+      await publicationAPI.setVisibility(pub.id, nextVisibility);
+      await loadPublications();
+    } catch (err) {
+      console.error('Error changing publication visibility:', err);
+      alert(err?.response?.data?.detail || 'No se pudo actualizar la visibilidad');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       draft: { text: 'Borrador', class: 'badge-draft' },
@@ -199,9 +237,35 @@ const Publications = () => {
                   <span className="card-size">{pub.page_size} • {pub.orientation}</span>
                 </div>
                 <div className="card-footer">
-                  {getStatusBadge(pub.status)}
+                  <div className="publication-state">
+                    {getStatusBadge(pub.status)}
+                    {pub.status === 'published' && (
+                      <span className={`visibility-badge ${pub.is_public ? 'visibility-public' : 'visibility-private'}`}>
+                        {pub.is_public ? 'Visible públicamente' : 'Solo privado'}
+                      </span>
+                    )}
+                  </div>
                   <div className="card-actions">
                     <button className="btn-secondary" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver Páginas</button>
+                    {pub.status === 'published' ? (
+                      <>
+                        <button className="btn-secondary" onClick={() => handleVisibility(pub)}>
+                          {pub.is_public ? 'Ocultar del catálogo' : 'Mostrar en catálogo'}
+                        </button>
+                        {pub.is_public && (
+                          <button className="btn-secondary" onClick={() => window.location.href = `/leer/${pub.id}`}>
+                            Abrir lector público
+                          </button>
+                        )}
+                        <button className="btn-warning" onClick={() => handleUnpublish(pub)}>
+                          Volver a borrador
+                        </button>
+                      </>
+                    ) : (
+                      <button className="btn-primary btn-card-action" onClick={() => handlePublish(pub)}>
+                        Publicar
+                      </button>
+                    )}
                     <button 
                       className="btn-danger"
                       onClick={() => handleDelete(pub.id)}

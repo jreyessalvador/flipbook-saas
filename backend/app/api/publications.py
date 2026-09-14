@@ -9,7 +9,12 @@ from app.models.publication import Publication
 from app.models.page import Page
 from app.models.page_element import PageElement
 from app.models.asset import Asset
-from app.schemas.publication import PublicationCreate, PublicationUpdate, PublicationResponse
+from app.schemas.publication import (
+    PublicationCreate,
+    PublicationUpdate,
+    PublicationVisibilityUpdate,
+    PublicationResponse,
+)
 from app.api.auth import get_current_user
 
 router = APIRouter()
@@ -313,6 +318,60 @@ def publish_publication(
     db.commit()
 
     return {"version_id": str(version.id), "created_at": version.created_at.isoformat()}
+
+
+@router.post("/{publication_id}/unpublish")
+def unpublish_publication(
+    publication_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Vuelve al borrador sin eliminar el historial de snapshots.
+
+    La última versión permanece almacenada para auditoría o una futura
+    restauración, pero deja de ser la versión vigente y no puede ser leída
+    desde el catálogo público.
+    """
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+
+    publication.published_version_id = None
+    publication.status = "draft"
+    publication.is_public = False
+    db.commit()
+
+    return {"status": publication.status, "is_public": publication.is_public}
+
+
+@router.put("/{publication_id}/visibility", response_model=PublicationResponse)
+def set_publication_visibility(
+    publication_id: str,
+    visibility: PublicationVisibilityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Muestra u oculta una versión vigente del catálogo y Reader públicos."""
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+
+    if visibility.is_public and not publication.published_version_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Publica la revista antes de mostrarla en el catálogo público",
+        )
+
+    publication.is_public = visibility.is_public
+    db.commit()
+    db.refresh(publication)
+    return publication
 
 
 @router.get("/{publication_id}/versions")

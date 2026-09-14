@@ -27,7 +27,16 @@ class PublicationUpdate(PublicationBase):
     ver seccion 3.1 y 12 del documento de arquitectura).
     """
     title: Optional[str] = None
-    status: Optional[str] = None
+
+
+class PublicationVisibilityUpdate(BaseModel):
+    """Control explícito de presencia en el catálogo/Reader público.
+
+    El estado editorial (borrador/publicado) se cambia exclusivamente con
+    las operaciones ``/publish`` y ``/unpublish``. Así no se puede dejar una
+    publicación con una etiqueta incoherente respecto a su snapshot vigente.
+    """
+    is_public: bool
 
 class PublicationResponse(PublicationBase):
     id: uuid.UUID
