@@ -163,6 +163,16 @@
   cursor: not-allowed;
 }
 
+.editor-v2-pages-manager-trigger {
+  border: 1px solid #b45309;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 7px 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .editor-v2-canvas-wrap {
   flex: 1;
   padding: 24px;
@@ -829,3 +839,64 @@
   padding: 12px 18px;
   border-top: 1px solid #e5e7eb;
 }
+
+/* Gestor visual de páginas: patrón de inserción contextual propio. */
+.editor-v2-modal-pages {
+  width: min(900px, 94vw);
+  max-height: 86vh;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+.editor-v2-modal-header p { margin: 4px 0 0; color: #6b7280; font-size: 12px; }
+.editor-v2-page-strip {
+  padding: 22px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e5e7eb;
+  min-height: 106px;
+}
+.editor-v2-page-chip {
+  width: 82px;
+  height: 82px;
+  flex: 0 0 auto;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: linear-gradient(145deg, #fff, #f3f4f6);
+  color: #374151;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 9px;
+  text-align: left;
+}
+.editor-v2-page-chip:hover, .editor-v2-page-chip.selected { border-color: var(--color-navy); box-shadow: 0 0 0 2px rgba(20,33,61,.12); }
+.editor-v2-page-chip span { font-size: 10px; color: #6b7280; }
+.editor-v2-page-chip strong { font-size: 24px; color: var(--color-navy); }
+.editor-v2-insert-bubble {
+  flex: 0 0 auto;
+  width: 27px;
+  height: 27px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 0 0 1px #059669;
+  font-size: 20px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.editor-v2-insert-bubble:hover { background: #059669; transform: scale(1.08); }
+.editor-v2-modal-pages-footer { padding: 16px 18px; font-size: 13px; color: #374151; }
+.editor-v2-modal-pages-footer > p { margin: 0; }
+.editor-v2-modal-pages-footer > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+.editor-v2-modal-pages-footer > div:first-child span { color: #6b7280; }
+.editor-v2-modal-pages-footer label { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 600; }
+.editor-v2-modal-pages-footer input { width: 70px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px; }
+.editor-v2-pages-hint { margin: 8px 0; color: #92400e; font-size: 12px; }
+.editor-v2-pages-error { margin: 8px 0; color: #b91c1c; font-size: 12px; }
+.editor-v2-modal-pages .editor-v2-modal-footer { padding: 8px 0 0; border: 0; }

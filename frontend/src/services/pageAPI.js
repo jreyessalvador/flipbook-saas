@@ -18,4 +18,14 @@ export const pageAPI = {
     const response = await api.put(`/api/pages/${pageId}`, data);
     return response.data;
   },
+
+  // Inserta un bloque de páginas en blanco después de la página indicada.
+  // El backend renumera el resto en una transacción y preserva las cubiertas.
+  insertAfter: async (publicationId, afterPageId, count) => {
+    const response = await api.post(`/api/pages/publications/${publicationId}/pages/insert`, {
+      after_page_id: afterPageId,
+      count,
+    });
+    return response.data;
+  },
 };

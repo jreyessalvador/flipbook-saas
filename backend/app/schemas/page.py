@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 
@@ -15,6 +15,13 @@ class PageUpdate(BaseModel):
     content: Optional[Dict[str, Any]] = None
     thumbnail_url: Optional[str] = None
 
+
+class PageInsertRequest(BaseModel):
+    """Inserta hojas inmediatamente después de una página existente."""
+    after_page_id: uuid.UUID
+    count: int = Field(2, ge=1, le=50)
+
+
 class PageResponse(PageBase):
     id: uuid.UUID
     publication_id: uuid.UUID
@@ -24,3 +31,8 @@ class PageResponse(PageBase):
 
     class Config:
         from_attributes = True
+
+
+class PageInsertResponse(BaseModel):
+    inserted_pages: List[PageResponse]
+    total_pages: int

@@ -1,15 +1,44 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import update
 from typing import List
+from datetime import datetime, timedelta, timezone
 
 from app.db.session import get_db
 from app.models.user import User
 from app.models.page import Page
 from app.models.publication import Publication
-from app.schemas.page import PageResponse, PageUpdate
+from app.models.edit_lock import EditLock
+from app.schemas.page import PageResponse, PageUpdate, PageInsertRequest, PageInsertResponse
 from app.api.auth import get_current_user
 
 router = APIRouter()
+
+LOCK_TIMEOUT_SECONDS = 60
+
+
+def _get_publication_in_tenant(db: Session, publication_id: str, tenant_id) -> Publication:
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+    return publication
+
+
+def _require_active_edit_lock(db: Session, publication_id: str, user_id) -> None:
+    """La estructura solo puede cambiarla quien tiene el editor abierto."""
+    lock = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
+    heartbeat = lock.heartbeat_at if lock else None
+    if heartbeat and heartbeat.tzinfo is None:
+        heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+    expired = not heartbeat or datetime.now(timezone.utc) - heartbeat > timedelta(seconds=LOCK_TIMEOUT_SECONDS)
+    if not lock or lock.locked_by_user != user_id or expired:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Abre el editor y adquiere el bloqueo de edición antes de modificar la estructura de páginas.",
+        )
 
 @router.get("/publications/{publication_id}/pages", response_model=List[PageResponse])
 def get_publication_pages(
@@ -19,13 +48,7 @@ def get_publication_pages(
 ):
     """Obtener todas las páginas de una publicación"""
     # Verificar que la publicación existe y pertenece al tenant
-    publication = db.query(Publication)\
-        .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
-        .first()
-    
-    if not publication:
-        raise HTTPException(status_code=404, detail="Publication not found")
+    _get_publication_in_tenant(db, publication_id, current_user.tenant_id)
     
     # Obtener páginas ordenadas por número
     pages = db.query(Page)\
@@ -34,6 +57,60 @@ def get_publication_pages(
         .all()
     
     return pages
+
+
+@router.post("/publications/{publication_id}/pages/insert", response_model=PageInsertResponse)
+def insert_pages(
+    publication_id: str,
+    body: PageInsertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inserta páginas vacías después del ancla elegida. La operación es atómica:
+    primero desplaza los números posteriores y luego crea el bloque nuevo; la
+    portada y la contraportada nunca se sustituyen ni se convierten en contenido.
+    """
+    publication = _get_publication_in_tenant(db, publication_id, current_user.tenant_id)
+    _require_active_edit_lock(db, publication_id, current_user.id)
+
+    anchor = db.query(Page).filter(
+        Page.id == body.after_page_id,
+        Page.publication_id == publication.id,
+    ).first()
+    if not anchor:
+        raise HTTPException(status_code=404, detail="La página elegida ya no existe en esta publicación.")
+    if anchor.page_type == "back_cover":
+        raise HTTPException(status_code=422, detail="No se pueden insertar páginas después de la contraportada.")
+
+    insert_at = anchor.page_number + 1
+    existing_total = db.query(Page).filter(Page.publication_id == publication.id).count()
+    try:
+        db.execute(
+            update(Page)
+            .where(Page.publication_id == publication.id, Page.page_number >= insert_at)
+            .values(page_number=Page.page_number + body.count)
+        )
+        inserted = [
+            Page(
+                publication_id=publication.id,
+                page_number=insert_at + offset,
+                page_type="content",
+                content={},
+            )
+            for offset in range(body.count)
+        ]
+        db.add_all(inserted)
+        publication.total_pages = existing_total + body.count
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    for page in inserted:
+        db.refresh(page)
+    db.refresh(publication)
+    return PageInsertResponse(inserted_pages=inserted, total_pages=publication.total_pages)
 
 @router.get("/{page_id}", response_model=PageResponse)
 def get_page(

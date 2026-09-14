@@ -2249,6 +2249,11 @@ export default function CanvasEditorV2() {
   const handleNext = () => goToViewIndex(currentViewIndex + 1);
 
   const [pageJumpDraft, setPageJumpDraft] = useState('');
+  const [pageManagerOpen, setPageManagerOpen] = useState(false);
+  const [insertAfterPage, setInsertAfterPage] = useState(null);
+  const [insertCount, setInsertCount] = useState(2);
+  const [insertBusy, setInsertBusy] = useState(false);
+  const [insertError, setInsertError] = useState('');
   const activeLeftPageNumber = currentView?.left?.page_number;
   const activeRightPageNumber = currentView?.right?.page_number;
   useEffect(() => {
@@ -2265,6 +2270,37 @@ export default function CanvasEditorV2() {
     const idx = findViewIndexForPageNumber(spreadViews, n);
     if (idx === -1 || idx === currentViewIndex) return;
     goToViewIndex(idx);
+  };
+
+  const openInsertPages = (page) => {
+    if (!canEdit || anyDirty || page.page_type === 'back_cover') return;
+    setInsertAfterPage(page);
+    setInsertCount(2);
+    setInsertError('');
+  };
+
+  const handleInsertPages = async () => {
+    const count = Number.parseInt(insertCount, 10);
+    if (!insertAfterPage || !Number.isInteger(count) || count < 1 || count > 50) {
+      setInsertError('Indica entre 1 y 50 páginas.');
+      return;
+    }
+    setInsertBusy(true);
+    setInsertError('');
+    try {
+      const result = await pageAPI.insertAfter(publicationId, insertAfterPage.id, count);
+      const refreshedPages = await pageAPI.getPublicationPages(publicationId);
+      setPages([...refreshedPages].sort((a, b) => a.page_number - b.page_number));
+      setPublication((current) => ({ ...current, total_pages: result.total_pages }));
+      setInsertAfterPage(null);
+      setPageManagerOpen(false);
+      const firstInserted = result.inserted_pages?.[0];
+      if (firstInserted) navigate(`/publications/${publicationId}/edit/${firstInserted.id}`);
+    } catch (err) {
+      setInsertError(err?.response?.data?.detail || 'No se pudieron insertar las páginas. Inténtalo de nuevo.');
+    } finally {
+      setInsertBusy(false);
+    }
   };
 
   const handleUploadImageClick = () => fileInputRef.current?.click();
@@ -2817,6 +2853,19 @@ export default function CanvasEditorV2() {
             >
               Eliminar seleccionado{focusedState.selectedElementIds.length > 1 ? 's' : ''}
             </button>
+            <button
+              type="button"
+              className="editor-v2-pages-manager-trigger"
+              disabled={!canEdit || anyDirty}
+              title={anyDirty ? 'Guarda los cambios actuales antes de modificar la estructura.' : 'Insertar y organizar páginas'}
+              onClick={() => {
+                setPageManagerOpen(true);
+                setInsertAfterPage(null);
+                setInsertError('');
+              }}
+            >
+              + Páginas
+            </button>
             <span className="editor-v2-spacer" />
             {anyDirty && <span className="editor-v2-dirty">Cambios sin guardar</span>}
             <button type="button" className="editor-v2-save" disabled={!canEdit || anySaving || !anyDirty} onClick={handleSaveAll}>
@@ -2897,6 +2946,72 @@ export default function CanvasEditorV2() {
           libraryLoading={libraryLoading}
           onUploadFiles={uploadFilesSequentially}
         />
+      )}
+      {pageManagerOpen && (
+        <div className="editor-v2-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
+          <section className="editor-v2-modal-pages">
+            <header className="editor-v2-modal-header">
+              <div>
+                <h3 id="page-manager-title">Gestor de páginas</h3>
+                <p>Elige el punto de inserción. La portada y la contraportada se conservan.</p>
+              </div>
+              <button type="button" className="editor-v2-modal-close" onClick={() => setPageManagerOpen(false)} aria-label="Cerrar">×</button>
+            </header>
+            <div className="editor-v2-page-strip" aria-label="Estructura de páginas">
+              {pages.map((page, index) => (
+                <React.Fragment key={page.id}>
+                  <button
+                    type="button"
+                    className={`editor-v2-page-chip${page.id === insertAfterPage?.id ? ' selected' : ''}`}
+                    onClick={() => {
+                      const idx = findViewIndexForPageId(spreadViews, page.id);
+                      setPageManagerOpen(false);
+                      if (idx >= 0) goToViewIndex(idx);
+                    }}
+                    title={`Ir a la página ${page.page_number}`}
+                  >
+                    <span>{page.page_type === 'cover' ? 'Portada' : page.page_type === 'back_cover' ? 'Contraportada' : 'Página'}</span>
+                    <strong>{page.page_number}</strong>
+                  </button>
+                  {index < pages.length - 1 && page.page_type !== 'back_cover' && (
+                    <button
+                      type="button"
+                      className="editor-v2-insert-bubble"
+                      onClick={() => openInsertPages(page)}
+                      title={`Insertar páginas después de la ${page.page_number}`}
+                      aria-label={`Insertar páginas después de la página ${page.page_number}`}
+                    >+
+                    </button>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="editor-v2-modal-pages-footer">
+              {!insertAfterPage ? (
+                <p>Usa uno de los botones <strong>+</strong> entre las páginas para insertar contenido exactamente en esa posición.</p>
+              ) : (
+                <>
+                  <div>
+                    <strong>Insertar después de la página {insertAfterPage.page_number}</strong>
+                    <span>La página {insertAfterPage.page_number + 1} y las siguientes se desplazarán.</span>
+                  </div>
+                  <label>
+                    Cantidad
+                    <input type="number" min="1" max="50" value={insertCount} onChange={(e) => setInsertCount(e.target.value)} disabled={insertBusy} />
+                  </label>
+                  <p className="editor-v2-pages-hint">Recomendado: un número par para mantener las dobles páginas equilibradas.</p>
+                  {insertError && <p className="editor-v2-pages-error">{insertError}</p>}
+                  <div className="editor-v2-modal-footer">
+                    <button type="button" onClick={() => setInsertAfterPage(null)} disabled={insertBusy}>Cancelar</button>
+                    <button type="button" className="editor-v2-save" onClick={handleInsertPages} disabled={insertBusy}>
+                      {insertBusy ? 'Insertando…' : `Insertar ${insertCount || 0} página${Number(insertCount) === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
