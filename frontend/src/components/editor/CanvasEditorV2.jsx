@@ -2564,7 +2564,7 @@ export default function CanvasEditorV2() {
       const stageWidthPx = publication.page_width * PX_PER_MM;
       const stageHeightPx = publication.page_height * PX_PER_MM;
       const isSpread = !!currentView.right;
-      const CANVAS_WRAP_GAP = 24; // debe coincidir con el `gap` de .editor-v2-canvas-wrap en CanvasEditorV2.css
+      const CANVAS_WRAP_GAP = 3; // debe coincidir con el lomo de .editor-v2-canvas-wrap en CanvasEditorV2.css
       const contentWidthPx = isSpread ? stageWidthPx * 2 + CANVAS_WRAP_GAP : stageWidthPx;
       const availableWidth = wrap.clientWidth - 48; // padding horizontal del wrap (24px a cada lado)
       const availableHeight = wrap.clientHeight - 48; // padding vertical del wrap

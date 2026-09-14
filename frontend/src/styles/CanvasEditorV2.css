@@ -175,7 +175,9 @@
      seguridad para ventanas extremadamente pequenas, no como mecanismo
      normal de visualizacion. */
   align-items: center;
-  gap: 24px;
+  /* Lomo compacto: en una hoja doble las páginas deben leerse como revista,
+     no como dos lienzos independientes separados. */
+  gap: 3px;
   overflow: auto;
 }
 
