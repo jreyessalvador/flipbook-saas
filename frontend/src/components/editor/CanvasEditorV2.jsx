@@ -1336,7 +1336,7 @@ function flowTextColumns(text, width, height, props = {}) {
   return chunks.map((columnText, i) => ({ text: columnText.trim(), x: i * (columnWidth + gap), width: columnWidth }));
 }
 
-function TextElement({ el, canEdit, onSelect, onChange, onEditStart, shapeRef, shortcodeCtx }) {
+function TextElement({ el, canEdit, onSelect, onChange, onEditStart, onEditEnd, shapeRef, shortcodeCtx }) {
   const nodeRef = useRef(null);
   const props = el.props || {};
   const displayText = resolveShortcodes(props.text || 'Texto', shortcodeCtx || {});
@@ -1354,8 +1354,9 @@ function TextElement({ el, canEdit, onSelect, onChange, onEditStart, shapeRef, s
         const columnWidth = (el.width - gap * (count - 1)) / count;
         const nextHeight = Math.max(el.height, Math.ceil(measureTextHeight(next, columnWidth, props) / count));
         onChange({ height: nextHeight, props: { ...props, text: next } });
+        onEditEnd?.();
       },
-      onCancel: () => {},
+      onCancel: () => onEditEnd?.(),
     });
   };
   return (
@@ -2021,6 +2022,9 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
             // edicion inline para que el Transformer no quede dibujado
             // encima del <textarea> superpuesto.
             onEditStart: () => useStoreHook.getState().selectElement(null),
+            // Tras confirmar el textarea, recuperar el panel de propiedades
+            // del mismo bloque sin obligar al usuario a buscarlo otra vez.
+            onEditEnd: () => useStoreHook.getState().selectElement(el.id),
             shapeRef: (node) => {
               shapeRefs.current[el.id] = node;
             },
