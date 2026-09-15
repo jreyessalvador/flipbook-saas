@@ -7,8 +7,9 @@ from app.models.page_element import PageElement
 from app.models.edit_lock import EditLock
 from app.models.asset import Asset
 from app.models.publication_version import PublicationVersion
+from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole, TenantMembership
 
 __all__ = [
     "Base", "Tenant", "User", "Publication", "Page",
-    "PageElement", "EditLock", "Asset", "PublicationVersion",
+    "PageElement", "EditLock", "Asset", "PublicationVersion", "Plan", "TenantSubscription", "TenantUsage", "TenantDomain", "Role", "UserPlatformRole", "TenantMembership",
 ]

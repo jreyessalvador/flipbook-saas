@@ -1,6 +1,9 @@
 from sqlalchemy.orm import Session
 from app.models.tenant import Tenant
 from app.models.user import User
+# Importar el catálogo comercial y RBAC antes de create_all: una instalación
+# nueva debe crear estas tablas igual que una existente las recibe por 0004.
+from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole, TenantMembership
 from app.core.security import get_password_hash
 from app.db.base import Base
 from app.db.session import engine

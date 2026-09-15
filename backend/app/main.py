@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from app.api import auth, publications, pages, assets, locks, public
+from app.api import auth, publications, pages, assets, locks, public, superadmin
 from app.config import settings
 
 app = FastAPI(
@@ -34,6 +34,7 @@ app.include_router(pages.router, prefix="/api/pages", tags=["Pages"])
 app.include_router(locks.router, prefix="/api/publications", tags=["Locks"])
 app.include_router(assets.router, prefix="/api", tags=["Assets"])
 app.include_router(public.router, prefix="/api/public", tags=["Public"])
+app.include_router(superadmin.router, prefix="/api/superadmin", tags=["Super Admin"])
 
 
 @app.on_event("startup")
