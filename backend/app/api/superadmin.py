@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib, secrets
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -93,7 +93,7 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
         db.add(membership)
     membership.role_id, membership.status = owner_role.id, "invited"
     membership.invited_by, membership.invite_token_hash = current_user.id, hashlib.sha256(raw_token.encode()).hexdigest()
-    membership.invite_expires_at, membership.accepted_at, membership.revoked_at = datetime.utcnow() + timedelta(days=7), None, None
+    membership.invite_expires_at, membership.accepted_at, membership.revoked_at = datetime.now(timezone.utc) + timedelta(days=7), None, None
     db.commit()
     # El token solo se devuelve ahora para que el panel lo entregue por canal seguro.
     return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token}
@@ -102,10 +102,10 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
 def accept_invitation(data: InviteAcceptRequest, db: Session = Depends(get_db)):
     digest = hashlib.sha256(data.token.encode()).hexdigest()
     membership = db.query(TenantMembership).filter(TenantMembership.invite_token_hash == digest, TenantMembership.status == "invited").first()
-    if not membership or not membership.invite_expires_at or membership.invite_expires_at < datetime.utcnow():
+    if not membership or not membership.invite_expires_at or membership.invite_expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invitación inválida o caducada")
     user = db.query(User).filter(User.id == membership.user_id).first()
     user.password_hash, user.is_active = get_password_hash(data.password), True
-    membership.status, membership.accepted_at, membership.invite_token_hash = "active", datetime.utcnow(), None
+    membership.status, membership.accepted_at, membership.invite_token_hash = "active", datetime.now(timezone.utc), None
     db.commit()
     return {"status": "accepted"}
