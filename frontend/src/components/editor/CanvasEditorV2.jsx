@@ -1248,10 +1248,12 @@ function resolveShortcodes(text, ctx) {
 // del propio Konva ("editable text" -- patron oficial de la libreria, ver
 // https://konvajs.org/docs/sandbox/Editable_Text.html), no una libreria de
 // terceros. El nodo de texto de Konva se oculta mientras se edita para no
-// duplicar el texto visualmente; el textarea se posiciona con
-// node.getAbsolutePosition() (ya incluye el propio scale del Stage --
-// fit-to-screen, ver CanvasEditorV2.css/PX_PER_MM -- asi que NO hay que
-// multiplicarlo de nuevo) + el bounding rect del contenedor del Stage
+// duplicar el texto visualmente. La posicion se obtiene RELATIVA al Stage
+// y se aplica una sola vez su escala real; no se usa la transformacion
+// absoluta compuesta, porque en un Stage ajustado al espacio disponible
+// puede mezclar la escala del lienzo con la del nodo y desplazar el cursor
+// de forma creciente conforme baja por la pagina. Se suma despues el
+// bounding rect del contenedor del Stage
 // (funciona igual para el Stage izquierdo o derecho de un spread, cada uno
 // con su propio contenedor). Ancho/alto/tamaño de fuente SI se multiplican
 // por node.getStage().scaleX() porque esos son valores propios del nodo en
@@ -1262,8 +1264,9 @@ function openInlineTextEditor(node, initialValue, { onCommit, onCancel, editorWi
   const stage = node.getStage();
   if (!stage) return;
   const stageBox = stage.container().getBoundingClientRect();
-  const absPos = node.getAbsolutePosition(); // ya incluye el scale del Stage (fit-to-screen)
-  const scale = stage.scaleX() || 1;
+  const nodePos = node.getAbsolutePosition(stage);
+  const scaleX = stage.scaleX() || 1;
+  const scaleY = stage.scaleY() || 1;
 
   node.hide();
   stage.getLayer && stage.batchDraw && stage.batchDraw();
@@ -1273,11 +1276,11 @@ function openInlineTextEditor(node, initialValue, { onCommit, onCancel, editorWi
   textarea.value = initialValue;
   textarea.className = 'editor-v2-inline-text-editor';
   textarea.style.position = 'fixed';
-  textarea.style.top = `${stageBox.top + absPos.y}px`;
-  textarea.style.left = `${stageBox.left + absPos.x}px`;
-  textarea.style.width = `${Math.max((editorWidth || node.width()) * scale, 80)}px`;
-  textarea.style.height = `${Math.max((editorHeight || node.height()) * scale, 120)}px`;
-  textarea.style.fontSize = `${(node.fontSize() || 24) * scale}px`;
+  textarea.style.top = `${stageBox.top + nodePos.y * scaleY}px`;
+  textarea.style.left = `${stageBox.left + nodePos.x * scaleX}px`;
+  textarea.style.width = `${Math.max((editorWidth || node.width()) * scaleX, 80)}px`;
+  textarea.style.height = `${Math.max((editorHeight || node.height()) * scaleY, 120)}px`;
+  textarea.style.fontSize = `${(node.fontSize() || 24) * scaleY}px`;
   textarea.style.color = node.fill() || '#111111';
   textarea.style.lineHeight = String(lineHeight || 1.25);
   textarea.style.transform = `rotate(${node.rotation() || 0}deg)`;
