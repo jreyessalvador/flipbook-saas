@@ -1258,7 +1258,7 @@ function resolveShortcodes(text, ctx) {
 // coordenadas de pagina sin escalar. Sigue editando la PLANTILLA con
 // shortcodes sin resolver (p.ej. "{{fecha}}"), no el valor ya resuelto que
 // se ve en el canvas -- mismo criterio que antes.
-function openInlineTextEditor(node, initialValue, { onCommit, onCancel }) {
+function openInlineTextEditor(node, initialValue, { onCommit, onCancel, editorWidth, editorHeight, lineHeight }) {
   const stage = node.getStage();
   if (!stage) return;
   const stageBox = stage.container().getBoundingClientRect();
@@ -1275,10 +1275,11 @@ function openInlineTextEditor(node, initialValue, { onCommit, onCancel }) {
   textarea.style.position = 'fixed';
   textarea.style.top = `${stageBox.top + absPos.y}px`;
   textarea.style.left = `${stageBox.left + absPos.x}px`;
-  textarea.style.width = `${Math.max(node.width() * scale, 40)}px`;
-  textarea.style.height = `${Math.max(node.height() * scale, 24)}px`;
+  textarea.style.width = `${Math.max((editorWidth || node.width()) * scale, 80)}px`;
+  textarea.style.height = `${Math.max((editorHeight || node.height()) * scale, 120)}px`;
   textarea.style.fontSize = `${(node.fontSize() || 24) * scale}px`;
   textarea.style.color = node.fill() || '#111111';
+  textarea.style.lineHeight = String(lineHeight || 1.25);
   textarea.style.transform = `rotate(${node.rotation() || 0}deg)`;
   textarea.style.transformOrigin = 'left top';
 
@@ -1301,10 +1302,7 @@ function openInlineTextEditor(node, initialValue, { onCommit, onCancel }) {
     if (e.key === 'Escape') {
       e.preventDefault();
       finish(false);
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      // Enter confirma (Shift+Enter inserta salto de linea) -- consistente
-      // con el patron de una sola linea que ya tenia el prompt() original;
-      // el shortcode puede seguir teniendo texto multilinea si se pega.
+    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       finish(true);
     }
@@ -1318,40 +1316,52 @@ function openInlineTextEditor(node, initialValue, { onCommit, onCancel }) {
   textarea.select();
 }
 
+function measureTextHeight(text, width, props = {}) {
+  return new Konva.Text({ text, width: Math.max(1, width), fontSize: props.fontSize || 24, fontFamily: props.fontFamily || 'Arial', lineHeight: props.lineHeight || 1.25, wrap: 'word' }).height();
+}
+
+function flowTextColumns(text, width, height, props = {}) {
+  const columns = Math.max(1, Math.min(4, Number(props.columns) || 1));
+  const gap = Math.max(0, Number(props.columnGap) || 15);
+  const columnWidth = Math.max(1, (width - gap * (columns - 1)) / columns);
+  if (columns === 1) return [{ text, x: 0, width: columnWidth }];
+  const chunks = Array.from({ length: columns }, () => '');
+  let index = 0;
+  for (const token of text.split(/(\s+)/)) {
+    if (!token) continue;
+    const candidate = chunks[index] + token;
+    if (chunks[index] && measureTextHeight(candidate, columnWidth, props) > height && index < columns - 1) index += 1;
+    chunks[index] += token;
+  }
+  return chunks.map((columnText, i) => ({ text: columnText.trim(), x: i * (columnWidth + gap), width: columnWidth }));
+}
+
 function TextElement({ el, canEdit, onSelect, onChange, onEditStart, shapeRef, shortcodeCtx }) {
   const nodeRef = useRef(null);
+  const props = el.props || {};
+  const displayText = resolveShortcodes(props.text || 'Texto', shortcodeCtx || {});
+  const columns = flowTextColumns(displayText, el.width, el.height, props);
   const handleEdit = () => {
     if (!canEdit || !nodeRef.current) return;
     onEditStart?.(); // deselecciona el elemento -- oculta el Transformer mientras se edita
-    openInlineTextEditor(nodeRef.current, el.props?.text || '', {
-      onCommit: (next) => onChange({ props: { ...el.props, text: next } }),
+    openInlineTextEditor(nodeRef.current, props.text || '', {
+      editorWidth: el.width,
+      editorHeight: el.height,
+      lineHeight: props.lineHeight,
+      onCommit: (next) => {
+        const count = Math.max(1, Math.min(4, Number(props.columns) || 1));
+        const gap = Math.max(0, Number(props.columnGap) || 15);
+        const columnWidth = (el.width - gap * (count - 1)) / count;
+        const nextHeight = Math.max(el.height, Math.ceil(measureTextHeight(next, columnWidth, props) / count));
+        onChange({ height: nextHeight, props: { ...props, text: next } });
+      },
       onCancel: () => {},
     });
   };
-  const displayText = resolveShortcodes(el.props?.text || 'Texto', shortcodeCtx || {});
   return (
-    <KonvaText
-      ref={(node) => {
-        nodeRef.current = node;
-        if (typeof shapeRef === 'function') shapeRef(node);
-        else if (shapeRef) shapeRef.current = node;
-      }}
-      x={el.x}
-      y={el.y}
-      width={el.width}
-      height={el.height}
-      rotation={el.rotation_deg}
-      text={displayText}
-      fontSize={el.props?.fontSize || 24}
-      fill={el.props?.fill || '#111111'}
-      draggable={canEdit && !el.props?.locked}
-      onClick={onSelect}
-      onTap={onSelect}
-      onDblClick={handleEdit}
-      onDblTap={handleEdit}
-      onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
-      onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
-    />
+    <Group ref={shapeRef} x={el.x} y={el.y} width={el.width} height={el.height} rotation={el.rotation_deg} draggable={canEdit && !props.locked} onClick={onSelect} onTap={onSelect} onDblClick={handleEdit} onDblTap={handleEdit} onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })} onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}>
+      {columns.map((column, index) => <KonvaText key={index} ref={index === 0 ? nodeRef : undefined} x={column.x} y={0} width={column.width} height={el.height} text={column.text} fontSize={props.fontSize || 24} fontFamily={props.fontFamily || 'Arial'} lineHeight={props.lineHeight || 1.25} align={props.textAlign || 'left'} wrap="word" fill={props.fill || '#111111'} listening={false} />)}
+    </Group>
   );
 }
 
@@ -1519,12 +1529,13 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
               />
             )}
             {kind === 'text' && (
-              <NumberField
-                label="Tamaño de fuente"
-                value={selectedElement?.props?.fontSize || 24}
-                disabled={disabled}
-                onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })}
-              />
+              <>
+                <NumberField label="Tamaño de fuente" value={selectedElement?.props?.fontSize || 24} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })} />
+                <label className="editor-v2-field"><span>Alineación de párrafo</span><select disabled={disabled} value={selectedElement?.props?.textAlign || 'left'} onChange={(e) => onUpdate({ props: { ...selectedElement.props, textAlign: e.target.value } })}><option value="left">Izquierda</option><option value="center">Centro</option><option value="right">Derecha</option><option value="justify">Justificado</option></select></label>
+                <NumberField label="Interlineado" value={selectedElement?.props?.lineHeight || 1.25} step={0.05} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, lineHeight: Math.max(0.8, Math.min(3, n)) } })} />
+                <label className="editor-v2-field"><span>Columnas</span><select disabled={disabled} value={selectedElement?.props?.columns || 1} onChange={(e) => onUpdate({ props: { ...selectedElement.props, columns: Number(e.target.value) } })}><option value={1}>1 columna</option><option value={2}>2 columnas</option><option value={3}>3 columnas</option><option value={4}>4 columnas</option></select></label>
+                <NumberField label="Separación columnas" value={selectedElement?.props?.columnGap || 15} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, columnGap: Math.max(0, n) } })} />
+              </>
             )}
             {/* Lote UX-4: brillo/contraste via Konva.Filters -- SOLO estos dos
                 ajustes, no un retoque completo de imagen (alcance confirmado
@@ -2498,7 +2509,7 @@ export default function CanvasEditorV2() {
       const sep = current && !current.endsWith(' ') ? ' ' : '';
       focusedStoreHook.getState().updateElement(el.id, { props: { ...el.props, text: `${current}${sep}{{${key}}}` } });
     } else {
-      focusedStoreHook.getState().addElement('text', { props: { text: `{{${key}}}`, fontSize: 24, fill: '#111111' } });
+      focusedStoreHook.getState().addElement('text', { height: 120, props: { text: `{{${key}}}`, fontSize: 24, fill: '#111111', lineHeight: 1.25, textAlign: 'left', columns: 1, columnGap: 15 } });
     }
     setPluginsMenuOpen(false);
   };
@@ -2694,7 +2705,7 @@ export default function CanvasEditorV2() {
               icon="text"
               label="Texto"
               disabled={!canEdit}
-              onClick={() => focusedStoreHook.getState().addElement('text', { props: { text: 'Texto', fontSize: 24, fill: '#111111' } })}
+              onClick={() => focusedStoreHook.getState().addElement('text', { height: 120, props: { text: 'Texto', fontSize: 24, fill: '#111111', lineHeight: 1.25, textAlign: 'left', columns: 1, columnGap: 15 } })}
             />
           </ToolGroup>
 
