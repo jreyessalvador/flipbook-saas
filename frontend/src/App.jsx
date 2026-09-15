@@ -12,6 +12,7 @@ import CanvasEditorV2 from './components/editor/CanvasEditorV2';
 import LandingPage from './pages/LandingPage';
 import PublicReader from './pages/PublicReader';
 import SuperAdmin from './pages/SuperAdmin';
+import AcceptInvitation from './pages/AcceptInvitation';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/leer/:id" element={<PublicReader />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/superadmin" element={<ProtectedRoute><><Navbar /><SuperAdmin /></></ProtectedRoute>} />
 
           <Route

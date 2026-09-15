@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
+from datetime import datetime, timedelta
+import hashlib, secrets
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
@@ -7,6 +9,8 @@ from app.api.auth import get_current_user
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole
+from app.models.commercial import TenantMembership
+from app.core.security import get_password_hash
 
 router = APIRouter()
 
@@ -17,6 +21,14 @@ class TenantCreateRequest(BaseModel):
 
 class TenantStatusRequest(BaseModel):
     status: str = Field(pattern=r"^(active|suspended)$")
+
+class OwnerInviteRequest(BaseModel):
+    email: EmailStr
+    full_name: str | None = Field(default=None, max_length=255)
+
+class InviteAcceptRequest(BaseModel):
+    token: str = Field(min_length=32)
+    password: str = Field(min_length=12, max_length=128)
 
 def require_superadmin(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     allowed = db.query(UserPlatformRole).join(Role).filter(UserPlatformRole.user_id == current_user.id, Role.scope == "platform", Role.code == "superadmin").first()
@@ -62,3 +74,38 @@ def set_tenant_status(tenant_id: str, data: TenantStatusRequest, _: User = Depen
     tenant.status = data.status
     db.commit()
     return {"id": str(tenant.id), "status": tenant.status}
+
+@router.post("/tenants/{tenant_id}/owner-invitations", status_code=status.HTTP_201_CREATED)
+def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant: raise HTTPException(status_code=404, detail="Tenant no encontrado")
+    user = db.query(User).filter(User.email == str(data.email).lower()).first()
+    if not user:
+        # Usuario inactivo hasta que el destinatario defina su propia contraseña.
+        user = User(email=str(data.email).lower(), full_name=data.full_name, password_hash="!invitation-pending!", is_active=False, role="editor", tenant_id=tenant.id)
+        db.add(user); db.flush()
+    owner_role = db.query(Role).filter(Role.scope == "tenant", Role.code == "owner").first()
+    if not owner_role: raise HTTPException(status_code=500, detail="Roles base no inicializados")
+    membership = db.query(TenantMembership).filter(TenantMembership.tenant_id == tenant.id, TenantMembership.user_id == user.id).first()
+    raw_token = secrets.token_urlsafe(32)
+    if not membership:
+        membership = TenantMembership(tenant_id=tenant.id, user_id=user.id, role_id=owner_role.id)
+        db.add(membership)
+    membership.role_id, membership.status = owner_role.id, "invited"
+    membership.invited_by, membership.invite_token_hash = current_user.id, hashlib.sha256(raw_token.encode()).hexdigest()
+    membership.invite_expires_at, membership.accepted_at, membership.revoked_at = datetime.utcnow() + timedelta(days=7), None, None
+    db.commit()
+    # El token solo se devuelve ahora para que el panel lo entregue por canal seguro.
+    return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token}
+
+@router.post("/invitations/accept")
+def accept_invitation(data: InviteAcceptRequest, db: Session = Depends(get_db)):
+    digest = hashlib.sha256(data.token.encode()).hexdigest()
+    membership = db.query(TenantMembership).filter(TenantMembership.invite_token_hash == digest, TenantMembership.status == "invited").first()
+    if not membership or not membership.invite_expires_at or membership.invite_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invitación inválida o caducada")
+    user = db.query(User).filter(User.id == membership.user_id).first()
+    user.password_hash, user.is_active = get_password_hash(data.password), True
+    membership.status, membership.accepted_at, membership.invite_token_hash = "active", datetime.utcnow(), None
+    db.commit()
+    return {"status": "accepted"}
