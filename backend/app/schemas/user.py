@@ -18,6 +18,7 @@ class UserResponse(UserBase):
     id: uuid.UUID
     role: str
     is_active: bool
+    is_superadmin: bool = False
     created_at: datetime
     
     class Config:

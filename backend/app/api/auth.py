@@ -65,8 +65,21 @@ def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # El rol legacy `users.role` pertenece al tenant; el acceso de plataforma
+    # se concede exclusivamente mediante la relación global creada para CETRIX.
+    from app.models.commercial import Role, UserPlatformRole
+    is_superadmin = db.query(UserPlatformRole).join(Role).filter(
+        UserPlatformRole.user_id == current_user.id,
+        Role.scope == "platform",
+        Role.code == "superadmin",
+    ).first() is not None
+    return {
+        "id": current_user.id, "email": current_user.email,
+        "full_name": current_user.full_name, "role": current_user.role,
+        "is_active": current_user.is_active, "created_at": current_user.created_at,
+        "is_superadmin": is_superadmin,
+    }
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(

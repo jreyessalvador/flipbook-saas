@@ -23,7 +23,7 @@ const Navbar = () => {
       </div>
       
       <div className="navbar-menu">
-        <button className={isActive('/superadmin')} onClick={() => navigate('/superadmin')}>Super Admin</button>
+        {user?.is_superadmin && <button className={isActive('/superadmin')} onClick={() => navigate('/superadmin')}>Super Admin</button>}
         <button 
           className={isActive('/dashboard')}
           onClick={() => navigate('/dashboard')}
