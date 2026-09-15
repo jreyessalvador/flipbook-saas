@@ -1957,10 +1957,22 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
   const sortedElements = [...elements].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
   const shortcodeCtx = { pageNumber, totalPages, publicationTitle: publication.title };
 
+  // Konva entrega la posicion del puntero en pixeles visibles del canvas,
+  // mientras que elementos y marquee viven en coordenadas internas de la
+  // pagina. El Stage se ajusta con `scale` para caber en pantalla: sin
+  // invertirla aqui, el Rect del marquee se escala por segunda vez y queda
+  // desplazado hacia arriba/izquierda (mas cuanto mas lejos del origen).
+  const getCanvasPointerPosition = (stage) => {
+    const pos = stage.getPointerPosition();
+    if (!pos) return null;
+    return { x: pos.x / scale, y: pos.y / scale };
+  };
+
   const handleStageMouseDown = (e) => {
     onFocus();
     if (e.target !== e.target.getStage()) return; // click sobre un elemento, no el fondo
-    const pos = e.target.getStage().getPointerPosition();
+    const pos = getCanvasPointerPosition(e.target.getStage());
+    if (!pos) return;
     if (!e.evt.shiftKey) useStoreHook.getState().selectElement(null);
     marqueeStartRef.current = pos;
     setMarquee({ x: pos.x, y: pos.y, width: 0, height: 0 });
@@ -1968,7 +1980,8 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
 
   const handleStageMouseMove = (e) => {
     if (!marqueeStartRef.current) return;
-    const pos = e.target.getStage().getPointerPosition();
+    const pos = getCanvasPointerPosition(e.target.getStage());
+    if (!pos) return;
     const start = marqueeStartRef.current;
     setMarquee({
       x: Math.min(start.x, pos.x),
