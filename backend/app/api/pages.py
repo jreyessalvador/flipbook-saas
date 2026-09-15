@@ -224,6 +224,18 @@ def save_page_elements(
     """
     page = _get_page_in_tenant(db, page_id, current_user.tenant_id)
 
+    # La validación del schema garantiza el formato. Aquí se garantiza además
+    # que el destino de un enlace interno pertenece a ESTA publicación, para
+    # que un hotspot no pueda navegar a una página de otro tenant.
+    for element in body.elements:
+        if element.kind.value == "hotspot" and element.props.get("action") == "page":
+            target = db.query(Page.id).filter(
+                Page.id == element.props.get("target_page_id"),
+                Page.publication_id == page.publication_id,
+            ).first()
+            if not target:
+                raise HTTPException(status_code=422, detail="La página destino del hotspot no pertenece a esta publicación.")
+
     if page.version != body.version:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

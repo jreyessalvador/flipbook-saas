@@ -322,6 +322,10 @@ def _serialize_publication_snapshot(db: Session, publication: Publication) -> di
         "page_turn_sound_asset_id": str(publication.page_turn_sound_asset_id) if publication.page_turn_sound_asset_id else None,
         "pages": [
             {
+                # El id de Page se congela como dato de navegación, no se usa
+                # para leer el borrador. Así los hotspots internos resuelven
+                # siempre dentro del mismo snapshot publicado.
+                "id": str(page.id),
                 "page_number": page.page_number,
                 "page_type": page.page_type,
                 "elements": [

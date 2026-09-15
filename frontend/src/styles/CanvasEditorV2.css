@@ -363,7 +363,8 @@
   color: #6b7280;
 }
 
-.editor-v2-field input {
+.editor-v2-field input,
+.editor-v2-field select {
   border: 1px solid #d1d5db;
   border-radius: 6px;
   padding: 5px 7px;
@@ -839,6 +840,14 @@
   padding: 12px 18px;
   border-top: 1px solid #e5e7eb;
 }
+
+.editor-v2-field select:disabled { background: #f3f4f6; cursor: not-allowed; }
+
+/* El hotspot publicado no añade decoración visual; conserva foco visible y
+   un área táctil real para teclado/lector de pantalla. */
+.reader-hotspot { display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.reader-hotspot:focus-visible { outline: 3px solid #0e7490; outline-offset: 2px; }
+.reader-hotspot-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
 /* Gestor visual de páginas: patrón de inserción contextual propio. */
 .editor-v2-modal-pages {

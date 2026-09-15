@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Dict, Any, List
 import uuid
 from datetime import datetime
@@ -33,6 +33,39 @@ class PageElementBase(BaseModel):
     rotation_deg: float = Field(default=0.0)
     z_index: int = Field(default=0)
     props: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_hotspot_action(self):
+        """Impide guardar hotspots incompletos o con destinos ejecutables inseguros."""
+        if self.kind != PageElementKind.hotspot:
+            return self
+
+        action = self.props.get("action")
+        if action not in {"page", "next", "previous", "cover", "back_cover", "url", "email", "phone"}:
+            raise ValueError("El hotspot debe tener una acción válida.")
+
+        value = self.props.get("value")
+        if action == "page":
+            try:
+                uuid.UUID(str(self.props.get("target_page_id")))
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("El hotspot debe apuntar a una página válida.")
+        elif action == "url":
+            from urllib.parse import urlparse
+            parsed = urlparse(str(value or ""))
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ValueError("El enlace del hotspot debe usar una URL https válida.")
+        elif action == "email":
+            from email_validator import validate_email, EmailNotValidError
+            try:
+                validate_email(str(value or ""), check_deliverability=False)
+            except EmailNotValidError:
+                raise ValueError("El correo del hotspot no es válido.")
+        elif action == "phone":
+            import re
+            if not re.fullmatch(r"[+0-9(). -]{3,32}", str(value or "")):
+                raise ValueError("El teléfono del hotspot no es válido.")
+        return self
 
 
 class PageElementCreate(PageElementBase):

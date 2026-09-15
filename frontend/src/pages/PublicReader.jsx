@@ -4,7 +4,7 @@ import axios from 'axios';
 import { PageCanvas, computeSpreadViews } from '../components/editor/CanvasEditorV2';
 import { createPageEditorStore } from '../store/pageEditorStore';
 
-const ReaderPage = ({ page, publication, totalPages }) => {
+const ReaderPage = ({ page, publication, totalPages, onHotspotActivate }) => {
   const [useStore] = useState(() => createPageEditorStore());
 
   useEffect(() => {
@@ -26,6 +26,7 @@ const ReaderPage = ({ page, publication, totalPages }) => {
       pageNumber={page.page_number}
       totalPages={totalPages}
       onFocus={() => {}}
+      onHotspotActivate={(hotspot) => onHotspotActivate(hotspot, page)}
       scale={0.72}
     />
   );
@@ -39,6 +40,27 @@ const PublicReader = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentSpreadIndex, setCurrentSpreadIndex] = useState(0);
+
+  const activateHotspot = (hotspot, sourcePage) => {
+    const props = hotspot?.props || {};
+    const action = props.action;
+    const sortedPages = [...pages].sort((a, b) => a.page_number - b.page_number);
+    const target = action === 'page' ? sortedPages.find((page) => page.id === props.target_page_id)
+      : action === 'next' ? sortedPages.find((page) => page.page_number === sourcePage.page_number + 1)
+      : action === 'previous' ? sortedPages.find((page) => page.page_number === sourcePage.page_number - 1)
+      : action === 'cover' ? sortedPages[0]
+      : action === 'back_cover' ? sortedPages[sortedPages.length - 1]
+      : null;
+    if (target) {
+      const views = computeSpreadViews(sortedPages, publication?.total_pages ?? sortedPages.length);
+      const viewIndex = views.findIndex((view) => view.left?.id === target.id || view.right?.id === target.id);
+      if (viewIndex >= 0) setCurrentSpreadIndex(viewIndex);
+      return;
+    }
+    if (action === 'url' && /^https:\/\//i.test(props.value || '')) window.open(props.value, '_blank', 'noopener,noreferrer');
+    else if (action === 'email' && props.value) window.location.href = `mailto:${props.value}`;
+    else if (action === 'phone' && props.value) window.location.href = `tel:${String(props.value).replace(/[^+0-9]/g, '')}`;
+  };
 
   useEffect(() => {
     fetchPublicData();
@@ -87,7 +109,7 @@ const PublicReader = () => {
     );
   }
 
-  const spreadViews = computeSpreadViews(pages);
+  const spreadViews = computeSpreadViews(pages, publication.total_pages ?? pages.length);
   const currentSpread = spreadViews[currentSpreadIndex] || { left: null, right: null };
   const currentPages = [currentSpread.left, currentSpread.right].filter(Boolean);
 
@@ -124,7 +146,7 @@ const PublicReader = () => {
         <div style={{ display: 'flex', gap: '2px', backgroundColor: '#000', padding: '4px', borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
           {currentPages.map((p) => (
             <div key={p.id || p.page_number} style={{ backgroundColor: '#fff' }}>
-              <ReaderPage page={p} publication={publication} totalPages={pages.length} />
+              <ReaderPage page={p} publication={publication} totalPages={pages.length} onHotspotActivate={activateHotspot} />
             </div>
           ))}
         </div>

@@ -1117,6 +1117,25 @@ function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // estrella) -- todas comparten el mismo modelo de datos (x, y, width, height
 // como caja contenedora) para no duplicar el manejo de arrastre/transformar/
 // guardado; solo cambia qué nodo Konva se dibuja dentro de esa caja.
+function HotspotElement({ el, canEdit, onSelect, onChange, shapeRef, onActivate }) {
+  const label = el.props?.tooltip || 'Abrir enlace interactivo';
+  if (!canEdit) {
+    return (
+      <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
+        <button type="button" className="reader-hotspot" style={{ width: el.width, height: el.height }} aria-label={label} title={el.props?.tooltip || undefined} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onActivate?.(el); }}>
+          <span className="reader-hotspot-sr">{label}</span>
+        </button>
+      </Html>
+    );
+  }
+  return (
+    <Group ref={shapeRef} x={el.x} y={el.y} width={el.width} height={el.height} rotation={el.rotation_deg} draggable={!el.props?.locked} onClick={onSelect} onTap={onSelect} onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })} onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}>
+      <Rect width={el.width} height={el.height} fill="rgba(14, 116, 144, 0.12)" stroke="#0e7490" strokeWidth={1.5} dash={[6, 4]} cornerRadius={4} />
+      <KonvaText text="Hotspot" x={8} y={Math.max(4, el.height / 2 - 8)} fontSize={13} fill="#0e7490" listening={false} />
+    </Group>
+  );
+}
+
 function ShapeElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const shapeType = el.props?.shape_type || 'rect';
   const fill = el.props?.fill || '#14213d';
@@ -1379,9 +1398,8 @@ function TextField({ label, value, disabled, onCommit, placeholder }) {
   );
 }
 
-// Iconos del renglón "Alinear y distribuir" -- alinear necesita 2+
-// elementos seleccionados, distribuir necesita 3+ (con solo 2 no hay nada
-// intermedio que espaciar).
+// Alinear actúa contra los límites de la página incluso con un único objeto.
+// Distribuir sí necesita 3+ elementos porque con dos no existe un intermedio.
 const ALIGN_ROW_ICONS = ['alignLeft', 'alignCenterH', 'alignRight', 'distributeH', 'alignTop', 'alignMiddleV', 'alignBottom', 'distributeV'];
 const DISTRIBUTE_ICONS = new Set(['distributeH', 'distributeV']);
 
@@ -1398,7 +1416,7 @@ const ANIMATION_OPTIONS = [
   { value: 'zoom', label: 'Zoom' },
 ];
 
-function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onOpenGalleryModal, onReorder }) {
+function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onOpenGalleryModal, onReorder, pages = [] }) {
   const count = selectedElements.length;
   const selectedElement = count === 1 ? selectedElements[0] : null;
   const disabled = !canEdit || !selectedElement;
@@ -1423,7 +1441,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
         <h4>Alinear y distribuir</h4>
         <div className="editor-v2-align-row">
           {ALIGN_ROW_ICONS.map((icon) => {
-            const needs = DISTRIBUTE_ICONS.has(icon) ? 3 : 2;
+            const needs = DISTRIBUTE_ICONS.has(icon) ? 3 : 1;
             const enabled = canEdit && count >= needs;
             return (
               <button
@@ -1440,6 +1458,25 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
           })}
         </div>
       </section>
+
+      {kind === 'hotspot' && (
+        <section className="editor-v2-props-section">
+          <h4>Hotspot</h4>
+          <label className="editor-v2-field">
+            <span>Acción</span>
+            <select disabled={disabled} value={selectedElement?.props?.action || 'page'} onChange={(e) => onUpdate({ props: { ...selectedElement.props, action: e.target.value, value: '', target_page_id: '' } })}>
+              <option value="page">Ir a página</option><option value="next">Página siguiente</option><option value="previous">Página anterior</option><option value="cover">Ir a portada</option><option value="back_cover">Ir a contraportada</option><option value="url">Abrir URL https</option><option value="email">Enviar correo</option><option value="phone">Llamar por teléfono</option>
+            </select>
+          </label>
+          {(selectedElement?.props?.action || 'page') === 'page' && (
+            <label className="editor-v2-field"><span>Página destino</span><select disabled={disabled} value={selectedElement?.props?.target_page_id || ''} onChange={(e) => onUpdate({ props: { ...selectedElement.props, target_page_id: e.target.value } })}><option value="">Selecciona una página…</option>{pages.map((page) => <option key={page.id} value={page.id}>Página {page.page_number}</option>)}</select></label>
+          )}
+          {['url', 'email', 'phone'].includes(selectedElement?.props?.action || '') && (
+            <TextField label={selectedElement.props.action === 'url' ? 'URL https://' : selectedElement.props.action === 'email' ? 'Correo' : 'Teléfono'} value={selectedElement?.props?.value || ''} disabled={disabled} placeholder={selectedElement.props.action === 'url' ? 'https://ejemplo.com' : selectedElement.props.action === 'email' ? 'nombre@empresa.com' : '+52 555 123 4567'} onCommit={(value) => onUpdate({ props: { ...selectedElement.props, value } })} />
+          )}
+          <TextField label="Texto de ayuda (opcional)" value={selectedElement?.props?.tooltip || ''} disabled={disabled} placeholder="Más información" onCommit={(tooltip) => onUpdate({ props: { ...selectedElement.props, tooltip } })} />
+        </section>
+      )}
 
       {count > 1 ? (
         <section className="editor-v2-props-section">
@@ -1773,30 +1810,27 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
 // Todo en las mismas "unidades de página" que x/y/width/height (ver
 // PX_PER_MM) -- nunca en píxeles de pantalla, para que el resultado sea
 // idéntico sin importar el zoom del navegador.
-function computeAlignPatches(type, selected) {
+function getRotatedBounds(element) {
+  const angle = (Number(element.rotation_deg) || 0) * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const corners = [[0, 0], [element.width, 0], [element.width, element.height], [0, element.height]]
+    .map(([x, y]) => ({ x: x * cos - y * sin, y: x * sin + y * cos }));
+  return { minX: Math.min(...corners.map((p) => p.x)), maxX: Math.max(...corners.map((p) => p.x)), minY: Math.min(...corners.map((p) => p.y)), maxY: Math.max(...corners.map((p) => p.y)) };
+}
+
+function computeAlignPatches(type, selected, pageWidth, pageHeight) {
   const patches = {};
-  if (type === 'alignLeft') {
-    const minX = Math.min(...selected.map((e) => e.x));
-    selected.forEach((e) => { patches[e.id] = { x: minX }; });
-  } else if (type === 'alignRight') {
-    const maxRight = Math.max(...selected.map((e) => e.x + e.width));
-    selected.forEach((e) => { patches[e.id] = { x: maxRight - e.width }; });
-  } else if (type === 'alignCenterH') {
-    const minX = Math.min(...selected.map((e) => e.x));
-    const maxX = Math.max(...selected.map((e) => e.x + e.width));
-    const centerX = (minX + maxX) / 2;
-    selected.forEach((e) => { patches[e.id] = { x: centerX - e.width / 2 }; });
-  } else if (type === 'alignTop') {
-    const minY = Math.min(...selected.map((e) => e.y));
-    selected.forEach((e) => { patches[e.id] = { y: minY }; });
-  } else if (type === 'alignBottom') {
-    const maxBottom = Math.max(...selected.map((e) => e.y + e.height));
-    selected.forEach((e) => { patches[e.id] = { y: maxBottom - e.height }; });
-  } else if (type === 'alignMiddleV') {
-    const minY = Math.min(...selected.map((e) => e.y));
-    const maxY = Math.max(...selected.map((e) => e.y + e.height));
-    const centerY = (minY + maxY) / 2;
-    selected.forEach((e) => { patches[e.id] = { y: centerY - e.height / 2 }; });
+  if (['alignLeft', 'alignRight', 'alignCenterH', 'alignTop', 'alignBottom', 'alignMiddleV'].includes(type)) {
+    selected.forEach((e) => {
+      const bounds = getRotatedBounds(e);
+      if (type === 'alignLeft') patches[e.id] = { x: -bounds.minX };
+      else if (type === 'alignRight') patches[e.id] = { x: pageWidth - bounds.maxX };
+      else if (type === 'alignCenterH') patches[e.id] = { x: pageWidth / 2 - (bounds.minX + bounds.maxX) / 2 };
+      else if (type === 'alignTop') patches[e.id] = { y: -bounds.minY };
+      else if (type === 'alignBottom') patches[e.id] = { y: pageHeight - bounds.maxY };
+      else patches[e.id] = { y: pageHeight / 2 - (bounds.minY + bounds.maxY) / 2 };
+    });
   } else if (type === 'distributeH' && selected.length >= 3) {
     const sorted = [...selected].sort((a, b) => a.x + a.width / 2 - (b.x + b.width / 2));
     const firstCenter = sorted[0].x + sorted[0].width / 2;
@@ -1875,7 +1909,7 @@ function findViewIndexForPageNumber(views, pageNumber) {
 // createPageEditorStore()) que gobierna esta página -- ella misma es un
 // hook de Zustand, así que se llama directamente en el cuerpo del
 // componente como cualquier otro hook.
-export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages, onFocus, scale = 1 }) {
+export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, totalPages, onFocus, onHotspotActivate, scale = 1 }) {
   const { elements, isLoading, loadError, selectedElementIds } = useStoreHook();
 
   const stageRef = useRef(null);
@@ -1982,6 +2016,7 @@ export function PageCanvas({ useStoreHook, canEdit, publication, pageNumber, tot
           if (el.kind === 'video') return <VideoElement key={el.id} {...shared} />;
           if (el.kind === 'gallery') return <GalleryElement key={el.id} {...shared} />;
           if (el.kind === 'embed') return <EmbedElement key={el.id} {...shared} />;
+          if (el.kind === 'hotspot') return <HotspotElement key={el.id} {...shared} onActivate={onHotspotActivate} />;
           return <ShapeElement key={el.id} {...shared} />;
         })}
         {canEdit && <Transformer ref={trRef} rotateEnabled resizeEnabled />}
@@ -2526,9 +2561,9 @@ export default function CanvasEditorV2() {
   );
 
   const handleAlign = (type) => {
-    const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 2;
+    const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 1;
     if (selectedElements.length < needs) return;
-    focusedStoreHook.getState().updateElements(computeAlignPatches(type, selectedElements));
+    focusedStoreHook.getState().updateElements(computeAlignPatches(type, selectedElements, publication.page_width, publication.page_height));
   };
 
   // --- Library (Lote 7) ---------------------------------------------------
@@ -2643,7 +2678,7 @@ export default function CanvasEditorV2() {
         <nav className="editor-v2-tools-rail">
           <ToolGroup>
             <ToolButton icon="select" label="Seleccionar" active />
-            <ToolButton icon="hotspot" label="Hotspot" comingSoon disabled />
+            <ToolButton icon="hotspot" label="Hotspot" disabled={!canEdit} onClick={() => focusedStoreHook.getState().addElement('hotspot', { width: 120, height: 48, props: { action: 'page', target_page_id: '', tooltip: '' } })} />
           </ToolGroup>
 
           <ToolGroup>
@@ -2935,6 +2970,7 @@ export default function CanvasEditorV2() {
           onAppendImagesClick={handleUploadGalleryAppendClick}
           onOpenGalleryModal={handleOpenGalleryModal}
           onReorder={(direction) => selectedElements.length === 1 && focusedStoreHook.getState().reorderElement(selectedElements[0].id, direction)}
+          pages={pages}
         />
       </div>
       {galleryModalOpen && selectedElements.length === 1 && selectedElements[0].kind === 'gallery' && (
