@@ -1360,7 +1360,11 @@ function TextElement({ el, canEdit, onSelect, onChange, onEditStart, shapeRef, s
   };
   return (
     <Group ref={shapeRef} x={el.x} y={el.y} width={el.width} height={el.height} rotation={el.rotation_deg} draggable={canEdit && !props.locked} onClick={onSelect} onTap={onSelect} onDblClick={handleEdit} onDblTap={handleEdit} onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })} onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}>
-      {columns.map((column, index) => <KonvaText key={index} ref={index === 0 ? nodeRef : undefined} x={column.x} y={0} width={column.width} height={el.height} text={column.text} fontSize={props.fontSize || 24} fontFamily={props.fontFamily || 'Arial'} lineHeight={props.lineHeight || 1.25} align={props.textAlign || 'left'} wrap="word" fill={props.fill || '#111111'} listening={false} />)}
+      {/* Superficie casi transparente: el Group por sí solo no dibuja nada y
+          Konva no puede seleccionarlo. Evita que el clic atraviese el texto
+          hacia una imagen/video situado debajo o al lado. */}
+      <Rect width={el.width} height={el.height} fill="rgba(0,0,0,0.001)" />
+      {columns.map((column, index) => <KonvaText key={index} ref={index === 0 ? nodeRef : undefined} x={column.x} y={0} width={column.width} height={el.height} text={column.text} fontSize={props.fontSize || 24} fontFamily={props.fontFamily || 'Arial'} lineHeight={props.lineHeight || 1.25} align={props.textAlign || 'left'} wrap="word" fill={props.fill || '#111111'} />)}
     </Group>
   );
 }
