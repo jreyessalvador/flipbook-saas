@@ -32,6 +32,10 @@ class OwnerInviteRequest(BaseModel):
 class InviteAcceptRequest(BaseModel):
     token: str = Field(min_length=32)
     password: str = Field(min_length=12, max_length=128)
+class PlanChangeRequest(BaseModel):
+    plan_code: str
+class MembershipRoleRequest(BaseModel):
+    role_code: str = Field(pattern=r"^(owner|admin|editor|reviewer|reader)$")
 
 def require_superadmin(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     allowed = db.query(UserPlatformRole).join(Role).filter(UserPlatformRole.user_id == current_user.id, Role.scope == "platform", Role.code == "superadmin").first()
@@ -50,6 +54,34 @@ def overview(_: User = Depends(require_superadmin), db: Session = Depends(get_db
 @router.get("/plans")
 def plans(_: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     return [{"id": str(p.id), "code": p.code, "name": p.name, "currency": p.currency, "unit_amount": float(p.unit_amount), "billing_interval": p.billing_interval, "max_seats": p.max_seats, "max_active_publications": p.max_active_publications, "max_storage_bytes": p.max_storage_bytes, "is_sellable": p.is_sellable, "is_active": p.is_active} for p in db.query(Plan).order_by(Plan.unit_amount).all()]
+
+@router.patch("/tenants/{tenant_id}/plan")
+def change_plan(tenant_id: str, data: PlanChangeRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first(); plan = db.query(Plan).filter(Plan.code == data.plan_code, Plan.is_active.is_(True)).first()
+    sub = db.query(TenantSubscription).filter(TenantSubscription.tenant_id == tenant_id, TenantSubscription.status.in_(("trial","active","grace","past_due","suspended"))).first()
+    if not tenant or not plan or not sub: raise HTTPException(status_code=404, detail="Tenant, plan o suscripción no encontrados")
+    limits={"max_seats":plan.max_seats,"max_active_publications":plan.max_active_publications,"max_storage_bytes":plan.max_storage_bytes,"max_import_jobs_period":plan.max_import_jobs_period,"max_import_pages_period":plan.max_import_pages_period}
+    sub.plan_id,sub.currency,sub.unit_amount,sub.billing_interval,sub.tax_included,sub.limits_snapshot=plan.id,plan.currency,plan.unit_amount,plan.billing_interval,plan.tax_included,limits
+    tenant.plan,tenant.max_publications,tenant.max_storage_mb=plan.code,plan.max_active_publications or 0,(plan.max_storage_bytes or 0)//(1024*1024)
+    audit(db,current_user,"subscription.plan_changed",tenant.id,"subscription",sub.id,{"plan":plan.code}); db.commit()
+    return {"plan":plan.code,"currency":plan.currency,"unit_amount":float(plan.unit_amount)}
+
+@router.get("/tenants/{tenant_id}/memberships")
+def memberships(tenant_id: str, _: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    rows=db.query(TenantMembership,User,Role).join(User,User.id==TenantMembership.user_id).join(Role,Role.id==TenantMembership.role_id).filter(TenantMembership.tenant_id==tenant_id).all()
+    return [{"id":str(m.id),"email":u.email,"full_name":u.full_name,"role":r.code,"status":m.status,"created_at":m.created_at} for m,u,r in rows]
+
+@router.patch("/memberships/{membership_id}/role")
+def change_membership_role(membership_id: str, data: MembershipRoleRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    member=db.query(TenantMembership).filter(TenantMembership.id==membership_id).first(); role=db.query(Role).filter(Role.scope=="tenant",Role.code==data.role_code).first()
+    if not member or not role: raise HTTPException(status_code=404,detail="Membresía o rol no encontrados")
+    member.role_id=role.id; audit(db,current_user,"membership.role_changed",member.tenant_id,"membership",member.id,{"role":role.code}); db.commit(); return {"role":role.code}
+
+@router.delete("/memberships/{membership_id}", status_code=204)
+def revoke_membership(membership_id: str, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    member=db.query(TenantMembership).filter(TenantMembership.id==membership_id).first()
+    if not member: raise HTTPException(status_code=404,detail="Membresía no encontrada")
+    member.status="revoked"; member.revoked_at=datetime.now(timezone.utc); audit(db,current_user,"membership.revoked",member.tenant_id,"membership",member.id); db.commit()
 
 @router.post("/tenants", status_code=status.HTTP_201_CREATED)
 def create_tenant(data: TenantCreateRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
