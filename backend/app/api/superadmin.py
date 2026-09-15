@@ -10,9 +10,12 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole
 from app.models.commercial import TenantMembership
+from app.models.audit_log import AuditLog
 from app.core.security import get_password_hash
 
 router = APIRouter()
+def audit(db, actor, action, tenant_id=None, entity_type="tenant", entity_id=None, details=None):
+    db.add(AuditLog(actor_user_id=actor.id, tenant_id=tenant_id, action=action, entity_type=entity_type, entity_id=str(entity_id) if entity_id else None, details=details or {}))
 
 class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=255)
@@ -63,6 +66,7 @@ def create_tenant(data: TenantCreateRequest, current_user: User = Depends(requir
     db.add(TenantSubscription(tenant_id=tenant.id, plan_id=plan.id, status="active", currency=plan.currency, unit_amount=plan.unit_amount, billing_interval=plan.billing_interval, tax_included=plan.tax_included, limits_snapshot=limits, source="superadmin", created_by=current_user.id))
     db.add(TenantUsage(tenant_id=tenant.id))
     db.add(TenantDomain(tenant_id=tenant.id, hostname=subdomain, kind="platform_subdomain", status="verified"))
+    audit(db, current_user, "tenant.created", tenant.id, entity_id=tenant.id, details={"plan": plan.code, "subdomain": subdomain})
     db.commit(); db.refresh(tenant)
     return {"id": str(tenant.id), "name": tenant.name, "subdomain": tenant.subdomain, "owner_invitation_pending": True}
 
@@ -72,6 +76,7 @@ def set_tenant_status(tenant_id: str, data: TenantStatusRequest, _: User = Depen
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant no encontrado")
     tenant.status = data.status
+    audit(db, _, f"tenant.{data.status}", tenant.id, entity_id=tenant.id)
     db.commit()
     return {"id": str(tenant.id), "status": tenant.status}
 
@@ -94,6 +99,7 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
     membership.role_id, membership.status = owner_role.id, "invited"
     membership.invited_by, membership.invite_token_hash = current_user.id, hashlib.sha256(raw_token.encode()).hexdigest()
     membership.invite_expires_at, membership.accepted_at, membership.revoked_at = datetime.now(timezone.utc) + timedelta(days=7), None, None
+    audit(db, current_user, "membership.owner_invited", tenant.id, "membership", membership.id, {"email": user.email})
     db.commit()
     # El token solo se devuelve ahora para que el panel lo entregue por canal seguro.
     return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token}

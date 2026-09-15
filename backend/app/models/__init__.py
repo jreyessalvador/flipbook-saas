@@ -8,8 +8,9 @@ from app.models.edit_lock import EditLock
 from app.models.asset import Asset
 from app.models.publication_version import PublicationVersion
 from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole, TenantMembership
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "Base", "Tenant", "User", "Publication", "Page",
-    "PageElement", "EditLock", "Asset", "PublicationVersion", "Plan", "TenantSubscription", "TenantUsage", "TenantDomain", "Role", "UserPlatformRole", "TenantMembership",
+    "PageElement", "EditLock", "Asset", "PublicationVersion", "Plan", "TenantSubscription", "TenantUsage", "TenantDomain", "Role", "UserPlatformRole", "TenantMembership", "AuditLog",
 ]
