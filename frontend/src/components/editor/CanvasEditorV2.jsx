@@ -2563,7 +2563,15 @@ export default function CanvasEditorV2() {
   const handleAlign = (type) => {
     const needs = DISTRIBUTE_ICONS.has(type) ? 3 : 1;
     if (selectedElements.length < needs) return;
-    focusedStoreHook.getState().updateElements(computeAlignPatches(type, selectedElements, publication.page_width, publication.page_height));
+    // Los elementos se guardan en coordenadas internas del Stage, no en mm.
+    // Cada PageCanvas tiene su propio store, de modo que se alinea siempre
+    // contra la hoja enfocada, incluso dentro de un spread.
+    focusedStoreHook.getState().updateElements(computeAlignPatches(
+      type,
+      selectedElements,
+      publication.page_width * PX_PER_MM,
+      publication.page_height * PX_PER_MM,
+    ));
   };
 
   // --- Library (Lote 7) ---------------------------------------------------
@@ -2678,7 +2686,7 @@ export default function CanvasEditorV2() {
         <nav className="editor-v2-tools-rail">
           <ToolGroup>
             <ToolButton icon="select" label="Seleccionar" active />
-            <ToolButton icon="hotspot" label="Hotspot" disabled={!canEdit} onClick={() => focusedStoreHook.getState().addElement('hotspot', { width: 120, height: 48, props: { action: 'page', target_page_id: '', tooltip: '' } })} />
+            <ToolButton icon="hotspot" label="Hotspot (enlace interactivo)" disabled={!canEdit} onClick={() => focusedStoreHook.getState().addElement('hotspot', { width: 120, height: 48, props: { action: 'page', target_page_id: '', tooltip: '' } })} />
           </ToolGroup>
 
           <ToolGroup>
