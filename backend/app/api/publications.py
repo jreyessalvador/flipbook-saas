@@ -18,6 +18,7 @@ from app.schemas.publication import (
 from app.api.auth import get_current_user
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
 from app.config import settings
+from app.services.quota import require_publication_quota, require_storage_quota
 from io import BytesIO
 import uuid
 
@@ -69,6 +70,7 @@ def create_publication(
     
     # Extraer total_pages antes de crear la publicación
     total_pages = publication_data.total_pages if publication_data.total_pages else 10
+    require_publication_quota(db, current_user.tenant_id)
     
     # Crear publicación
     publication_dict = publication_data.dict(exclude={'total_pages'})
@@ -125,6 +127,8 @@ async def import_pdf_publication(
         raise HTTPException(status_code=400, detail="El archivo no contiene una cabecera PDF válida")
     if len(raw_pdf) > settings.MAX_PDF_SIZE:
         raise HTTPException(status_code=400, detail="PDF demasiado grande (máximo 50 MB)")
+    require_publication_quota(db, current_user.tenant_id)
+    require_storage_quota(db, current_user.tenant_id, len(raw_pdf))
     if not title.strip():
         raise HTTPException(status_code=400, detail="El título es obligatorio")
 

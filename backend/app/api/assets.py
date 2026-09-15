@@ -16,6 +16,7 @@ from app.api.auth import get_current_user
 from app.models.user import User
 from app.models.asset import Asset
 from app.config import settings
+from app.services.quota import require_storage_quota
 
 logger = logging.getLogger("flipbook.assets")
 
@@ -121,6 +122,7 @@ async def upload_asset(
 
         if file_size > max_size:
             raise HTTPException(status_code=400, detail=f"Archivo demasiado grande (máx {max_size_label})")
+        require_storage_quota(db, current_user.tenant_id, file_size)
 
         minio_client.put_object(
             BUCKET_NAME,
