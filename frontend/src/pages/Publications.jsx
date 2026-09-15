@@ -150,7 +150,8 @@ const Publications = () => {
   };
 
   const handlePublish = async (pub) => {
-    if (!window.confirm(`¿Publicar los cambios guardados de “${pub.title}”? Se creará una versión para el Reader.`)) return;
+    const action = pub.status === 'published' ? 'Actualizar' : 'Publicar';
+    if (!window.confirm(`¿${action} los cambios guardados de “${pub.title}”? Se creará una nueva versión para el Reader.`)) return;
 
     try {
       await publicationAPI.publish(pub.id);
@@ -288,6 +289,9 @@ const Publications = () => {
                     <button className="btn-secondary" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver Páginas</button>
                     {pub.status === 'published' ? (
                       <>
+                        <button className="btn-primary btn-card-action" onClick={() => handlePublish(pub)}>
+                          Actualizar publicación
+                        </button>
                         <button className="btn-secondary" onClick={() => handleVisibility(pub)}>
                           {pub.is_public ? 'Ocultar del catálogo' : 'Mostrar en catálogo'}
                         </button>
