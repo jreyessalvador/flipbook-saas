@@ -1,16 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from datetime import datetime
+from datetime import datetime, timezone
+import hashlib
 
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.config import settings
+from app.models.password_reset_token import PasswordResetToken
 
 router = APIRouter()
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    password: str
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -80,6 +87,19 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         "is_active": current_user.is_active, "created_at": current_user.created_at,
         "is_superadmin": is_superadmin,
     }
+
+@router.post("/password-reset/confirm")
+def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get_db)):
+    if len(data.password) < 12:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 12 caracteres")
+    token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == hashlib.sha256(data.token.encode()).hexdigest(), PasswordResetToken.used_at.is_(None)).first()
+    if not token or token.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Enlace inválido o caducado")
+    user = db.query(User).filter(User.id == token.user_id).first()
+    user.password_hash, user.is_active = get_password_hash(data.password), True
+    token.used_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "password_updated"}
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(

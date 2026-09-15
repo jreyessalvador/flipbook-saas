@@ -13,6 +13,7 @@ import LandingPage from './pages/LandingPage';
 import PublicReader from './pages/PublicReader';
 import SuperAdmin from './pages/SuperAdmin';
 import AcceptInvitation from './pages/AcceptInvitation';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/leer/:id" element={<PublicReader />} />
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
+          <Route path="/restablecer-contrasena" element={<ResetPassword />} />
           <Route path="/superadmin" element={<ProtectedRoute><><Navbar /><SuperAdmin /></></ProtectedRoute>} />
 
           <Route

@@ -11,6 +11,7 @@ from app.models.tenant import Tenant
 from app.models.commercial import Plan, TenantSubscription, TenantUsage, TenantDomain, Role, UserPlatformRole
 from app.models.commercial import TenantMembership
 from app.models.audit_log import AuditLog
+from app.models.password_reset_token import PasswordResetToken
 from app.core.security import get_password_hash
 
 router = APIRouter()
@@ -69,7 +70,7 @@ def change_plan(tenant_id: str, data: PlanChangeRequest, current_user: User = De
 @router.get("/tenants/{tenant_id}/memberships")
 def memberships(tenant_id: str, _: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     rows=db.query(TenantMembership,User,Role).join(User,User.id==TenantMembership.user_id).join(Role,Role.id==TenantMembership.role_id).filter(TenantMembership.tenant_id==tenant_id).all()
-    return [{"id":str(m.id),"email":u.email,"full_name":u.full_name,"role":r.code,"status":m.status,"created_at":m.created_at} for m,u,r in rows]
+    return [{"id":str(m.id),"user_id":str(u.id),"email":u.email,"full_name":u.full_name,"role":r.code,"status":m.status,"created_at":m.created_at} for m,u,r in rows]
 
 @router.patch("/memberships/{membership_id}/role")
 def change_membership_role(membership_id: str, data: MembershipRoleRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
@@ -82,6 +83,14 @@ def revoke_membership(membership_id: str, current_user: User = Depends(require_s
     member=db.query(TenantMembership).filter(TenantMembership.id==membership_id).first()
     if not member: raise HTTPException(status_code=404,detail="Membresía no encontrada")
     member.status="revoked"; member.revoked_at=datetime.now(timezone.utc); audit(db,current_user,"membership.revoked",member.tenant_id,"membership",member.id); db.commit()
+
+@router.post("/users/{user_id}/password-reset")
+def create_password_reset(user_id: str, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    user=db.query(User).filter(User.id==user_id).first()
+    if not user: raise HTTPException(status_code=404,detail="Usuario no encontrado")
+    raw=secrets.token_urlsafe(32); db.query(PasswordResetToken).filter(PasswordResetToken.user_id==user.id,PasswordResetToken.used_at.is_(None)).update({"used_at":datetime.now(timezone.utc)})
+    db.add(PasswordResetToken(user_id=user.id,token_hash=hashlib.sha256(raw.encode()).hexdigest(),expires_at=datetime.now(timezone.utc)+timedelta(hours=2),requested_by=current_user.id)); audit(db,current_user,"password_reset.created",entity_type="user",entity_id=user.id,details={"email":user.email}); db.commit()
+    return {"email":user.email,"reset_token":raw,"expires_in_minutes":120}
 
 @router.post("/tenants", status_code=status.HTTP_201_CREATED)
 def create_tenant(data: TenantCreateRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
