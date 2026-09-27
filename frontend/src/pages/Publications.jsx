@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { publicationAPI } from '../services/publicationAPI';
 import { API_URL } from '../services/api';
 import '../styles/Publications.css';
+import ShareModal from '../components/share/ShareModal';
+import QrModal from '../components/share/QrModal';
+import { isShareable } from '../components/share/shareLinks';
 
 const Publications = () => {
   const [publications, setPublications] = useState([]);
@@ -15,6 +18,9 @@ const Publications = () => {
   const [editing, setEditing] = useState(null); // { id, title, description }
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState(null);
+  // Compartir / QR del Reader publico
+  const [shareFor, setShareFor] = useState(null);
+  const [qrFor, setQrFor] = useState(null);
   const importPollRef = useRef(null);
   
   const [newPublication, setNewPublication] = useState({
@@ -326,6 +332,22 @@ const Publications = () => {
                   </div>
                   <div className="card-actions">
                     <button className="btn-secondary" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver Páginas</button>
+                    {(() => {
+                      const ok = isShareable(pub);
+                      const why = pub.status !== 'published'
+                        ? 'Publica la revista para poder compartirla'
+                        : 'Muéstrala en el catálogo público para poder compartirla';
+                      return (
+                        <>
+                          <button className="btn-secondary btn-share" onClick={() => setShareFor(pub)} disabled={!ok} title={ok ? 'Compartir enlace público' : why}>
+                            🔗 Compartir
+                          </button>
+                          <button className="btn-secondary btn-share" onClick={() => setQrFor(pub)} disabled={!ok} title={ok ? 'Ver y descargar código QR' : why}>
+                            ▦ QR
+                          </button>
+                        </>
+                      );
+                    })()}
                     {pub.status === 'published' ? (
                       <>
                         <button className="btn-primary btn-card-action" onClick={() => handlePublish(pub)}>
@@ -361,6 +383,9 @@ const Publications = () => {
           ))}
         </div>
       )}
+
+      {shareFor && <ShareModal pub={shareFor} onClose={() => setShareFor(null)} />}
+      {qrFor && <QrModal pub={qrFor} onClose={() => setQrFor(null)} />}
 
       {/* Modal Editar título/descripción */}
       {editing && (

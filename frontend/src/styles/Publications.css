@@ -481,3 +481,5 @@
   background: rgba(212, 175, 55, 0.08);
   outline: none;
 }
+
+.btn-share:disabled { opacity: .45; cursor: not-allowed; }
