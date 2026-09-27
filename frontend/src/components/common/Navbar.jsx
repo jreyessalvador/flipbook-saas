@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { superadminAPI } from '../../services/collectionAPI';
 import { getTenantContext, setTenantContext } from '../../services/tenantContext';
 import '../../styles/Collections.css';
+import { can, ROLE_LABEL } from '../../services/permissions';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
 
@@ -61,6 +62,11 @@ const Navbar = () => {
         >
           Colecciones
         </button>
+        {can(user, 'admin') && (
+          <button className={isActive('/team')} onClick={() => navigate('/team')}>
+            Equipo
+          </button>
+        )}
       </div>
 
       <div className="navbar-user">
@@ -77,7 +83,7 @@ const Navbar = () => {
         {user && (
           <>
             <span style={{ fontSize: '0.9rem', opacity: 0.8, marginRight: '1rem' }}>
-              {user.email}
+              {user.email}{user.tenant_role ? ` · ${ROLE_LABEL[user.tenant_role] || user.tenant_role}` : ''}
             </span>
             <button onClick={handleLogout} className="btn-logout">
               Cerrar Sesión

@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
 import Collections from './pages/Collections';
+import Team from './pages/Team';
 import PageViewer from './components/editor/PageViewer';
 import CanvasEditor from './components/editor/CanvasEditor';
 import CanvasEditorV2 from './components/editor/CanvasEditorV2';
@@ -26,6 +27,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />
+          <Route path="/team" element={<ProtectedRoute><><Navbar /><Team /></></ProtectedRoute>} />
           <Route path="/superadmin" element={<ProtectedRoute><><Navbar /><SuperAdmin /></></ProtectedRoute>} />
 
           <Route

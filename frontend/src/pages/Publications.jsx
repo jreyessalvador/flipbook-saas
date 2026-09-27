@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { collectionAPI } from '../services/collectionAPI';
 import '../styles/Collections.css';
+import { useAuth } from '../services/AuthContext';
+import { can } from '../services/permissions';
 import { publicationAPI } from '../services/publicationAPI';
 import { API_URL } from '../services/api';
 import '../styles/Publications.css';
@@ -13,6 +15,9 @@ import { isShareable } from '../components/share/shareLinks';
 // (/collections/:collectionId) -- lista, crea, importa y mueve sus ediciones.
 const Publications = () => {
   const { collectionId } = useParams();
+  const { user } = useAuth();
+  const canEdit = can(user, 'editor');
+  const isAdmin = can(user, 'admin');
   const navigate = useNavigate();
   const [collection, setCollection] = useState(null);
   const [allCollections, setAllCollections] = useState([]);
@@ -312,12 +317,14 @@ const Publications = () => {
           <h2>{collection?.name || 'Colección'}</h2>
           {collection?.description && <p className="collections-subtitle">{collection.description}</p>}
         </div>
+        {canEdit && (
         <button 
           className="btn-primary"
           onClick={() => setShowCreateModal(true)}
         >
           + Nueva edición
         </button>
+        )}
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -326,12 +333,14 @@ const Publications = () => {
       {publications.length === 0 ? (
         <div className="empty-state">
           <p>Esta colección aún no tiene ediciones</p>
+          {canEdit && (
           <button 
             className="btn-primary"
             onClick={() => setShowCreateModal(true)}
           >
             Crear la primera edición
           </button>
+          )}
         </div>
       ) : (
         <div className="publications-grid">
@@ -354,7 +363,7 @@ const Publications = () => {
                 {pub.edition_label && <span className="edition-label">{pub.edition_label}</span>}
                 <div className="card-title-row">
                   <h3>{pub.title}</h3>
-                  <button
+                  {canEdit && <button
                     type="button"
                     className="btn-edit-meta"
                     onClick={() => openEdit(pub)}
@@ -362,7 +371,7 @@ const Publications = () => {
                     aria-label={`Editar título y descripción de ${pub.title}`}
                   >
                     ✏️
-                  </button>
+                  </button>}
                 </div>
                 <p className="description">{pub.description || 'Sin descripción'}</p>
                 <div className="card-stats">
@@ -399,7 +408,7 @@ const Publications = () => {
                         </>
                       );
                     })()}
-                    {pub.status === 'published' ? (
+                    {isAdmin && (pub.status === 'published' ? (
                       <>
                         <button className="btn-primary btn-card-action" onClick={() => handlePublish(pub)}>
                           Actualizar publicación
@@ -420,16 +429,21 @@ const Publications = () => {
                       <button className="btn-primary btn-card-action" onClick={() => handlePublish(pub)}>
                         Publicar
                       </button>
+                    ))}
+                    {!isAdmin && pub.status === 'published' && pub.is_public && (
+                      <button className="btn-secondary" onClick={() => window.location.href = `/leer/${pub.id}`}>
+                        Abrir lector público
+                      </button>
                     )}
-                    <button className="btn-secondary" onClick={() => openMove(pub)} title="Mover a otra colección">
+                    {canEdit && <button className="btn-secondary" onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
-                    </button>
-                    <button 
+                    </button>}
+                    {isAdmin && <button 
                       className="btn-danger"
                       onClick={() => handleDelete(pub.id)}
                     >
                       Eliminar
-                    </button>
+                    </button>}
                   </div>
                 </div>
               </div>

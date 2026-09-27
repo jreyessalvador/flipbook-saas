@@ -4,6 +4,8 @@ import { collectionAPI } from '../services/collectionAPI';
 import { API_URL } from '../services/api';
 import '../styles/Publications.css';
 import '../styles/Collections.css';
+import { useAuth } from '../services/AuthContext';
+import { can } from '../services/permissions';
 
 // Lote C (2026-09-27): Colecciones -> Ediciones. Una coleccion agrupa las
 // ediciones de una revista/catalogo (p.ej. "Destinos y Negocios": No. 33,
@@ -14,6 +16,8 @@ const emptyForm = { name: '', description: '', category_id: '' };
 
 const Collections = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = can(user, 'admin');
   const [collections, setCollections] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +88,7 @@ const Collections = () => {
           <h2>Colecciones</h2>
           <p className="collections-subtitle">Cada colección agrupa las ediciones de una revista o catálogo.</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>+ Nueva colección</button>
+        {isAdmin && <button className="btn-primary" onClick={openCreate}>+ Nueva colección</button>}
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -101,7 +105,7 @@ const Collections = () => {
             <div className="card-body">
               <div className="card-title-row">
                 <h3>{c.name}</h3>
-                <button type="button" className="btn-edit-meta" onClick={() => openEdit(c)} title="Editar colección" aria-label={`Editar ${c.name}`}>✏️</button>
+                {isAdmin && <button type="button" className="btn-edit-meta" onClick={() => openEdit(c)} title="Editar colección" aria-label={`Editar ${c.name}`}>✏️</button>}
               </div>
               <p className="description">{c.description || 'Sin descripción'}</p>
               <div className="card-meta">
@@ -111,7 +115,7 @@ const Collections = () => {
               </div>
               <div className="card-actions">
                 <button className="btn-primary btn-card-action" onClick={() => navigate(`/collections/${c.id}`)}>Ver ediciones</button>
-                {!c.is_default && (
+                {isAdmin && !c.is_default && (
                   <button className="btn-danger" onClick={() => remove(c)} disabled={c.edition_count > 0}
                     title={c.edition_count > 0 ? 'Mueve o elimina sus ediciones antes' : 'Eliminar colección'}>
                     Eliminar

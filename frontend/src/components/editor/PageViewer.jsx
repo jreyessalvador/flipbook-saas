@@ -1,4 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../services/AuthContext';
+import { can } from '../../services/permissions';
 import { useParams, useNavigate } from 'react-router-dom';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
@@ -28,6 +30,7 @@ function findViewIndexForPageNumber(views, pageNumber) {
 // (canEdit=false) -- misma logica de agrupacion en spreads
 // (computeSpreadViews), mismo footer compacto de navegacion.
 const PageViewer = () => {
+  const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -236,9 +239,9 @@ const PageViewer = () => {
               📖
             </button>
           </div>
-          <button onClick={() => navigate(`/publications/${id}/edit/${leftPageId}`)} className="btn-primary">
+          {can(user, 'editor') && <button onClick={() => navigate(`/publications/${id}/edit/${leftPageId}`)} className="btn-primary">
             Editar Contenido
-          </button>
+          </button>}
         </div>
       </div>
 
