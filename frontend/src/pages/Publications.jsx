@@ -418,7 +418,7 @@ const Publications = () => {
                           {pub.is_public ? 'Ocultar del catálogo' : 'Mostrar en catálogo'}
                         </button>
                         {pub.is_public && (
-                          <button className="btn-secondary" onClick={() => window.location.href = `/leer/${pub.id}`}>
+                          <button className="btn-secondary" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
                             Abrir lector público
                           </button>
                         )}
@@ -432,7 +432,7 @@ const Publications = () => {
                       </button>
                     ))}
                     {!isAdmin && pub.status === 'published' && pub.is_public && (
-                      <button className="btn-secondary" onClick={() => window.location.href = `/leer/${pub.id}`}>
+                      <button className="btn-secondary" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
                         Abrir lector público
                       </button>
                     )}

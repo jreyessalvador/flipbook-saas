@@ -110,6 +110,8 @@ def create_publication(
         collection_id=collection.id,
         created_by=current_user.id
     )
+    from app.core.slugs import unique_publication_slug
+    new_publication.slug = unique_publication_slug(db, collection.id, new_publication.edition_label or new_publication.title)
 
     db.add(new_publication)
     db.flush()  # Para obtener el ID sin hacer commit todavía
@@ -177,6 +179,8 @@ async def import_pdf_publication(
         is_public=False, tenant_id=current_user.effective_tenant_id, created_by=current_user.id,
         collection_id=collection.id,
     )
+    from app.core.slugs import unique_publication_slug
+    publication.slug = unique_publication_slug(db, collection.id, publication.title)
     db.add(publication)
     db.commit()
     db.refresh(publication)
@@ -356,6 +360,9 @@ def move_publication(
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
     target = get_collection_in_tenant(db, data.collection_id, current_user.effective_tenant_id)
+    if publication.collection_id != target.id:
+        from app.core.slugs import unique_publication_slug
+        publication.slug = unique_publication_slug(db, target.id, publication.slug or publication.edition_label or publication.title, exclude_id=publication.id)
     publication.collection_id = target.id
     db.commit()
     db.refresh(publication)

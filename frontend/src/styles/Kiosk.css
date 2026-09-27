@@ -1,0 +1,34 @@
+/* Kiosco publico: landing y paginas de coleccion (Lote 3) */
+.kiosk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr));gap:1.25rem}
+.kiosk-card{display:flex;flex-direction:column;background:var(--color-navy-dark,#0c1526);border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden;color:#fff;text-decoration:none;transition:transform .2s,border-color .2s}
+.kiosk-card:hover{transform:translateY(-4px);border-color:var(--color-gold,#c9a24b)}
+.kiosk-card:focus-visible{outline:2px solid var(--color-gold,#c9a24b);outline-offset:3px}
+.kiosk-cover{position:relative;max-height:420px;background:#17243a;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8}
+.kiosk-cover img{width:100%;height:100%;object-fit:contain;display:block}
+.kiosk-pages{position:absolute;right:10px;bottom:10px;background:rgba(12,21,38,.85);color:var(--color-gold,#c9a24b);font-size:.75rem;font-weight:600;padding:.2rem .55rem;border-radius:4px}
+.kiosk-body{padding:.8rem 1rem 1rem;display:grid;gap:.2rem;min-width:0}
+.kiosk-body h3{margin:0;font-size:1rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kiosk-kicker{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--color-gold,#c9a24b);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kiosk-edition{font-size:.85rem;color:#94a3b8}
+.kiosk-chips{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin:0 0 2rem}
+.kiosk-chip{background:rgba(255,255,255,.05);color:#e2e8f0;border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:.4rem .9rem;font-size:.88rem;font-weight:600;cursor:pointer}
+.kiosk-chip[aria-pressed="true"]{background:var(--color-gold,#c9a24b);border-color:var(--color-gold,#c9a24b);color:#0c1526}
+.kiosk-chip:focus-visible{outline:2px solid var(--color-gold,#c9a24b);outline-offset:2px}
+.kiosk-chip small{opacity:.7;margin-left:.3rem}
+.kiosk-group{margin-bottom:2.75rem}
+.kiosk-group-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;margin-bottom:1rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:.6rem}
+.kiosk-group-head h3{margin:0;font-size:1.3rem}
+.kiosk-group-head p{margin:.15rem 0 0;color:#94a3b8;font-size:.88rem}
+.kiosk-group-head a{color:var(--color-gold,#c9a24b);font-weight:600;text-decoration:none;font-size:.9rem;white-space:nowrap}
+.kiosk-group-head a:hover{text-decoration:underline}
+.kiosk-page{min-height:100vh;background:var(--color-navy-dark,#0c1526);color:#fff;font-family:Inter,system-ui,sans-serif}
+.kiosk-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem clamp(1rem,4vw,2.5rem);background:var(--color-navy,#14213d);border-bottom:1px solid rgba(255,255,255,.08)}
+.kiosk-brand{display:flex;align-items:center;gap:.6rem;color:#fff;text-decoration:none;font-weight:700;font-size:1.1rem}
+.kiosk-brand span.mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--color-gold,#c9a24b),#e5c158);display:flex;align-items:center;justify-content:center;color:#000}
+.kiosk-main{max-width:1200px;margin:0 auto;padding:2.5rem clamp(1rem,4vw,2rem) 4rem}
+.kiosk-crumbs{font-size:.85rem;color:#94a3b8;margin:0 0 .75rem}
+.kiosk-crumbs a{color:#cbd5e1;text-decoration:none}
+.kiosk-crumbs a:hover{text-decoration:underline}
+.kiosk-title{font-size:clamp(1.8rem,4vw,2.5rem);margin:0 0 .5rem;letter-spacing:-.02em}
+.kiosk-lead{color:#94a3b8;max-width:70ch;margin:0 0 2rem;line-height:1.6}
+.kiosk-state{text-align:center;padding:3rem 1rem;color:#94a3b8;background:rgba(0,0,0,.2);border-radius:12px}

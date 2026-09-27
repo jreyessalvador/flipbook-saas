@@ -60,6 +60,8 @@ class PublicationResponse(PublicationBase):
     created_by: uuid.UUID
     collection_id: Optional[uuid.UUID] = None
     edition_label: Optional[str] = None
+    slug: Optional[str] = None
+    public_path: Optional[str] = None
 
     class Config:
         from_attributes = True

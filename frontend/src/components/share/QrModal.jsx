@@ -8,7 +8,7 @@ import './share.css';
 const QR_OPTS = { errorCorrectionLevel: 'M', margin: 2, color: { dark: '#0f1b33', light: '#ffffff' } };
 
 const QrModal = ({ pub, onClose }) => {
-  const url = publicReaderUrl(pub.id);
+  const url = publicReaderUrl(pub);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
 

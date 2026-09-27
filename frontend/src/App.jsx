@@ -12,6 +12,7 @@ const PageViewer = lazy(() => import('./components/editor/PageViewer'));
 const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
 const PublicReader = lazy(() => import('./pages/PublicReader'));
+const PublicCollection = lazy(() => import('./pages/PublicCollection'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -24,6 +25,8 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/leer/:id" element={<PublicReader />} />
+          <Route path="/r/:tenant/:collection" element={<PublicCollection />} />
+          <Route path="/r/:tenant/:collection/:edition" element={<PublicReader />} />
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />

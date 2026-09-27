@@ -41,6 +41,8 @@ class Publication(Base):
     # Lote C: toda edicion pertenece a una coleccion de SU tenant (FK compuesta en BD)
     collection_id = Column(UUID(as_uuid=True), ForeignKey("collections.id"), nullable=False, index=True)
     edition_label = Column(String(100), nullable=True)  # "Sep 2026", "No. 34"
+    # URL amigable /r/{empresa}/{coleccion}/{slug}; unico por coleccion (migracion 0009)
+    slug = Column(String(100), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # Timestamps
@@ -51,3 +53,13 @@ class Publication(Base):
     tenant = relationship("Tenant", back_populates="publications")
     creator = relationship("User", back_populates="publications")
     pages = relationship("Page", back_populates="publication", cascade="all, delete-orphan")
+    collection = relationship("Collection", lazy="selectin", viewonly=True)
+
+    @property
+    def public_path(self):
+        """Ruta publica amigable /r/{empresa}/{coleccion}/{edicion}; /leer/{id} si falta algun slug."""
+        col = self.collection
+        ten = self.tenant
+        if self.slug and col is not None and col.slug and ten is not None and ten.subdomain:
+            return f"/r/{ten.subdomain}/{col.slug}/{self.slug}"
+        return f"/leer/{self.id}"

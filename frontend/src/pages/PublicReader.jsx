@@ -105,7 +105,7 @@ const useViewportSize = () => {
 };
 
 const PublicReader = () => {
-  const { id } = useParams();
+  const { id: routeId, tenant, collection, edition } = useParams();
   const navigate = useNavigate();
   const [publication, setPublication] = useState(null);
   const [pages, setPages] = useState([]);
@@ -154,7 +154,7 @@ const PublicReader = () => {
 
   useEffect(() => {
     fetchPublicData();
-  }, [id]);
+  }, [routeId, tenant, collection, edition]);
 
   const fetchPublicData = async () => {
     try {
@@ -162,11 +162,25 @@ const PublicReader = () => {
       setError('');
       const API_URL = import.meta.env.VITE_API_URL || '';
 
+      // URL amigable /r/{empresa}/{coleccion}/{edicion}: primero se resuelve al id
+      let id = routeId;
+      let meta = null;
+      if (!id) {
+        const seg = (v) => encodeURIComponent(v || '');
+        const res = await axios.get(`${API_URL}/api/public/r/${seg(tenant)}/${seg(collection)}/${seg(edition)}`);
+        meta = res.data;
+        id = meta.id;
+      }
       const [pubRes, pagesRes] = await Promise.all([
-        axios.get(`${API_URL}/api/public/publications/${id}`),
+        meta ? Promise.resolve({ data: meta }) : axios.get(`${API_URL}/api/public/publications/${id}`),
         axios.get(`${API_URL}/api/public/publications/${id}/pages`)
       ]);
 
+      // Enlaces antiguos /leer/{id}: mostrar en la barra la URL canonica amigable
+      const canonical = pubRes.data?.url_path;
+      if (routeId && canonical && canonical.startsWith('/r/') && window.location.pathname !== canonical) {
+        window.history.replaceState(window.history.state, '', canonical + window.location.search + window.location.hash);
+      }
       setPublication(pubRes.data);
       setPages(pagesRes.data || []);
     } catch (err) {
@@ -342,8 +356,9 @@ const PublicReader = () => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate(publication.collection?.slug && publication.tenant?.slug ? `/r/${publication.tenant.slug}/${publication.collection.slug}` : '/')}
             style={{ background: 'none', border: 'none', color: 'var(--color-gold, #c9a24b)', fontSize: '1rem', cursor: 'pointer', fontWeight: 600 }}
+            title={publication.collection?.name ? `Volver a ${publication.collection.name}` : 'Volver al inicio'}
           >
             ← Volver
           </button>
@@ -353,7 +368,7 @@ const PublicReader = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
           {!singlePage && (
             <span style={{ fontSize: '0.9rem', color: '#94a3b8', whiteSpace: 'nowrap', marginRight: '0.5rem' }}>
-              Spread {currentSpreadIndex + 1} de {spreadViews.length}
+              Vista {currentSpreadIndex + 1} de {spreadViews.length}
             </span>
           )}
           <button type="button" onClick={toggleSound} style={iconBtn} title={soundOn ? 'Silenciar sonido de página' : 'Activar sonido de página'} aria-label={soundOn ? 'Silenciar sonido' : 'Activar sonido'} aria-pressed={soundOn}>

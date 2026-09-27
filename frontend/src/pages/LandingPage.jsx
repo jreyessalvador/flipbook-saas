@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../services/AuthContext';
 import { API_URL } from '../services/api';
 
 import Icon from '../components/common/Icon';
+import KioskCard from '../components/public/KioskCard';
+import '../styles/Kiosk.css';
 const LandingPage = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const [publications, setPublications] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = searchParams.get('categoria') || '';
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [email, setEmail] = useState('');
@@ -24,14 +29,46 @@ const LandingPage = () => {
     try {
       setLoading(true);
       const API_URL = import.meta.env.VITE_API_URL || '';
-      const response = await axios.get(`${API_URL}/api/public/publications`);
+      const [response, cats] = await Promise.all([
+        axios.get(`${API_URL}/api/public/publications`),
+        axios.get(`${API_URL}/api/public/categories`).catch(() => ({ data: [] })),
+      ]);
       setPublications(response.data || []);
+      setCategories(cats.data || []);
     } catch (err) {
       console.error('Error al cargar publicaciones públicas:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const selectCategory = (slug) => {
+    const next = new URLSearchParams(searchParams);
+    if (slug) next.set('categoria', slug); else next.delete('categoria');
+    setSearchParams(next, { replace: true });
+  };
+
+  // Kiosco agrupado por coleccion (orden: la coleccion con la edicion mas reciente primero)
+  const groups = React.useMemo(() => {
+    const map = new Map();
+    publications
+      .filter((p) => !category || p.collection?.category?.slug === category)
+      .forEach((p) => {
+        const key = p.collection?.id || 'sin-coleccion';
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            name: p.collection?.name || 'Publicaciones',
+            tenant: p.tenant?.name || '',
+            category: p.collection?.category?.name || '',
+            path: p.tenant?.slug && p.collection?.slug ? `/r/${p.tenant.slug}/${p.collection.slug}` : null,
+            items: [],
+          });
+        }
+        map.get(key).items.push(p);
+      });
+    return [...map.values()];
+  }, [publications, category]);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -70,7 +107,7 @@ const LandingPage = () => {
         </div>
 
         <nav style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-          <a href="#showcase" style={{ color: '#e2e8f0', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 500 }}>Showcase</a>
+          <a href="#showcase" style={{ color: '#e2e8f0', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 500 }}>Kiosco</a>
           <a href="#capacidades" style={{ color: '#e2e8f0', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 500 }}>Capacidades B2B</a>
           <a href="#contacto" style={{ color: '#e2e8f0', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 500 }}>Contacto</a>
           
@@ -175,85 +212,42 @@ const LandingPage = () => {
       <section id="showcase" style={{ padding: '4rem 2rem', backgroundColor: 'var(--color-navy, #14213d)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-            <h2 style={{ fontSize: '2.25rem', fontWeight: 700, marginBottom: '0.75rem' }}>Publicaciones Destacadas</h2>
-            <p style={{ color: '#94a3b8', fontSize: '1rem' }}>Explora la experiencia de lectura interactiva en nuestro catálogo público</p>
+            <h2 style={{ fontSize: '2.25rem', fontWeight: 700, marginBottom: '0.75rem' }}>Kiosco de publicaciones</h2>
+            <p style={{ color: '#94a3b8', fontSize: '1rem' }}>Revistas y catálogos publicados con Cetrix Revistas, organizados por colección</p>
           </div>
 
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>Cargando catálogo...</div>
-          ) : publications.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
-              Próximamente estaremos publicando nuestros primeros catálogos interactivos.
-            </div>
-          ) : (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '1.5rem'
-            }}>
-              {publications.map((pub) => (
-                <div
-                  key={pub.id}
-                  onClick={() => navigate(`/leer/${pub.id}`)}
-                  style={{
-                    backgroundColor: 'var(--color-navy-dark, #0c1526)',
-                    borderRadius: '10px',
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    cursor: 'pointer',
-                    transition: 'transform 0.2s, border-color 0.2s',
-                    display: 'flex',
-                    flexDirection: 'column'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.borderColor = 'var(--color-gold, #c9a24b)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                  }}
-                >
-                  <div style={{
-                    aspectRatio: `${pub.page_width || 210} / ${pub.page_height || 297}`,
-                    maxHeight: '440px',
-                    backgroundColor: '#17243a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    position: 'relative'
-                  }}>
-                    {pub.cover_url ? (
-                      <img
-                        src={pub.cover_url.startsWith('http') ? pub.cover_url : `${API_URL}${pub.cover_url}`}
-                        alt={pub.title}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                      />
-                    ) : (
-                      <div style={{ color: '#94a3b8' }}><Icon name="book" size={48} strokeWidth={1.4} /></div>
-                    )}
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '10px',
-                      right: '10px',
-                      backgroundColor: 'rgba(12, 21, 38, 0.85)',
-                      padding: '0.25rem 0.6rem',
-                      borderRadius: '4px',
-                      fontSize: '0.75rem',
-                      color: 'var(--color-gold, #c9a24b)',
-                      fontWeight: 600
-                    }}>
-                      {pub.total_pages} Páginas
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '0.85rem 1rem 1rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 650, margin: 0, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pub.title}</h3>
-                  </div>
-                </div>
+          {!loading && categories.length > 1 && (
+            <div className="kiosk-chips" role="group" aria-label="Filtrar por categoría">
+              <button type="button" className="kiosk-chip" aria-pressed={!category} onClick={() => selectCategory('')}>Todas</button>
+              {categories.map((c) => (
+                <button key={c.slug} type="button" className="kiosk-chip" aria-pressed={category === c.slug} onClick={() => selectCategory(c.slug)}>
+                  {c.name}<small>{c.count}</small>
+                </button>
               ))}
             </div>
+          )}
+
+          {loading ? (
+            <div className="kiosk-state">Cargando catálogo…</div>
+          ) : groups.length === 0 ? (
+            <div className="kiosk-state">
+              {category ? 'No hay ediciones públicas en esta categoría.' : 'Próximamente estaremos publicando nuestros primeros catálogos interactivos.'}
+            </div>
+          ) : (
+            groups.map((g) => (
+              <section key={g.key} className="kiosk-group" aria-labelledby={`col-${g.key}`}>
+                <div className="kiosk-group-head">
+                  <div>
+                    <h3 id={`col-${g.key}`}>{g.name}</h3>
+                    <p>{g.tenant}{g.category ? ` · ${g.category}` : ''} · {g.items.length === 1 ? '1 edición' : `${g.items.length} ediciones`}</p>
+                  </div>
+                  {g.path && <Link to={g.path}>Ver colección →</Link>}
+                </div>
+                <div className="kiosk-grid">
+                  {g.items.slice(0, 8).map((pub) => <KioskCard key={pub.id} pub={pub} />)}
+                </div>
+              </section>
+            ))
           )}
         </div>
       </section>

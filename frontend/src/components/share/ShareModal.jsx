@@ -7,7 +7,7 @@ import Icon from '../common/Icon';
 // sistema (movil) cuando el navegador lo soporta.
 const ShareModal = ({ pub, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const url = publicReaderUrl(pub.id);
+  const url = publicReaderUrl(pub);
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   const copy = async () => {

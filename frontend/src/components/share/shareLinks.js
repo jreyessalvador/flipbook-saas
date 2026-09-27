@@ -1,15 +1,20 @@
 // Enlaces de compartir para una publicacion (2026-09-27, pedido de Carlos).
-// La URL publica es la del Reader (/leer/:id) sobre el mismo origen desde el
-// que se usa el panel, asi funciona igual en DEV y en produccion.
+// La URL publica es la amigable /r/{empresa}/{coleccion}/{edicion} (public_path
+// del backend) o, si falta, la del Reader /leer/:id, sobre el mismo origen desde
+// el que se usa el panel: funciona igual en DEV y en produccion.
 
-export const publicReaderUrl = (pubId) =>
-  `${window.location.origin}/leer/${pubId}`;
+export const publicReaderUrl = (pubOrId) => {
+  const path = typeof pubOrId === 'object' && pubOrId
+    ? (pubOrId.public_path || pubOrId.url_path || `/leer/${pubOrId.id}`)
+    : `/leer/${pubOrId}`;
+  return `${window.location.origin}${path}`;
+};
 
 export const isShareable = (pub) =>
   pub?.status === 'published' && pub?.is_public === true;
 
 export const shareChannels = (pub) => {
-  const url = publicReaderUrl(pub.id);
+  const url = publicReaderUrl(pub);
   const title = pub.title || 'Revista digital';
   const text = `${title} — léela aquí: ${url}`;
   const e = encodeURIComponent;
