@@ -1778,3 +1778,24 @@ test de backend por si solo no prueba la UI.
 4. **Acceso mientras tanto**: URL de prueba = IP de Tailscale de `ia-lavatur` (`http://100.71.185.7:5173/...`), igual que el resto del stack de desarrollo -- no hay dominio público ni TLS todavía (ver limitación ya documentada en sección 4b, "qué falta antes de usar esto como base de producción real").
 
 **Estado 13-sep-2026**: los Lotes UX-2/UX-4 mencionados como "no bloqueante" ya se implementaron y verificaron (ver sección 9l) -- este frente de landing+Reader público es ahora el ÚNICO trabajo pendiente sin nada por delante.
+
+## 11b. Reader público -- pulido (27-sep-2026, DEV en Contabo 1)
+
+- Responsive: escala por ResizeObserver; `<768px` o vertical = página a página; swipe/teclado; 100dvh + safe-area iOS (`7ae7bc0`, `e6657b1`, `e03afb3`).
+- Efecto 3D + sonido de pasar página también en `/leer` (reutiliza `.page-viewer-flip*` de `PageViewer.css`), botón de sonido on/off (localStorage), pantalla completa (si `document.fullscreenEnabled`; iPhone Safari no lo soporta para elementos no-vídeo), zoom 100–300 % con scroll y teclas `+ - 0`; en móviles <480px el zoom es el pellizco nativo y no dispara swipe (`a31dd63`).
+- Compartir + QR desde "Mis publicaciones" (`4d4c486`).
+- **Open Graph**: `GET /api/public/og/{id}` devuelve HTML con `og:*`/`twitter:*` (portada = `_cover_from_snapshot`). La SPA no sirve a crawlers, así que **nginx debe enrutar `/leer/{id}` al backend solo para bots**. Snippet obligatorio también en producción (`revistas.cetrix.com.mx`):
+
+```nginx
+map $http_user_agent $revistas_og_bot {
+    default 0;
+    ~*(whatsapp|facebookexternalhit|facebookcatalog|meta-externalagent|twitterbot|telegrambot|linkedinbot|slackbot|discordbot|pinterest|skypeuripreview|googlebot|bingbot|applebot|embedly|redditbot|vkshare|viber) 1;
+}
+# dentro del server {}
+location ~ "^/leer/(?<revista_id>[0-9a-fA-F-]{36})/?$" {
+    if ($revistas_og_bot) { rewrite ^ /api/public/og/$revista_id last; }
+    # ... proxy al frontend como el resto de rutas de la SPA
+}
+```
+
+- Pendiente: imagen OG dedicada (portada redimensionada ~1200x630, <300 KB; hoy se sirve la imagen original de la portada, p.ej. 460 KB, y WhatsApp puede omitir la miniatura si es muy pesada). En DEV la vista previa no se puede probar con WhatsApp real (allowlist + basic auth); verificado con `curl -A "WhatsApp/2.23"` desde IP autorizada.
