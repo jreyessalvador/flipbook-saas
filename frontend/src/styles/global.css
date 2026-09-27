@@ -256,3 +256,8 @@ body {
 .btn-logout:hover {
   background: #c0392b;
 }
+
+/* Dashboard (2026-09-27) */
+.dashboard-sub { color: #64748b; margin: .25rem 0 0; }
+.stat-note { color: #888; font-size: .9rem; margin-top: .5rem; min-height: 1.2em; }
+.dashboard-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; }

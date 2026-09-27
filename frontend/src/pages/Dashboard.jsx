@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
 import { publicationAPI } from '../services/publicationAPI';
+import { can } from '../services/permissions';
+import Icon from '../components/common/Icon';
 
-// Formatea bytes a una unidad legible (KB/MB/GB) -- el backend siempre
-// devuelve bytes crudos (Lote UX-1), el formateo es responsabilidad del
-// frontend para no atar la respuesta de la API a un formato de presentación.
+// Formatea bytes a una unidad legible (KB/MB/GB); el backend devuelve bytes crudos.
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return '0 MB';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -17,97 +18,77 @@ function formatBytes(bytes) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+const ROLE_LABELS = { owner: 'Propietario', admin: 'Administrador', editor: 'Editor', reviewer: 'Revisor', reader: 'Lector' };
+
 const Dashboard = () => {
   const { user } = useAuth();
-  // Lote UX-1: el Dashboard mostraba 0/0/0 MB fijos sin llamar nunca a la
-  // API -- ahora se pide el resumen real al backend (GET
-  // /api/publications/stats/summary, agregados SQL por tenant) al montar.
-  // "Plan Actual" sigue siendo un valor fijo a proposito: todavia no existe
-  // ningun sistema de planes/facturacion en el backend, asi que mostrar un
-  // numero ahi seria inventar un dato -- queda pendiente para cuando exista
-  // esa funcionalidad, no es parte de este lote.
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     publicationAPI.statsSummary()
-      .then((data) => {
-        if (!cancelled) setStats(data);
-      })
-      .catch(() => {
-        if (!cancelled) setStatsError(true);
-      });
+      .then((data) => { if (!cancelled) setStats(data); })
+      .catch(() => { if (!cancelled) setStatsError(true); });
     return () => { cancelled = true; };
   }, []);
 
-  const publicacionesValue = stats ? stats.total_publications : (statsError ? '—' : '…');
-  const visitasValue = stats ? stats.total_views : (statsError ? '—' : '…');
-  const almacenamientoValue = stats ? formatBytes(stats.storage_bytes) : (statsError ? '—' : '…');
+  const pending = statsError ? '—' : '…';
+  const plan = stats?.plan || null;
+  const maxPubs = plan?.max_active_publications;
+  const maxStorage = plan?.max_storage_bytes;
 
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
-        <h2>¡Bienvenido al Dashboard!</h2>
-        <div className="user-info">
-          <p><strong>Email:</strong> {user?.email}</p>
-          <p><strong>Nombre:</strong> {user?.full_name || 'No especificado'}</p>
-          <p><strong>Rol:</strong> {user?.role}</p>
-          <p><strong>Estado:</strong> {user?.is_active ? 'Activo' : 'Inactivo'}</p>
-          <p><strong>ID:</strong> {user?.id}</p>
-        </div>
+        <h2>Hola{user?.full_name ? `, ${user.full_name.split(' ')[0]}` : ''}</h2>
+        <p className="dashboard-sub">
+          {user?.tenant_name || 'Tu empresa'} · {ROLE_LABELS[user?.tenant_role] || user?.tenant_role || '—'}
+          {user?.acting_as_tenant ? ' (como Super Admin)' : ''}
+        </p>
       </div>
 
       <div className="stats-grid">
         <div className="stat-card">
-          <h3>Publicaciones</h3>
-          <div className="value">{publicacionesValue}</div>
-          <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            Total de ediciones
+          <h3>Ediciones</h3>
+          <div className="value">{stats ? stats.total_publications : pending}</div>
+          <p className="stat-note">
+            {stats ? `${stats.published_publications ?? 0} publicadas` : ' '}
+            {maxPubs ? ` · máximo ${maxPubs} activas` : ''}
           </p>
         </div>
 
         <div className="stat-card">
-          <h3>Visitas</h3>
-          <div className="value">{visitasValue}</div>
-          <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            Acumuladas (todas las publicaciones)
-          </p>
+          <h3>Lecturas</h3>
+          <div className="value">{stats ? stats.total_views : pending}</div>
+          <p className="stat-note">Aperturas acumuladas de tus revistas publicadas</p>
         </div>
 
         <div className="stat-card">
           <h3>Almacenamiento</h3>
-          <div className="value">{almacenamientoValue}</div>
-          <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            De 10 GB disponibles
-          </p>
+          <div className="value">{stats ? formatBytes(stats.storage_bytes) : pending}</div>
+          <p className="stat-note">{maxStorage ? `De ${formatBytes(maxStorage)} de tu plan` : 'Imágenes, PDF y audio subidos'}</p>
         </div>
 
         <div className="stat-card">
-          <h3>Plan Actual</h3>
-          <div className="value" style={{ fontSize: '1.5rem' }}>Pro</div>
-          <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            50 publicaciones máx.
+          <h3>Plan</h3>
+          <div className="value" style={{ fontSize: '1.5rem' }}>{stats ? (plan?.name || 'Sin plan') : pending}</div>
+          <p className="stat-note">
+            {plan?.max_seats ? `Hasta ${plan.max_seats} usuarios` : (stats && !plan ? 'Pídelo al administrador de Cetrix' : ' ')}
           </p>
         </div>
       </div>
 
-      <div style={{ 
-        marginTop: '2rem', 
-        padding: '1.5rem', 
-        background: 'white', 
-        borderRadius: '8px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-      }}>
-        <h3 style={{ marginBottom: '1rem', color: '#2c3e50' }}>Próximas funcionalidades</h3>
-        <ul style={{ lineHeight: '2', color: '#666' }}>
-          <li>Editor de flipbooks con canvas interactivo</li>
-          <li>Importar PDFs y convertir a flipbooks</li>
-          <li>Agregar elementos multimedia (imágenes, videos, audio)</li>
-          <li>Gestión de usuarios y permisos</li>
-          <li>Analytics y estadísticas detalladas</li>
-          <li>Publicación con URLs personalizadas</li>
-        </ul>
+      <div className="dashboard-actions">
+        <button type="button" className="btn-primary" onClick={() => navigate('/collections')}>
+          <Icon name="book" size={18} style={{ marginRight: 8 }} />Ir a mis colecciones
+        </button>
+        {can(user, 'admin') && (
+          <button type="button" className="btn-secondary" onClick={() => navigate('/team')}>
+            Gestionar equipo
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './services/AuthContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -7,20 +7,20 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
 import Collections from './pages/Collections';
-import Team from './pages/Team';
-import PageViewer from './components/editor/PageViewer';
-import CanvasEditor from './components/editor/CanvasEditor';
-import CanvasEditorV2 from './components/editor/CanvasEditorV2';
+const Team = lazy(() => import('./pages/Team'));
+const PageViewer = lazy(() => import('./components/editor/PageViewer'));
+const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
-import PublicReader from './pages/PublicReader';
-import SuperAdmin from './pages/SuperAdmin';
-import AcceptInvitation from './pages/AcceptInvitation';
-import ResetPassword from './pages/ResetPassword';
+const PublicReader = lazy(() => import('./pages/PublicReader'));
+const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
+const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 function App() {
   return (
     <Router>
       <AuthProvider>
+        <Suspense fallback={<div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>Cargando…</div>}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/leer/:id" element={<PublicReader />} />
@@ -78,9 +78,8 @@ function App() {
 
           {/* Editor v2 (Fase B, react-konva) -- reemplaza al editor viejo basado en
               Fabric.js/objeto global mutable que causaba la fuga portada<->contraportada.
-              Ver docs/arquitectura-editor-2026-09-12.md. El componente viejo
-              (CanvasEditor) se deja sin usar en el repo por ahora como referencia,
-              no se borra hasta confirmar que v2 cubre todos los casos. */}
+              Ver docs/arquitectura-editor-2026-09-12.md. El editor viejo (CanvasEditor)
+              se eliminó el 2026-09-27; sigue disponible en el historial de git. */}
           <Route
             path="/publications/:id/edit/:pageId?"
             element={
@@ -92,6 +91,7 @@ function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </AuthProvider>
     </Router>
   );

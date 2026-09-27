@@ -56,10 +56,34 @@ def get_publications_stats(
         .filter(Asset.tenant_id == tenant_id)\
         .scalar() or 0
 
+    # Plan real de la suscripcion activa (si existe) -- antes el Dashboard
+    # mostraba "Pro / 50 publicaciones / 10 GB" fijos en el frontend.
+    from app.models.commercial import Plan, TenantSubscription
+    plan_info = None
+    sub = db.query(TenantSubscription).filter(
+        TenantSubscription.tenant_id == tenant_id,
+        TenantSubscription.status.in_(["active", "trialing", "grace"]),
+    ).order_by(TenantSubscription.starts_at.desc()).first()
+    if sub:
+        plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
+        limits = sub.limits_snapshot or {}
+        plan_info = {
+            "name": plan.name if plan else None,
+            "status": sub.status,
+            "max_active_publications": limits.get("max_active_publications", plan.max_active_publications if plan else None),
+            "max_storage_bytes": limits.get("max_storage_bytes", plan.max_storage_bytes if plan else None),
+            "max_seats": limits.get("max_seats", plan.max_seats if plan else None),
+        }
+    published = db.query(func.count(Publication.id))\
+        .filter(Publication.tenant_id == tenant_id, Publication.status == "published")\
+        .scalar() or 0
+
     return {
         "total_publications": int(total_publications),
+        "published_publications": int(published),
         "total_views": int(total_views),
         "storage_bytes": int(storage_bytes),
+        "plan": plan_info,
     }
 
 @router.post("/", response_model=PublicationResponse, status_code=status.HTTP_201_CREATED)
