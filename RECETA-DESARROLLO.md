@@ -118,6 +118,8 @@ Postgres/Redis/MinIO corriendo (docker-compose.dev.yml del propio repo).
 
 ## 4. Reglas de infraestructura (NO NEGOCIABLES, ya acordadas con Carlos)
 
+> **ACTUALIZADO 27-sep-2026:** esta sección es histórica. El entorno vigente (DEV en Contabo 1, ia-lavatur apagado) y todas las reglas actuales están en **`docs/HANDOFF-AGENTES.md`**, que es el documento de entrada para cualquier agente.
+
 - **Contabo 1**: solo para producción futura, sigue en pausa (Fase 0).
 - **Contabo 2**: reservado para el futuro worker de imagen/video, CON
   aislamiento estricto (usuario dedicado, contenedor sin privilegios, red
@@ -1811,3 +1813,13 @@ Decisiones de Carlos: nombres **Colección → Ediciones**; **categorías = list
 - **Frontend**: `/collections` (tarjetas), `/collections/:id` (ediciones de la colección, crear/importar dentro, campo Edición, botón **Mover**), `/publications` → redirige. Navbar: **Colecciones**; Super Admin con **selector Empresa** (`services/tenantContext.js` añade `X-Tenant-Id` vía interceptor a `api` y al axios global) + banner cuando trabaja dentro de otra empresa.
 - **Verificación**: `backend/tests/qa_lote_c_tenant_isolation.py` (28 comprobaciones PASS: aislamiento lectura/escritura/mover/borrar entre empresas, cabecera ignorada para no-superadmin, suspensión, /register cerrado, categorías) + E2E Puppeteer (Super Admin propio/en otra empresa, owner de otra empresa; 0 errores de consola). Empresa de pruebas en DEV: **Empresa Demo** (`empresa-demo`), owner `owner.demo@example.com`.
 - **Pendiente siguiente (Lote C2)**: (1) **roles dentro de la empresa sin aplicar**: hoy cualquier miembro activo puede editar/borrar (reader/reviewer incluidos) — aplicar RBAC owner/admin/editor/reviewer/reader en las APIs; (2) **gestión de equipo por el owner** (invitar/quitar usuarios de su empresa respetando `max_seats` del plan) — hoy solo Super Admin invita; (3) UI de categorías en el panel Super Admin (la API ya existe); (4) kiosco/landing agrupando por colección y filtrando por categoría.
+
+## 13. Lote C2 -- Roles dentro de la empresa + gestión de equipo (27-sep-2026)
+
+- `backend/app/core/rbac.py`: roles reader/reviewer/editor/admin/owner (ver tabla en `docs/HANDOFF-AGENTES.md` §4.2); `require_role()` aplicado a 18 endpoints de escritura; Super Admin = owner.
+- `backend/app/api/team.py` (`/api/team`): miembros + asientos del plan, invitar (enlace 7 días), nuevo enlace, cambiar rol, revocar; jerarquía (admin no gestiona admin/owner; nadie se gestiona a sí mismo); respeta `max_seats`; auditado.
+- Seguridad: la aceptación de invitaciones nunca cambia la contraseña de una cuenta activa; no se reutilizan emails de otra empresa.
+- Frontend: `/team`, enlace "Equipo" (admin+), rol junto al email, botones según rol (`services/permissions.js`).
+- QA: `backend/tests/qa_lote_c2_rbac_team.py` 40/40 PASS; E2E Puppeteer con owner/admin/editor/lector de Empresa Demo (visibilidad de botones correcta, 0 errores).
+- Commits: `61fb9a0`, `f5b3c85`, `eb3b6df`, `a40d69e`.
+- Dominios propios por cliente: diseño y guía para el cliente en **`docs/dominios-propios.md`** (Lote D, pendiente).
