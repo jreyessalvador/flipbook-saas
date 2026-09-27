@@ -161,3 +161,19 @@ Servicios: `services/api.js` (axios + token + `X-Tenant-Id`), `services/tenantCo
 | **F** | PDF generado desde el editor (worker en Contabo 2), IA de metadatos con Ollama local |
 
 Decisiones de Carlos vigentes: Colección → Ediciones; categorías = lista común; paleta navy + dorado; orientación/tamaño no editables tras crear; curl realista de página pendiente de elegir opción (RECETA 9p).
+
+## Actualización 27-sep-2026 — plan L1–L10 (Cetrix Revistas)
+
+Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en staging (dev-revistas) y luego producción** con su aprobación; correo con **Resend** (como manten.io).
+
+| Lote | Estado |
+|---|---|
+| L1 Marca + favicon | Hecho (`dca418a`) |
+| L2 Pulido (Dashboard real, lazy routes, fuera editor v1, sin emojis) | Hecho (`ab50fb7`, `99839a2`) |
+| L3 Kiosco + URLs amigables `/r/{empresa}/{coleccion}/{edicion}` | Hecho en DEV (`008be6a`, migración 0009) — ver RECETA §13 |
+| L4 Ajustes de edición (Info/Visor/SEO, clonar, iframe) | Pendiente |
+| L5 Descarga PDF por edición + papelera 30 días | Pendiente |
+| L6 Estadísticas sin cookies + `views_count` | Pendiente |
+| L7 Imagen OG 1200x630 · L8 UI categorías Super Admin | Pendiente |
+| L9 Resend (invitaciones/reset) | Pendiente: Carlos verifica dominio y da la clave por .env |
+| L10 Producción revistas.cetrix.com.mx | Pendiente de aprobación; quitar seed admin123; regla nginx `/r/` |

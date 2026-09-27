@@ -1823,3 +1823,21 @@ Decisiones de Carlos: nombres **Colección → Ediciones**; **categorías = list
 - QA: `backend/tests/qa_lote_c2_rbac_team.py` 40/40 PASS; E2E Puppeteer con owner/admin/editor/lector de Empresa Demo (visibilidad de botones correcta, 0 errores).
 - Commits: `61fb9a0`, `f5b3c85`, `eb3b6df`, `a40d69e`.
 - Dominios propios por cliente: diseño y guía para el cliente en **`docs/dominios-propios.md`** (Lote D, pendiente).
+
+## 13. Lotes L1–L3 — marca Cetrix Revistas, pulido y kiosco con URLs amigables (27-sep-2026)
+
+- **L1 marca** (`dca418a`): nombre único **Cetrix Revistas** (navbar, login, landing, títulos, `APP_NAME`, OG `site_name`); favicon SVG/ICO/PNG, apple-touch, iconos 192/512 y `manifest.webmanifest`. Fuera la pista de credenciales demo del login.
+- **L2 pulido** (`99839a2`): Dashboard con datos reales (empresa, rol, ediciones publicadas/límite, lecturas, almacenamiento y plan desde `TenantSubscription`/`Plan` en `/api/publications/stats/summary`); rutas con `lazy()`+`Suspense` (bundle principal 1 MB → 286 KB); borrado el editor v1. Iconos SVG inline (`components/common/Icon.jsx`) en vez de emojis (`ab50fb7`).
+- **L3 kiosco** (`008be6a`):
+  - Migración **`0009_kiosk_slugs.sql`** (idempotente): `publications.slug` + backfill (edition_label o título, sin acentos, sufijo `-2`, `-3`… por colección) + índice único parcial `(collection_id, slug)`. Helper `app/core/slugs.py` (`slugify`, `unique_publication_slug`). El slug se fija al crear/importar PDF y se recalcula al mover de colección; **no cambia al renombrar** (los enlaces compartidos no se rompen).
+  - URL pública canónica: **`/r/{empresa}/{coleccion}/{edicion}`** (empresa = `tenants.subdomain`, colección = `collections.slug`). `/leer/{id}` sigue funcionando y el Reader reescribe la barra a la canónica con `history.replaceState`. `PublicationResponse.public_path` (propiedad del modelo) la da al panel: compartir, QR y «Ver» ya la usan.
+  - API pública: `/api/public/publications` enriquecido (`collection{name,slug,category}`, `tenant{name,slug}`, `url_path`, filtro `?category=`), `/api/public/categories` (solo con ediciones visibles, con recuento), `/api/public/r/{t}/{c}` (colección + ediciones), `/api/public/r/{t}/{c}/{e}` (resolver), `/api/public/og/r/{t}/{c}/{e}`. **El kiosco solo muestra empresas `status=active`.**
+  - Frontend: landing agrupada por colección con chips de categoría (`?categoria=` en la URL), página `/r/:tenant/:collection` (`pages/PublicCollection.jsx`), tarjeta común `components/public/KioskCard.jsx`, estilos `styles/Kiosk.css`.
+  - **nginx (DEV aplicado, PROD obligatorio)**, junto a la regla de `/leer/`:
+```nginx
+location ~ "^/r/(?<og_t>[a-z0-9-]+)/(?<og_c>[a-z0-9-]+)/(?<og_e>[a-z0-9-]+)/?$" {
+    if ($revistas_og_bot) { rewrite ^ /api/public/og/r/$og_t/$og_c/$og_e last; }
+    # ... proxy al frontend como el resto de la SPA
+}
+```
+  - Verificado en DEV: migración con respaldo `~/backups/flipbook-dev/pre-0009-2026-09-27.dump`; ediciones privadas → 404 en `/r/...`; OG por URL amigable con canonical `https://dev-revistas…/r/default/general/destinos-y-negocios-34`; crear edición → slug `no-1-oct`, duplicado → `no-1-oct-2`; QA aislamiento 26 PASS y RBAC 37/37 PASS.
