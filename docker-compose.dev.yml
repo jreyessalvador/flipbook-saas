@@ -36,6 +36,7 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
       - ./backend/migrations:/migrations:ro
+    mem_limit: ${POSTGRES_MEM:-768m}
     restart: unless-stopped
 
   redis:
@@ -45,11 +46,13 @@ services:
       - "127.0.0.1:${REDIS_HOST_PORT:-6389}:6379"
     volumes:
       - ./data/redis:/data
+    mem_limit: ${REDIS_MEM:-256m}
     restart: unless-stopped
 
   pdf-queue:
     image: redis:7-alpine
     container_name: flipbook-dev-pdf-queue
+    mem_limit: ${PDF_QUEUE_MEM:-128m}
     restart: unless-stopped
 
   minio:
@@ -64,6 +67,7 @@ services:
       - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9011}:9001"
     volumes:
       - ./data/minio:/data
+    mem_limit: ${MINIO_MEM:-768m}
     restart: unless-stopped
 
   backend:
