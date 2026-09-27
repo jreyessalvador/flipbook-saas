@@ -93,6 +93,8 @@ services:
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    cpus: ${BACKEND_CPUS:-1.5}
+    mem_limit: ${BACKEND_MEM:-1g}
     restart: unless-stopped
 
   pdf-worker:
@@ -117,6 +119,17 @@ services:
     volumes:
       - ./backend:/app
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=1
+    # El Dockerfile del backend define un HEALTHCHECK contra :8000 que el
+    # worker no sirve (falso "unhealthy" en ia-lavatur desde el 14-sep).
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    # Limites: en Contabo 1 comparte host con stacks productivos.
+    cpus: ${PDF_WORKER_CPUS:-1.5}
+    mem_limit: ${PDF_WORKER_MEM:-1536m}
     restart: unless-stopped
 
   frontend:
@@ -125,6 +138,10 @@ services:
     working_dir: /app
     environment:
       VITE_API_URL: ${VITE_API_URL}
+      # Detras de un reverse proxy (Contabo 1): Vite >=5.4.12 rechaza Host
+      # desconocidos; y el HMR debe conectar por el puerto publico (443).
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
+      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-}
     ports:
       - "${FRONTEND_PORT}:5173"
     depends_on:
@@ -132,4 +149,6 @@ services:
     volumes:
       - ./frontend:/app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    cpus: ${FRONTEND_CPUS:-1.0}
+    mem_limit: ${FRONTEND_MEM:-1g}
     restart: unless-stopped
