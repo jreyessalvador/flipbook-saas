@@ -6,6 +6,7 @@ import { can, ROLE_LABEL } from '../../services/permissions';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
 
+import Icon from './Icon';
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ const Navbar = () => {
     )}
     <nav className="navbar">
       <div className="navbar-brand">
-        <h1>📚 Flipbook SaaS</h1>
+        <h1><Icon name="book" size={22} style={{ marginRight: 8 }} />Flipbook SaaS</h1>
       </div>
       
       <div className="navbar-menu">

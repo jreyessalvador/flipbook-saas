@@ -12,6 +12,7 @@ import { lockAPI } from '../../services/lockAPI';
 import { API_URL } from '../../services/api';
 import '../../styles/CanvasEditorV2.css';
 
+import UiIcon from '../common/Icon';
 // Fase B -- editor canvas (image/text/shape) + shell de UI de dos paneles
 // inspirado en Photoshop/Joomag (sin copiarlos), ver
 // docs/arquitectura-editor-2026-09-12.md secciones 4-6 y RECETA-DESARROLLO.md
@@ -1714,7 +1715,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 onClick={onOpenGalleryModal}
                 title="Título/descripción por imagen, biblioteca, modo de imagen, transición, autoplay y controles"
               >
-                ⚙ Configurar galería
+                <UiIcon name="settings" size={16} style={{ marginRight: 6 }} />Configurar galería
               </button>
             </section>
           )}

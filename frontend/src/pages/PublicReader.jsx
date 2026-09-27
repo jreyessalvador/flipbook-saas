@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { PageCanvas, computeSpreadViews } from '../components/editor/CanvasEditorV2';
 import { createPageEditorStore } from '../store/pageEditorStore';
+import Icon from '../components/common/Icon';
 import '../styles/PageViewer.css'; // clases .page-viewer-flip* (efecto pasar pagina, Lote UX-12)
 
 const ReaderPage = ({ page, publication, totalPages, onHotspotActivate, scale }) => {
@@ -356,11 +357,11 @@ const PublicReader = () => {
             </span>
           )}
           <button type="button" onClick={toggleSound} style={iconBtn} title={soundOn ? 'Silenciar sonido de página' : 'Activar sonido de página'} aria-label={soundOn ? 'Silenciar sonido' : 'Activar sonido'} aria-pressed={soundOn}>
-            {soundOn ? '🔊' : '🔇'}
+            <Icon name={soundOn ? 'volume' : 'mute'} size={20} />
           </button>
           {canFullscreen && (
             <button type="button" onClick={toggleFullscreen} style={iconBtn} title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}>
-              {isFullscreen ? '🗗' : '⛶'}
+              <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={20} />
             </button>
           )}
         </div>

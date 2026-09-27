@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../services/AuthContext';
 import { API_URL } from '../services/api';
 
+import Icon from '../components/common/Icon';
 const LandingPage = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
@@ -63,7 +64,7 @@ const LandingPage = () => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => navigate('/')}>
           <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--color-gold, #c9a24b), #e5c158)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#000' }}>
-            📖
+            <Icon name="book" size={20} strokeWidth={2} />
           </div>
           <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em' }}>CETRIX Flipbooks</span>
         </div>
@@ -230,7 +231,7 @@ const LandingPage = () => {
                         style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                       />
                     ) : (
-                      <div style={{ fontSize: '3rem' }}>📘</div>
+                      <div style={{ color: '#94a3b8' }}><Icon name="book" size={48} strokeWidth={1.4} /></div>
                     )}
                     <div style={{
                       position: 'absolute',
@@ -263,7 +264,7 @@ const LandingPage = () => {
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
           <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🎨</div>
+            <div style={{ marginBottom: '1rem', color: 'var(--color-gold, #c9a24b)' }}><Icon name="palette" size={32} /></div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Editor HTML5 Libre</h3>
             <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.5 }}>
               Posicionamiento libre tipo canvas de textos, imágenes, figuras geométricas y fondos dinámicos sin restricción de plantillas rígidas.
@@ -271,7 +272,7 @@ const LandingPage = () => {
           </div>
 
           <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🎬</div>
+            <div style={{ marginBottom: '1rem', color: 'var(--color-gold, #c9a24b)' }}><Icon name="film" size={32} /></div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Enriquecimiento Multimedia</h3>
             <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.5 }}>
               Integra galerías de imágenes con rotación en vivo (slideshow), reproductores de audio, videos de YouTube/Vimeo y contenidos embebidos.
@@ -279,7 +280,7 @@ const LandingPage = () => {
           </div>
 
           <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔒</div>
+            <div style={{ marginBottom: '1rem', color: 'var(--color-gold, #c9a24b)' }}><Icon name="lock" size={32} /></div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Publicación Directa y Segura</h3>
             <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.5 }}>
               Control total sobre publicaciones públicas y privadas, congelamiento de snapshots inmutables para lectores y gestión multi-inquilino.
@@ -359,8 +360,8 @@ const LandingPage = () => {
                 fontSize: '1.25rem',
                 cursor: 'pointer'
               }}
-            >
-              ✕
+            aria-label="Cerrar">
+              <Icon name="close" size={20} />
             </button>
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', textAlign: 'center' }}>Acceso a Plataforma</h2>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { publicReaderUrl, shareChannels } from './shareLinks';
 import './share.css';
 
+import Icon from '../common/Icon';
 // Modal "Compartir": canales habituales + copiar enlace + menu nativo del
 // sistema (movil) cuando el navegador lo soporta.
 const ShareModal = ({ pub, onClose }) => {
@@ -40,13 +41,13 @@ const ShareModal = ({ pub, onClose }) => {
         <div className="share-grid">
           {shareChannels(pub).map((c) => (
             <a key={c.key} className={`share-channel share-${c.key}`} href={c.href} target={c.key === 'email' ? '_self' : '_blank'} rel="noopener noreferrer">
-              <span className="share-icon" aria-hidden="true">{c.icon}</span>
+              <span className="share-icon" aria-hidden="true"><Icon name={c.icon} size={20} /></span>
               <span>{c.label}</span>
             </a>
           ))}
           {canNativeShare && (
             <button type="button" className="share-channel share-native" onClick={nativeShare}>
-              <span className="share-icon" aria-hidden="true">📤</span>
+              <span className="share-icon" aria-hidden="true"><Icon name="share" size={20} /></span>
               <span>Más opciones…</span>
             </button>
           )}

@@ -11,6 +11,7 @@ import ShareModal from '../components/share/ShareModal';
 import QrModal from '../components/share/QrModal';
 import { isShareable } from '../components/share/shareLinks';
 
+import Icon from '../components/common/Icon';
 // Lote C (2026-09-27): esta pantalla es ahora el DETALLE DE UNA COLECCION
 // (/collections/:collectionId) -- lista, crea, importa y mueve sus ediciones.
 const Publications = () => {
@@ -370,13 +371,13 @@ const Publications = () => {
                     title="Editar título y descripción"
                     aria-label={`Editar título y descripción de ${pub.title}`}
                   >
-                    ✏️
+                    <Icon name="pencil" size={16} />
                   </button>}
                 </div>
                 <p className="description">{pub.description || 'Sin descripción'}</p>
                 <div className="card-stats">
-                  <span>📄 {pub.total_pages} páginas</span>
-                  <span>👁️ {pub.views_count} vistas</span>
+                  <span><Icon name="page" size={15} /> {pub.total_pages} páginas</span>
+                  <span><Icon name="eye" size={15} /> {pub.views_count} vistas</span>
                 </div>
                 <div className="card-meta">
                   <span className="card-size">{pub.page_size} • {pub.orientation}</span>
@@ -400,7 +401,7 @@ const Publications = () => {
                       return (
                         <>
                           <button className="btn-secondary btn-share" onClick={() => setShareFor(pub)} disabled={!ok} title={ok ? 'Compartir enlace público' : why}>
-                            🔗 Compartir
+                            <Icon name="link" size={15} style={{ marginRight: 6 }} />Compartir
                           </button>
                           <button className="btn-secondary btn-share" onClick={() => setQrFor(pub)} disabled={!ok} title={ok ? 'Ver y descargar código QR' : why}>
                             ▦ QR

@@ -14,12 +14,12 @@ export const shareChannels = (pub) => {
   const text = `${title} — léela aquí: ${url}`;
   const e = encodeURIComponent;
   return [
-    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', href: `https://wa.me/?text=${e(text)}` },
-    { key: 'telegram', label: 'Telegram', icon: '✈️', href: `https://t.me/share/url?url=${e(url)}&text=${e(title)}` },
-    { key: 'email', label: 'Correo', icon: '✉️', href: `mailto:?subject=${e(title)}&body=${e(text)}` },
-    { key: 'facebook', label: 'Facebook', icon: '📘', href: `https://www.facebook.com/sharer/sharer.php?u=${e(url)}` },
-    { key: 'x', label: 'X (Twitter)', icon: '𝕏', href: `https://twitter.com/intent/tweet?url=${e(url)}&text=${e(title)}` },
-    { key: 'linkedin', label: 'LinkedIn', icon: '💼', href: `https://www.linkedin.com/sharing/share-offsite/?url=${e(url)}` },
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'message', href: `https://wa.me/?text=${e(text)}` },
+    { key: 'telegram', label: 'Telegram', icon: 'send', href: `https://t.me/share/url?url=${e(url)}&text=${e(title)}` },
+    { key: 'email', label: 'Correo', icon: 'mail', href: `mailto:?subject=${e(title)}&body=${e(text)}` },
+    { key: 'facebook', label: 'Facebook', icon: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${e(url)}` },
+    { key: 'x', label: 'X (Twitter)', icon: 'x', href: `https://twitter.com/intent/tweet?url=${e(url)}&text=${e(title)}` },
+    { key: 'linkedin', label: 'LinkedIn', icon: 'linkedin', href: `https://www.linkedin.com/sharing/share-offsite/?url=${e(url)}` },
   ];
 };
 

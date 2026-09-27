@@ -7,6 +7,7 @@ import { pageAPI } from '../../services/pageAPI';
 import { createPageEditorStore } from '../../store/pageEditorStore';
 import { computeSpreadViews, PageCanvas } from './CanvasEditorV2';
 import '../../styles/PageViewer.css';
+import Icon from '../common/Icon';
 import '../../styles/CanvasEditorV2.css'; // reutiliza .editor-v2-pagenav (barra inferior compacta, mismo lenguaje visual que el editor)
 
 const PX_PER_MM = 3; // debe coincidir con PX_PER_MM de CanvasEditorV2.jsx
@@ -228,15 +229,17 @@ const PageViewer = () => {
               className={viewMode === 'single' ? 'active' : ''}
               onClick={() => setViewMode('single')}
               title="Vista simple"
+              aria-label="Vista simple"
             >
-              📄
+              <Icon name="page" size={18} />
             </button>
             <button
               className={viewMode === 'dual' ? 'active' : ''}
               onClick={() => setViewMode('dual')}
               title="Vista dual"
+              aria-label="Vista dual"
             >
-              📖
+              <Icon name="book" size={18} />
             </button>
           </div>
           {can(user, 'editor') && <button onClick={() => navigate(`/publications/${id}/edit/${leftPageId}`)} className="btn-primary">

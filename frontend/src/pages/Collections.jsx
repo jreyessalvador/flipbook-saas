@@ -7,6 +7,7 @@ import '../styles/Collections.css';
 import { useAuth } from '../services/AuthContext';
 import { can } from '../services/permissions';
 
+import Icon from '../components/common/Icon';
 // Lote C (2026-09-27): Colecciones -> Ediciones. Una coleccion agrupa las
 // ediciones de una revista/catalogo (p.ej. "Destinos y Negocios": No. 33,
 // No. 34...). Cada empresa solo ve las suyas; Super Admin las de la empresa
@@ -105,7 +106,7 @@ const Collections = () => {
             <div className="card-body">
               <div className="card-title-row">
                 <h3>{c.name}</h3>
-                {isAdmin && <button type="button" className="btn-edit-meta" onClick={() => openEdit(c)} title="Editar colección" aria-label={`Editar ${c.name}`}>✏️</button>}
+                {isAdmin && <button type="button" className="btn-edit-meta" onClick={() => openEdit(c)} title="Editar colección" aria-label={`Editar ${c.name}`}><Icon name="pencil" size={16} /></button>}
               </div>
               <p className="description">{c.description || 'Sin descripción'}</p>
               <div className="card-meta">
