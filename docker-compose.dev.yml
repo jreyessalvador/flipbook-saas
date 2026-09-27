@@ -56,7 +56,9 @@ services:
     restart: unless-stopped
 
   minio:
-    image: quay.io/minio/minio:latest
+    # quay.io/minio ya no sirve imagenes publicas (401). Version fijada, la misma
+    # que usan los demas stacks de Contabo 1; sobreescribible con MINIO_IMAGE.
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
     container_name: flipbook-dev-minio
     command: server /data --console-address ":9001"
     environment:
