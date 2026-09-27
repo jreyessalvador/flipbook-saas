@@ -31,10 +31,25 @@ revés en silencio.
   worker de imagen/video. **Siempre `git pull` en agents-memory antes de
   asumir que sabes el estado actual** -- puede haber cambiado desde la
   última vez que leíste esto.
-- **Entorno de desarrollo con UI** (cuando exista, Fase B en adelante):
-  `ia-lavatur` (`srv01-ai-romeral-spain`, conector `ssh-server-ai-lan`),
-  carpeta autocontenida `/home/administracion/dev/flipbook-saas/` (Docker
-  Compose plano, NUNCA Kubernetes/kubectl para esto -- ver sección 4).
+- **Entorno de desarrollo con UI -- DESDE 27-sep-2026: Contabo 1**
+  (`vmi3411029`, conector `ssh-vps-contabo`), carpeta autocontenida
+  `/srv/apps/flipbook-dev/` (clon de `redesign/editor-v2` con deploy key de
+  SOLO LECTURA, alias git `github-flipbook`; se sigue commiteando y
+  pusheando desde `raspi-2` y en Contabo 1 solo `git pull --ff-only`).
+  URL: **https://dev-revistas.cetrix.com.mx** (nginx: allowlist
+  `85.86.0.0/16` + Contabo 2, basic auth para el frontend; `/api` sin basic
+  auth porque la SPA manda `Authorization: Bearer`). Proyecto Compose
+  `flipbook-dev` (`COMPOSE_PROJECT_NAME` en `.env`), todo publicado en
+  `127.0.0.1` con los puertos reservados en `/srv/apps/PORTS.md`
+  (5173, 8010, 5442, 6389, 9010/9011). Backup diario cifrado a S3 dentro de
+  `/usr/local/bin/backup-others.sh` (`backup_flipbookdev`). Contabo 1 aloja
+  producción de otros productos: **prohibido** `docker system/volume prune`
+  o `docker compose down -v` y cualquier comando fuera de
+  `/srv/apps/flipbook-dev/`.
+- **Entorno anterior (retirado)**: `ia-lavatur` (`srv01-ai-romeral-spain`,
+  conector `ssh-server-ai-lan`), `/home/administracion/dev/flipbook-saas/`.
+  Se abandona porque el servidor pertenece al cliente Lavatur y el acceso
+  puede cerrarse; queda parado como vuelta atrás temporal.
 
 ## 2. Estado real a fecha 12-sep-2026 (Fase A completada)
 
