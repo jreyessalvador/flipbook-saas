@@ -98,7 +98,10 @@ services:
       - minio
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # --proxy-headers: detras de nginx HTTPS, las redirecciones 307 de FastAPI
+    # (barra final) deben salir con https:// o el navegador las bloquea
+    # como contenido mixto ("Error al cargar las publicaciones").
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
     cpus: ${BACKEND_CPUS:-1.5}
     mem_limit: ${BACKEND_MEM:-1g}
     restart: unless-stopped
