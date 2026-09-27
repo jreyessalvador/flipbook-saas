@@ -449,3 +449,35 @@
   color: #856404;
   font-size: 0.9rem;
 }
+
+/* Editar titulo/descripcion de una publicacion ya creada (2026-09-27) */
+.card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-title-row h3 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.btn-edit-meta {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 16px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+.btn-edit-meta:hover,
+.btn-edit-meta:focus-visible {
+  opacity: 1;
+  border-color: #d4af37;
+  background: rgba(212, 175, 55, 0.08);
+  outline: none;
+}

@@ -26,7 +26,8 @@ class PublicationUpdate(PublicationBase):
     Cambiarlas requeriria una operacion explicita aparte (no implementada aun,
     ver seccion 3.1 y 12 del documento de arquitectura).
     """
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=500)
 
 
 class PublicationVisibilityUpdate(BaseModel):

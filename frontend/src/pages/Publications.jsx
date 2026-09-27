@@ -11,6 +11,10 @@ const Publications = () => {
   const [showConfigStep, setShowConfigStep] = useState(false);
   const [pdfFile, setPdfFile] = useState(null);
   const [importNotice, setImportNotice] = useState(null);
+  // Editar titulo/descripcion de una publicacion ya creada
+  const [editing, setEditing] = useState(null); // { id, title, description }
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
   const importPollRef = useRef(null);
   
   const [newPublication, setNewPublication] = useState({
@@ -134,6 +138,30 @@ const Publications = () => {
     } catch (err) {
       console.error('Error creating publication:', err);
       alert(err?.response?.data?.detail || err.message || 'Error al crear la publicación');
+    }
+  };
+
+  const openEdit = (pub) => {
+    setEditError(null);
+    setEditing({ id: pub.id, title: pub.title || '', description: pub.description || '' });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    const title = editing.title.trim();
+    if (!title) { setEditError('El título no puede estar vacío'); return; }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await publicationAPI.update(editing.id, { title, description: editing.description.trim() });
+      setEditing(null);
+      await loadPublications();
+    } catch (err) {
+      console.error('Error updating publication:', err);
+      const detail = err?.response?.data?.detail;
+      setEditError(typeof detail === 'string' ? detail : 'No se pudieron guardar los cambios');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -267,7 +295,18 @@ const Publications = () => {
                 )}
               </div>
               <div className="card-body">
-                <h3>{pub.title}</h3>
+                <div className="card-title-row">
+                  <h3>{pub.title}</h3>
+                  <button
+                    type="button"
+                    className="btn-edit-meta"
+                    onClick={() => openEdit(pub)}
+                    title="Editar título y descripción"
+                    aria-label={`Editar título y descripción de ${pub.title}`}
+                  >
+                    ✏️
+                  </button>
+                </div>
                 <p className="description">{pub.description || 'Sin descripción'}</p>
                 <div className="card-stats">
                   <span>📄 {pub.total_pages} páginas</span>
@@ -320,6 +359,47 @@ const Publications = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Editar título/descripción */}
+      {editing && (
+        <div className="modal-overlay" onClick={() => !savingEdit && setEditing(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar publicación</h3>
+            <form onSubmit={handleSaveEdit}>
+              <div className="form-group">
+                <label>Título *</label>
+                <input
+                  type="text"
+                  required
+                  maxLength="200"
+                  autoFocus
+                  value={editing.title}
+                  onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Descripción</label>
+                <textarea
+                  maxLength="500"
+                  rows="4"
+                  value={editing.description}
+                  onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                  placeholder="Describe brevemente el contenido..."
+                />
+              </div>
+              {editError && <div className="error-message">{editError}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setEditing(null)} disabled={savingEdit}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={savingEdit}>
+                  {savingEdit ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

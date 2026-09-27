@@ -269,7 +269,20 @@ def update_publication(
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
 
-    for key, value in publication_data.dict(exclude_unset=True).items():
+    changes = publication_data.dict(exclude_unset=True)
+    # Renombrar despues de crear (pedido de Carlos 2026-09-27): titulo sin
+    # espacios sobrantes y nunca vacio; descripcion vacia = sin descripcion.
+    # El Reader/catalogo publico leen pub.title en vivo, asi que el cambio se
+    # ve de inmediato sin necesidad de "Actualizar publicacion".
+    if "title" in changes:
+        title = (changes["title"] or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="El título no puede estar vacío")
+        changes["title"] = title
+    if "description" in changes:
+        changes["description"] = (changes["description"] or "").strip() or None
+
+    for key, value in changes.items():
         setattr(publication, key, value)
 
     db.commit()
