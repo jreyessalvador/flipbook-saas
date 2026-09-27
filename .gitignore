@@ -50,3 +50,6 @@ k8s/*/secret.yaml
 *.backup
 *.backup[0-9]*
 *.backup.*
+
+# Datos persistentes de los stacks (postgres/minio/redis)
+data/

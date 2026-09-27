@@ -8,8 +8,10 @@ app = FastAPI(
     title="Cetrix Revistas API",
     description="API para plataforma de revistas digitales",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    # Documentacion interactiva solo en DEV (DEBUG=True); en produccion no se expone.
+    docs_url="/api/docs" if settings.DEBUG else None,
+    redoc_url="/api/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
 # CORS

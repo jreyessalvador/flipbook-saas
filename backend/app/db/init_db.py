@@ -32,15 +32,22 @@ def init_db(db: Session):
         db.refresh(tenant)
         print(f"✅ Tenant creado: {tenant.name}")
     
-    # Verificar si ya existe un usuario admin
-    admin = db.query(User).filter(User.email == "admin@flipbook.app").first()
+    # Usuario admin inicial: SOLO si se pasa INIT_ADMIN_EMAIL + INIT_ADMIN_PASSWORD
+    # (sin credenciales por defecto: antes sembraba admin@flipbook.app / admin123).
+    import os
+    email = (os.getenv("INIT_ADMIN_EMAIL") or "").strip().lower()
+    password = os.getenv("INIT_ADMIN_PASSWORD") or ""
+    admin = None
+    if not email or len(password) < 12:
+        print("Sin INIT_ADMIN_EMAIL/INIT_ADMIN_PASSWORD (min. 12 caracteres): no se crea usuario admin.")
+        return tenant, admin
+    admin = db.query(User).filter(User.email == email).first()
     if not admin:
-        # Crear usuario admin por defecto
         admin = User(
             id=uuid.uuid4(),
-            email="admin@flipbook.app",
-            password_hash=get_password_hash("admin123"),
-            full_name="Administrator",
+            email=email,
+            password_hash=get_password_hash(password),
+            full_name="Administrador",
             role="admin",
             is_active=True,
             tenant_id=tenant.id
@@ -48,11 +55,8 @@ def init_db(db: Session):
         db.add(admin)
         db.commit()
         db.refresh(admin)
-        print(f"✅ Usuario admin creado")
-        print(f"   Email: admin@flipbook.app")
-        print(f"   Password: admin123")
-        print(f"   ⚠️  CAMBIAR CONTRASEÑA EN PRODUCCIÓN!")
-    
+        print(f"Usuario admin creado: {email}")
+
     return tenant, admin
 
 if __name__ == "__main__":
