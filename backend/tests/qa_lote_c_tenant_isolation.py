@@ -43,8 +43,8 @@ demo_id = demo["id"]
 OW = create_access_token({"sub": "owner.demo@example.com"}, timedelta(minutes=15))
 
 st, me = call("GET", "/api/auth/me", OW); ok(st == 200 and me["tenant_name"] == "Empresa Demo" and not me["is_superadmin"], f"/me owner -> {me.get('tenant_name')}")
-st, cols = call("GET", "/api/collections", OW); ok(st == 200 and len(cols) == 1 and cols[0]["is_default"], f"owner ve solo su coleccion General ({[c['name'] for c in cols]})")
-st, pubs = call("GET", "/api/publications/?limit=200", OW); ok(st == 200 and len(pubs) == 0 if not any(p for p in pubs if p['title'].startswith('Demo')) else True, f"owner no ve ediciones de CETRIX ({len(pubs)})")
+st, cols = call("GET", "/api/collections", OW); ok(st == 200 and all(c["tenant_id"] == demo_id for c in cols) and any(c["is_default"] for c in cols), f"owner ve solo colecciones de su empresa ({[c['name'] for c in cols]})")
+st, pubs = call("GET", "/api/publications/?limit=200", OW); ok(st == 200 and all(p["tenant_id"] == demo_id for p in pubs), f"owner no ve ediciones de CETRIX ({len(pubs)} propias)")
 st, sa_pubs = call("GET", "/api/publications/?limit=200", SA)
 cetrix_pub = next(p for p in sa_pubs if p["title"] == "Revista de prueba")
 st, _ = call("GET", f"/api/publications/{cetrix_pub['id']}", OW); ok(st == 404, f"owner GET edicion CETRIX -> {st}")
@@ -53,15 +53,17 @@ st, _ = call("GET", "/api/collections", OW, headers={"X-Tenant-Id": cetrix});
 st, cols2 = call("GET", "/api/collections", OW, headers={"X-Tenant-Id": cetrix}); ok(all(c["tenant_id"] == demo_id for c in cols2), "owner con X-Tenant-Id de CETRIX: cabecera ignorada")
 st, sa_cols = call("GET", "/api/collections", SA); cetrix_general = next(c for c in sa_cols if c["is_default"])
 st, _ = call("POST", "/api/publications/", OW, {"title": "Intrusa", "collection_id": cetrix_general["id"], "total_pages": 2}); ok(st == 404, f"owner crea edicion en coleccion CETRIX -> {st}")
-st, newcol = call("POST", "/api/collections", OW, {"name": "Revista Demo", "description": "Colección de pruebas"}); ok(st == 201, f"owner crea coleccion ({st})")
-st, ed = call("POST", "/api/publications/", OW, {"title": "Demo Edición 1", "collection_id": newcol["id"], "total_pages": 4, "edition_label": "Sep 2026"}); ok(st == 201 and ed["collection_id"] == newcol["id"], f"owner crea edicion en su coleccion ({st})")
+newcol = next((c for c in cols if c["name"] == "Revista Demo"), None)
+if newcol is None:
+    st, newcol = call("POST", "/api/collections", OW, {"name": "Revista Demo", "description": "Colección de pruebas"}); ok(st == 201, f"owner crea coleccion ({st})")
+st, ed = call("POST", "/api/publications/", OW, {"title": "QA edición temporal", "collection_id": newcol["id"], "total_pages": 2, "edition_label": "QA"}); ok(st == 201 and ed["collection_id"] == newcol["id"], f"owner crea edicion en su coleccion ({st})")
 st, _ = call("POST", f"/api/publications/{ed['id']}/move", OW, {"collection_id": cetrix_general["id"]}); ok(st == 404, f"owner mueve a coleccion CETRIX -> {st}")
 st, _ = call("POST", f"/api/publications/{cetrix_pub['id']}/move", OW, {"collection_id": newcol["id"]}); ok(st == 404, f"owner mueve edicion CETRIX -> {st}")
 st, _ = call("DELETE", f"/api/collections/{newcol['id']}", OW); ok(st == 409, f"borrar coleccion con ediciones -> {st}")
 st, own_cols = call("GET", "/api/collections", OW); dflt = next(c for c in own_cols if c["is_default"])
 st, _ = call("DELETE", f"/api/collections/{dflt['id']}", OW); ok(st == 409, f"borrar coleccion por defecto -> {st}")
 st, _ = call("DELETE", f"/api/collections/{cetrix_general['id']}", OW); ok(st == 404, f"owner borra coleccion CETRIX -> {st}")
-st, sa_demo = call("GET", "/api/collections", SA, headers={"X-Tenant-Id": demo_id}); ok(st == 200 and {c["name"] for c in sa_demo} == {"General", "Revista Demo"}, f"superadmin con selector ve Empresa Demo ({[c['name'] for c in sa_demo]})")
+st, sa_demo = call("GET", "/api/collections", SA, headers={"X-Tenant-Id": demo_id}); ok(st == 200 and all(c["tenant_id"] == demo_id for c in sa_demo) and "Revista Demo" in {c["name"] for c in sa_demo}, f"superadmin con selector ve Empresa Demo ({[c['name'] for c in sa_demo]})")
 st, me_sa = call("GET", "/api/auth/me", SA, headers={"X-Tenant-Id": demo_id}); ok(me_sa["acting_as_tenant"] and me_sa["tenant_name"] == "Empresa Demo", "/me superadmin actuando como Empresa Demo")
 st, sa_own = call("GET", "/api/collections", SA); ok(all(c["tenant_id"] == cetrix for c in sa_own), "superadmin sin selector ve CETRIX")
 st, pr = call("POST", "/api/collections", SA, {"name": "Pruebas QA"}); 
@@ -76,3 +78,6 @@ st, _ = call("POST", "/api/auth/register", None, {"email": "x@example.com", "pas
 st, cats = call("GET", "/api/categories", OW); ok(st == 200 and len(cats) == 17, f"categorias comunes visibles ({len(cats)})")
 st, _ = call("GET", "/api/superadmin/categories", OW); ok(st == 403, f"owner no gestiona categorias -> {st}")
 st, _ = call("PUT", f"/api/collections/{newcol['id']}", OW, {"category_id": cats[0]["id"]}); ok(st == 200, "asignar categoria a coleccion")
+
+# limpieza: el script es re-ejecutable (borra su edicion temporal)
+st, _ = call("DELETE", f"/api/publications/{ed['id']}", OW); ok(st == 204, f"limpieza edicion temporal ({st})")
