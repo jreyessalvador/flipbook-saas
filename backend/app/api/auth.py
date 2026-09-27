@@ -92,9 +92,23 @@ def get_current_user(
         if membership is None:
             raise HTTPException(status_code=403, detail="No tienes acceso activo a esta empresa")
 
+    # Rol dentro de la empresa efectiva (RBAC, ver app/core/rbac.py)
+    if is_superadmin:
+        tenant_role = "owner"
+    else:
+        from app.models.commercial import Role as _Role
+        tenant_role = db.query(_Role.code).join(
+            TenantMembership, TenantMembership.role_id == _Role.id
+        ).filter(
+            TenantMembership.tenant_id == effective_tenant_id,
+            TenantMembership.user_id == user.id,
+            TenantMembership.status == "active",
+        ).scalar()
+
     user.effective_tenant_id = effective_tenant_id
     user.is_platform_superadmin = is_superadmin
     user.acting_as_tenant = acting_as
+    user.tenant_role = tenant_role
     return user
 
 @router.post("/login", response_model=Token)
@@ -139,6 +153,7 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         "tenant_id": current_user.effective_tenant_id,
         "tenant_name": tenant.name if tenant else None,
         "acting_as_tenant": current_user.acting_as_tenant,
+        "tenant_role": current_user.tenant_role,
     }
 
 @router.post("/password-reset/confirm")

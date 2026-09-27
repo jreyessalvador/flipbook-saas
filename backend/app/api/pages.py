@@ -11,6 +11,7 @@ from app.models.publication import Publication
 from app.models.edit_lock import EditLock
 from app.schemas.page import PageResponse, PageUpdate, PageInsertRequest, PageInsertResponse
 from app.api.auth import get_current_user
+from app.core.rbac import require_role
 
 router = APIRouter()
 
@@ -64,7 +65,7 @@ def insert_pages(
     publication_id: str,
     body: PageInsertRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     """
     Inserta páginas vacías después del ancla elegida. La operación es atómica:
@@ -140,7 +141,7 @@ def update_page(
     page_id: str,
     page_data: PageUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("editor"))
 ):
     """Actualizar contenido de una página"""
     page = db.query(Page).filter(Page.id == page_id).first()
@@ -212,7 +213,7 @@ def save_page_elements(
     page_id: str,
     body: PageElementsSaveRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     """
     Guardado EXPLICITO (boton "Guardar", no autoguardado -- decision de Carlos).

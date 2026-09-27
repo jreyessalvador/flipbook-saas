@@ -23,6 +23,7 @@ class UserResponse(UserBase):
     tenant_id: Optional[uuid.UUID] = None
     tenant_name: Optional[str] = None
     acting_as_tenant: bool = False
+    tenant_role: Optional[str] = None
     
     class Config:
         from_attributes = True

@@ -22,6 +22,7 @@ from app.models.publication import Publication
 from app.models.edit_lock import EditLock
 from app.schemas.lock import LockResponse
 from app.api.auth import get_current_user
+from app.core.rbac import require_role
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ def _get_publication_or_404(db: Session, publication_id: str, tenant_id) -> Publ
 def acquire_lock(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     _get_publication_or_404(db, publication_id, current_user.effective_tenant_id)
 
@@ -132,7 +133,7 @@ def acquire_lock(
 def refresh_heartbeat(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     lock = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
     if not lock or str(lock.locked_by_user) != str(current_user.id):
@@ -150,7 +151,7 @@ def refresh_heartbeat(
 def release_lock(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     lock = db.query(EditLock).filter(EditLock.publication_id == publication_id).first()
     if lock and str(lock.locked_by_user) == str(current_user.id):

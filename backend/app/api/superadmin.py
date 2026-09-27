@@ -126,6 +126,8 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant: raise HTTPException(status_code=404, detail="Tenant no encontrado")
     user = db.query(User).filter(User.email == str(data.email).lower()).first()
+    if user and user.tenant_id != tenant.id:
+        raise HTTPException(status_code=409, detail="Ese email ya tiene cuenta en otra empresa")
     if not user:
         # Usuario inactivo hasta que el destinatario defina su propia contraseña.
         user = User(email=str(data.email).lower(), full_name=data.full_name, password_hash="!invitation-pending!", is_active=False, role="editor", tenant_id=tenant.id)
@@ -152,6 +154,12 @@ def accept_invitation(data: InviteAcceptRequest, db: Session = Depends(get_db)):
     if not membership or not membership.invite_expires_at or membership.invite_expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invitación inválida o caducada")
     user = db.query(User).filter(User.id == membership.user_id).first()
+    if user.tenant_id != membership.tenant_id:
+        raise HTTPException(status_code=409, detail="Esta cuenta pertenece a otra empresa")
+    if user.is_active and user.password_hash and not user.password_hash.startswith("!"):
+        # Cuenta ya activa: la invitacion NO puede cambiar su contrasena
+        # (evita secuestro de cuenta si alguien invita un email ajeno).
+        raise HTTPException(status_code=409, detail="Ya tienes una cuenta activa. Inicia sesión con tu contraseña o pide restablecerla.")
     user.password_hash, user.is_active = get_password_hash(data.password), True
     membership.status, membership.accepted_at, membership.invite_token_hash = "active", datetime.now(timezone.utc), None
     db.commit()

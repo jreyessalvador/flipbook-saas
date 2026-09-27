@@ -13,6 +13,7 @@ import os
 
 from app.db.session import get_db
 from app.api.auth import get_current_user
+from app.core.rbac import require_role
 from app.models.user import User
 from app.models.asset import Asset
 from app.config import settings
@@ -85,7 +86,7 @@ def build_asset_url(object_name: str) -> str:
 async def upload_asset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("editor"))
 ):
     try:
         ensure_bucket()

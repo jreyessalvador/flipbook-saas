@@ -15,6 +15,7 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
+from app.core.rbac import require_role
 from app.db.session import get_db
 from app.models.collection import Category, Collection
 from app.models.publication import Publication
@@ -133,7 +134,7 @@ def list_collections(db: Session = Depends(get_db), current_user: User = Depends
 
 
 @router.post("/collections", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
-def create_collection(data: CollectionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_collection(data: CollectionCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     tenant_id = current_user.effective_tenant_id
     name = data.name.strip()
     if not name:
@@ -157,7 +158,7 @@ def get_collection(collection_id: str, db: Session = Depends(get_db), current_us
 
 
 @router.put("/collections/{collection_id}", response_model=CollectionResponse)
-def update_collection(collection_id: str, data: CollectionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_collection(collection_id: str, data: CollectionUpdate, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     col = get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
     changes = data.dict(exclude_unset=True)
     if "name" in changes:
@@ -178,7 +179,7 @@ def update_collection(collection_id: str, data: CollectionUpdate, db: Session = 
 
 
 @router.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_collection(collection_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     col = get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
     if col.is_default:
         raise HTTPException(status_code=409, detail="La colección por defecto no se puede eliminar")

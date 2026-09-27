@@ -16,6 +16,7 @@ from app.schemas.publication import (
     PublicationResponse,
 )
 from app.api.auth import get_current_user
+from app.core.rbac import require_role
 from app.schemas.collection import MoveEditionRequest
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
 from app.config import settings
@@ -65,7 +66,7 @@ def get_publications_stats(
 def create_publication(
     publication_data: PublicationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("editor"))
 ):
     """Crear una nueva publicación con sus páginas"""
     
@@ -119,7 +120,7 @@ async def import_pdf_publication(
     description: str | None = Form(None),
     collection_id: str | None = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("editor")),
 ):
     """Encola un PDF y crea la publicación solo cuando sus páginas estén listas.
 
@@ -276,7 +277,7 @@ def update_publication(
     publication_id: str,
     publication_data: PublicationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("editor"))
 ):
     """Actualizar publicación"""
     publication = db.query(Publication)\
@@ -315,7 +316,7 @@ def move_publication(
     publication_id: str,
     data: MoveEditionRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("editor"))
 ):
     """Mover una edicion a otra coleccion de la MISMA empresa (Lote C).
 
@@ -341,7 +342,7 @@ def move_publication(
 def delete_publication(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role("admin"))
 ):
     """Eliminar publicación"""
     publication = db.query(Publication)\
@@ -411,7 +412,7 @@ def _serialize_publication_snapshot(db: Session, publication: Publication) -> di
 def publish_publication(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
     """Congela el estado actual en un PublicationVersion nuevo y lo marca como vigente."""
     publication = db.query(Publication)\
@@ -441,7 +442,7 @@ def publish_publication(
 def unpublish_publication(
     publication_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
     """Vuelve al borrador sin eliminar el historial de snapshots.
 
@@ -469,7 +470,7 @@ def set_publication_visibility(
     publication_id: str,
     visibility: PublicationVisibilityUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
     """Muestra u oculta una versión vigente del catálogo y Reader públicos."""
     publication = db.query(Publication)\
