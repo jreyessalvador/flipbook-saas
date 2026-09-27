@@ -64,6 +64,15 @@ st, _ = call("POST", "/api/collections", RD, {"name": "X"}); ok(st == 403, f"lec
 st, _ = call("GET", "/api/team/members", RD); ok(st == 403, f"lector NO ve equipo -> {st}")
 
 st, ed = call("POST", "/api/publications/", ED, {"title": "Edición del editor", "collection_id": demo_col["id"], "total_pages": 2}); ok(st == 201, f"editor crea edicion ({st})")
+import atexit
+_cleanup = {"ed": ed.get("id") if isinstance(ed, dict) else None, "c2": None}
+def _limpieza():
+    # Garantiza que no queden ediciones/colecciones de prueba aunque el script falle a mitad (idempotente).
+    if _cleanup["ed"]:
+        call("POST", f"/api/publications/{_cleanup['ed']}/unpublish", OW); call("DELETE", f"/api/publications/{_cleanup['ed']}", OW)
+    if _cleanup["c2"]:
+        call("DELETE", f"/api/collections/{_cleanup['c2']}", OW)
+atexit.register(_limpieza)
 st, _ = call("PUT", f"/api/publications/{ed['id']}", ED, {"title": "Edición del editor (editada)"}); ok(st == 200, f"editor edita edicion ({st})")
 st, pages = call("GET", f"/api/pages/publications/{ed['id']}/pages", ED); ok(st == 200, f"editor ve paginas ({st})")
 st, _ = call("PUT", f"/api/pages/{pages[0]['id']}/elements", RD, {"elements": [], "version": 0}); ok(st == 403, f"lector NO guarda elementos -> {st}")
@@ -74,6 +83,7 @@ st, _ = call("GET", "/api/team/members", ED); ok(st == 403, f"editor NO ve equip
 
 st, _ = call("POST", f"/api/publications/{ed['id']}/publish", AD); ok(st == 201, f"admin publica ({st})")
 st, c2 = call("POST", "/api/collections", AD, {"name": "Colección del admin"}); ok(st == 201, f"admin crea coleccion ({st})")
+_cleanup["c2"] = c2.get("id") if isinstance(c2, dict) else None
 st, _ = call("POST", f"/api/publications/{ed['id']}/move", ED, {"collection_id": c2["id"]}); ok(st == 200, f"editor mueve edicion ({st})")
 st, _ = call("POST", "/api/team/invitations", AD, {"email": "otro.admin@example.com", "role": "admin"}); ok(st == 403, f"admin NO invita administradores -> {st}")
 st, team = call("GET", "/api/team/members", AD)
@@ -106,9 +116,10 @@ if limit is not None:
 # cuenta activa: una invitacion no puede cambiar su contrasena
 st, inv = call("POST", f"/api/team/members/{editor_m['id']}/resend", OW); ok(st == 409, f"no se reenvia invitacion a miembro activo -> {st}")
 # revocado pierde acceso
-s, rv = call("POST", "/api/team/invitations", OW, {"email": "temporal.demo@example.com", "role": "editor"})
+TEMP_EMAIL = f"temporal.{secrets.token_hex(3)}.demo@example.com"  # unico por ejecucion: el script es re-ejecutable
+s, rv = call("POST", "/api/team/invitations", OW, {"email": TEMP_EMAIL, "role": "editor"})
 pw = secrets.token_urlsafe(15); call("POST", "/api/superadmin/invitations/accept", None, {"token": rv["invite_token"], "password": pw})
-TT = tok("temporal.demo@example.com"); st, _ = call("GET", "/api/collections", TT); ok(st == 200, "miembro temporal entra")
+TT = tok(TEMP_EMAIL); st, _ = call("GET", "/api/collections", TT); ok(st == 200, "miembro temporal entra")
 call("DELETE", f"/api/team/members/{rv['membership_id']}", OW)
 st, _ = call("GET", "/api/collections", TT); ok(st == 403, f"miembro revocado pierde acceso -> {st}")
 st, _ = call("POST", "/api/superadmin/invitations/accept", None, {"token": rv["invite_token"], "password": "otraclave12345"}); ok(st == 400, f"token de invitacion usado/revocado no sirve -> {st}")
