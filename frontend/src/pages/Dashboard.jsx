@@ -63,7 +63,7 @@ const Dashboard = () => {
           <h3>Publicaciones</h3>
           <div className="value">{publicacionesValue}</div>
           <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            Total de flipbooks
+            Total de ediciones
           </p>
         </div>
 

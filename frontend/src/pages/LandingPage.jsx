@@ -66,7 +66,7 @@ const LandingPage = () => {
           <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--color-gold, #c9a24b), #e5c158)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#000' }}>
             <Icon name="book" size={20} strokeWidth={2} />
           </div>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em' }}>CETRIX Flipbooks</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Cetrix Revistas</span>
         </div>
 
         <nav style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>

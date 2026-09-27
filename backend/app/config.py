@@ -4,7 +4,7 @@ import os
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "Flipbook SaaS"
+    APP_NAME: str = "Cetrix Revistas"
     DEBUG: bool = False
     API_VERSION: str = "v1"
     

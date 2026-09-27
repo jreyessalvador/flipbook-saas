@@ -29,7 +29,7 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h2>Flipbook SaaS</h2>
+        <h2>Cetrix Revistas</h2>
         <p style={{ textAlign: 'center', color: '#666', marginBottom: '1.5rem' }}>
           Inicia sesión para continuar
         </p>
@@ -45,7 +45,7 @@ const Login = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="admin@flipbook.app"
+              placeholder="tu@empresa.com"
             />
           </div>
 
@@ -70,9 +70,6 @@ const Login = () => {
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: '1rem', color: '#888', fontSize: '0.9rem' }}>
-          Demo: admin@flipbook.app / admin123
-        </p>
       </div>
     </div>
   );

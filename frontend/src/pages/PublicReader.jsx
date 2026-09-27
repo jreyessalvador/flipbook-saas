@@ -245,7 +245,7 @@ const PublicReader = () => {
   useEffect(() => {
     if (!publication?.title) return undefined;
     const prev = document.title;
-    document.title = publication.title;
+    document.title = `${publication.title} · Cetrix Revistas`;
     return () => { document.title = prev; };
   }, [publication?.title]);
 

@@ -5,7 +5,7 @@ from app.api import auth, publications, pages, assets, locks, public, superadmin
 from app.config import settings
 
 app = FastAPI(
-    title="Flipbook SaaS API",
+    title="Cetrix Revistas API",
     description="API para plataforma de revistas digitales",
     version="1.0.0",
     docs_url="/api/docs",
@@ -63,7 +63,7 @@ async def ready():
 
 @app.get("/")
 async def root():
-    return {"message": "Flipbook SaaS API v1.0.0", "docs": "/api/docs"}
+    return {"message": "Cetrix Revistas API v1.0.0", "docs": "/api/docs"}
 
 if __name__ == "__main__":
     import uvicorn

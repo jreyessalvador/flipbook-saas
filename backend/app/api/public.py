@@ -207,7 +207,7 @@ def public_open_graph(id: uuid.UUID, request: Request, db: Session = Depends(get
 <meta name="description" content="{e(description)}">
 <link rel="canonical" href="{e(reader_url)}">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="Revistas digitales">
+<meta property="og:site_name" content="Cetrix Revistas">
 <meta property="og:locale" content="es_ES">
 <meta property="og:title" content="{e(title)}">
 <meta property="og:description" content="{e(description)}">
