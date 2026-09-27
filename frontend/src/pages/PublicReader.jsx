@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { PageCanvas, computeSpreadViews } from '../components/editor/CanvasEditorV2';
@@ -50,7 +50,7 @@ const useElementSize = () => {
   // callback ref: el nodo aparece solo cuando termina la carga
   const [node, setNode] = useState(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!node) return undefined;
     const update = () => setSize({ width: node.clientWidth, height: node.clientHeight });
     update();
@@ -210,11 +210,13 @@ const PublicReader = () => {
   const pageWpx = publication.page_width * PX_PER_MM;
   const pageHpx = publication.page_height * PX_PER_MM;
   const slots = singlePage ? 1 : 2; // spread reserva siempre 2 huecos: la escala no "salta" en portada
-  const availW = Math.max(0, stageSize.width - 2 * FRAME_PAD - (slots - 1) * PAGE_GAP);
-  const availH = Math.max(0, stageSize.height - 2 * FRAME_PAD);
-  const fitScale = stageSize.width > 0
-    ? Math.max(0.15, Math.min(1.25, availW / (slots * pageWpx), availH / pageHpx))
-    : 0.72;
+  // Area medida por ResizeObserver; mientras no haya medida se estima con el
+  // viewport (cabecera ~52px, pie ~64px, padding) para no pintar nunca de mas.
+  const boxW = stageSize.width > 0 ? stageSize.width : vw - (singlePage ? 16 : 32);
+  const boxH = stageSize.height > 0 ? stageSize.height : vh - 116 - (singlePage ? 16 : 32);
+  const availW = Math.max(0, boxW - 2 * FRAME_PAD - (slots - 1) * PAGE_GAP);
+  const availH = Math.max(0, boxH - 2 * FRAME_PAD);
+  const fitScale = Math.max(0.15, Math.min(1.25, availW / (slots * pageWpx), availH / pageHpx));
   const pageLabel = singlePage
     ? `${currentPages[0]?.page_number ?? '-'} / ${pages.length}`
     : `Página ${currentPages.map((pg) => pg.page_number).join('-')}`;
