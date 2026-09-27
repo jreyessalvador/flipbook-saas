@@ -6,6 +6,7 @@ import Navbar from './components/common/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publications from './pages/Publications';
+import Collections from './pages/Collections';
 import PageViewer from './components/editor/PageViewer';
 import CanvasEditor from './components/editor/CanvasEditor';
 import CanvasEditorV2 from './components/editor/CanvasEditorV2';
@@ -39,8 +40,21 @@ function App() {
             }
           />
 
+          {/* Lote C: Colecciones -> Ediciones. /publications queda como alias. */}
+          <Route path="/publications" element={<Navigate to="/collections" replace />} />
           <Route
-            path="/publications"
+            path="/collections"
+            element={
+              <ProtectedRoute>
+                <>
+                  <Navbar />
+                  <Collections />
+                </>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/collections/:collectionId"
             element={
               <ProtectedRoute>
                 <>

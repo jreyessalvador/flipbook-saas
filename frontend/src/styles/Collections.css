@@ -1,0 +1,23 @@
+/* Lote C (2026-09-27): Colecciones + selector de empresa del Super Admin */
+.collections-subtitle { margin: 4px 0 0; color: #6b7280; font-size: 14px; }
+.collection-cover { position: relative; width: 100%; border: 0; padding: 0; cursor: pointer; background: transparent; display: block; }
+.collection-count {
+  position: absolute; right: 10px; bottom: 10px; background: rgba(15, 27, 51, .85); color: #fff;
+  font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+}
+.collection-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #6b7280; margin-bottom: 4px; }
+.collection-breadcrumb button { background: none; border: 0; color: #1f3a6d; cursor: pointer; padding: 0; font-size: 14px; }
+.collection-breadcrumb button:hover { text-decoration: underline; }
+.edition-label { display: inline-block; font-size: 12px; font-weight: 600; color: #8a6d1f; background: rgba(212,175,55,.12); border-radius: 4px; padding: 2px 8px; margin-bottom: 6px; }
+.form-group select { width: 100%; padding: 10px 12px; border: 1px solid #d6d9e0; border-radius: 6px; font-size: 14px; background: #fff; }
+
+.tenant-switcher { display: flex; align-items: center; gap: 6px; margin-right: 12px; }
+.tenant-switcher select {
+  max-width: 220px; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(212,175,55,.6);
+  background: rgba(255,255,255,.08); color: #fff; font-size: 13px;
+}
+.tenant-switcher select option { color: #111; }
+.tenant-banner {
+  background: #8a6d1f; color: #fff; text-align: center; font-size: 13px; padding: 6px 12px;
+}
+.tenant-banner button { margin-left: 10px; background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.5); color: #fff; border-radius: 4px; padding: 2px 10px; cursor: pointer; }

@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { collectionAPI } from '../services/collectionAPI';
+import '../styles/Collections.css';
 import { publicationAPI } from '../services/publicationAPI';
 import { API_URL } from '../services/api';
 import '../styles/Publications.css';
@@ -6,7 +9,15 @@ import ShareModal from '../components/share/ShareModal';
 import QrModal from '../components/share/QrModal';
 import { isShareable } from '../components/share/shareLinks';
 
+// Lote C (2026-09-27): esta pantalla es ahora el DETALLE DE UNA COLECCION
+// (/collections/:collectionId) -- lista, crea, importa y mueve sus ediciones.
 const Publications = () => {
+  const { collectionId } = useParams();
+  const navigate = useNavigate();
+  const [collection, setCollection] = useState(null);
+  const [allCollections, setAllCollections] = useState([]);
+  const [moving, setMoving] = useState(null); // { pub, target }
+  const [movingBusy, setMovingBusy] = useState(false);
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,6 +36,7 @@ const Publications = () => {
   
   const [newPublication, setNewPublication] = useState({
     title: '',
+    edition_label: '',
     description: '',
     is_public: false,
     // Configuración
@@ -45,14 +57,19 @@ const Publications = () => {
   };
 
   useEffect(() => {
+    if (!collectionId) { navigate('/collections', { replace: true }); return undefined; }
     loadPublications();
     return () => window.clearTimeout(importPollRef.current);
-  }, []);
+  }, [collectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPublications = async () => {
     try {
       setLoading(true);
-      const data = await publicationAPI.list();
+      const [col, data] = await Promise.all([
+        collectionAPI.get(collectionId),
+        publicationAPI.list(0, 200, collectionId),
+      ]);
+      setCollection(col);
       setPublications(data);
       setError(null);
     } catch (err) {
@@ -122,15 +139,17 @@ const Publications = () => {
         if (!pdfFile) throw new Error('Selecciona un PDF');
         const data = new FormData();
         data.append('file', pdfFile); data.append('title', newPublication.title); data.append('description', newPublication.description || '');
+        data.append('collection_id', collectionId);
         const imported = await publicationAPI.importPdf(data);
         setImportNotice({ type: 'info', text: 'PDF recibido. Estamos convirtiendo sus páginas; la revista aparecerá en cuanto termine.' });
         window.clearTimeout(importPollRef.current);
         pollPdfImport(imported.publication_id);
-      } else await publicationAPI.create(newPublication);
+      } else await publicationAPI.create({ ...newPublication, edition_label: newPublication.edition_label || null, collection_id: collectionId });
       setShowCreateModal(false);
       setShowConfigStep(false);
       setNewPublication({
         title: '',
+        edition_label: '',
         description: '',
         is_public: false,
         page_size: 'A4',
@@ -149,7 +168,7 @@ const Publications = () => {
 
   const openEdit = (pub) => {
     setEditError(null);
-    setEditing({ id: pub.id, title: pub.title || '', description: pub.description || '' });
+    setEditing({ id: pub.id, title: pub.title || '', edition_label: pub.edition_label || '', description: pub.description || '' });
   };
 
   const handleSaveEdit = async (e) => {
@@ -159,7 +178,7 @@ const Publications = () => {
     setSavingEdit(true);
     setEditError(null);
     try {
-      await publicationAPI.update(editing.id, { title, description: editing.description.trim() });
+      await publicationAPI.update(editing.id, { title, edition_label: editing.edition_label.trim(), description: editing.description.trim() });
       setEditing(null);
       await loadPublications();
     } catch (err) {
@@ -169,6 +188,30 @@ const Publications = () => {
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  const openMove = async (pub) => {
+    try {
+      const cols = await collectionAPI.list();
+      setAllCollections(cols);
+      const firstOther = cols.find((c) => c.id !== pub.collection_id);
+      setMoving({ pub, target: firstOther ? firstOther.id : '' });
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'No se pudieron cargar las colecciones');
+    }
+  };
+
+  const confirmMove = async (e) => {
+    e.preventDefault();
+    if (!moving?.target) return;
+    setMovingBusy(true);
+    try {
+      await collectionAPI.moveEdition(moving.pub.id, moving.target);
+      setMoving(null);
+      await loadPublications();
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'No se pudo mover la edición');
+    } finally { setMovingBusy(false); }
   };
 
   const handleDelete = async (id) => {
@@ -261,12 +304,19 @@ const Publications = () => {
   return (
     <div className="publications-container">
       <div className="publications-header">
-        <h2>Mis Publicaciones</h2>
+        <div>
+          <div className="collection-breadcrumb">
+            <button type="button" onClick={() => navigate('/collections')}>← Colecciones</button>
+            {collection?.category_name && <span>· {collection.category_name}</span>}
+          </div>
+          <h2>{collection?.name || 'Colección'}</h2>
+          {collection?.description && <p className="collections-subtitle">{collection.description}</p>}
+        </div>
         <button 
           className="btn-primary"
           onClick={() => setShowCreateModal(true)}
         >
-          + Nueva Publicación
+          + Nueva edición
         </button>
       </div>
 
@@ -275,12 +325,12 @@ const Publications = () => {
 
       {publications.length === 0 ? (
         <div className="empty-state">
-          <p>No tienes publicaciones aún</p>
+          <p>Esta colección aún no tiene ediciones</p>
           <button 
             className="btn-primary"
             onClick={() => setShowCreateModal(true)}
           >
-            Crear tu primera publicación
+            Crear la primera edición
           </button>
         </div>
       ) : (
@@ -301,6 +351,7 @@ const Publications = () => {
                 )}
               </div>
               <div className="card-body">
+                {pub.edition_label && <span className="edition-label">{pub.edition_label}</span>}
                 <div className="card-title-row">
                   <h3>{pub.title}</h3>
                   <button
@@ -370,6 +421,9 @@ const Publications = () => {
                         Publicar
                       </button>
                     )}
+                    <button className="btn-secondary" onClick={() => openMove(pub)} title="Mover a otra colección">
+                      ⇄ Mover
+                    </button>
                     <button 
                       className="btn-danger"
                       onClick={() => handleDelete(pub.id)}
@@ -387,11 +441,39 @@ const Publications = () => {
       {shareFor && <ShareModal pub={shareFor} onClose={() => setShareFor(null)} />}
       {qrFor && <QrModal pub={qrFor} onClose={() => setQrFor(null)} />}
 
+      {moving && (
+        <div className="modal-overlay" onClick={() => !movingBusy && setMoving(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Mover edición</h3>
+            <p className="collections-subtitle" style={{ marginBottom: 12 }}>
+              “{moving.pub.title}” se moverá a otra colección. Sus páginas, enlace público y QR no cambian.
+            </p>
+            <form onSubmit={confirmMove}>
+              <div className="form-group">
+                <label>Colección destino</label>
+                <select value={moving.target} onChange={(e) => setMoving({ ...moving, target: e.target.value })} required>
+                  {allCollections.filter((c) => c.id !== moving.pub.collection_id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {allCollections.filter((c) => c.id !== moving.pub.collection_id).length === 0 && (
+                  <p className="collections-subtitle">No hay otras colecciones. Crea una desde “Colecciones”.</p>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setMoving(null)} disabled={movingBusy}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={movingBusy || !moving.target}>{movingBusy ? 'Moviendo…' : 'Mover'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Editar título/descripción */}
       {editing && (
         <div className="modal-overlay" onClick={() => !savingEdit && setEditing(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Editar publicación</h3>
+            <h3>Editar edición</h3>
             <form onSubmit={handleSaveEdit}>
               <div className="form-group">
                 <label>Título *</label>
@@ -402,6 +484,16 @@ const Publications = () => {
                   autoFocus
                   value={editing.title}
                   onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Edición (opcional)</label>
+                <input
+                  type="text"
+                  maxLength="100"
+                  value={editing.edition_label}
+                  onChange={(e) => setEditing({ ...editing, edition_label: e.target.value })}
+                  placeholder="Ej: Sep 2026 · No. 35"
                 />
               </div>
               <div className="form-group">
@@ -432,7 +524,7 @@ const Publications = () => {
       {showCreateModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-            <h3>{!showConfigStep ? 'Nueva Publicación' : 'Configurar Revista'}</h3>
+            <h3>{!showConfigStep ? 'Nueva edición' : 'Configurar edición'}</h3>
             
             {!showConfigStep ? (
               // Paso 1: Información básica
@@ -453,6 +545,16 @@ const Publications = () => {
                       title: e.target.value
                     })}
                     placeholder="Ej: Revista Mensual - Enero 2026"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Edición (opcional)</label>
+                  <input
+                    type="text"
+                    maxLength="100"
+                    value={newPublication.edition_label}
+                    onChange={(e) => setNewPublication({ ...newPublication, edition_label: e.target.value })}
+                    placeholder="Ej: Sep 2026 · No. 35"
                   />
                 </div>
                 <div className="form-group">

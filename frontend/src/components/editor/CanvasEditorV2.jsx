@@ -2708,8 +2708,8 @@ export default function CanvasEditorV2() {
   return (
     <div className="editor-v2-layout">
       <header className="editor-v2-header">
-        <button type="button" className="editor-v2-back" onClick={() => navigate('/publications')}>
-          ← Volver a publicaciones
+        <button type="button" className="editor-v2-back" onClick={() => navigate(publication?.collection_id ? `/collections/${publication.collection_id}` : '/collections')}>
+          ← Volver a la colección
         </button>
         <h3 className="editor-v2-header-title">{publication.title}</h3>
         <span className="editor-v2-orientation">

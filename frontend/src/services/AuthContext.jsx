@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { setTenantContext } from './tenantContext';
 import { authAPI } from './api';
 
 const AuthContext = createContext(null);
@@ -38,6 +39,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    setTenantContext(null);
     authAPI.logout();
     setUser(null);
   };

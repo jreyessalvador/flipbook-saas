@@ -192,8 +192,8 @@ const PageViewer = () => {
     return (
       <div className="page-viewer-container">
         <div className="error-message">{loadErr}</div>
-        <button onClick={() => navigate('/publications')} className="btn-secondary">
-          Volver a Publicaciones
+        <button onClick={() => navigate('/collections')} className="btn-secondary">
+          Volver a Colecciones
         </button>
       </div>
     );
@@ -214,7 +214,7 @@ const PageViewer = () => {
     <div className="page-viewer-container">
       <div className="viewer-header">
         <div className="header-left">
-          <button onClick={() => navigate('/publications')} className="btn-back">
+          <button onClick={() => navigate(publication?.collection_id ? `/collections/${publication.collection_id}` : '/collections')} className="btn-back">
             ← Volver
           </button>
           <h2>{publication.title}</h2>

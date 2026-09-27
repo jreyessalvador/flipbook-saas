@@ -2,8 +2,9 @@ import api from './api';
 
 export const publicationAPI = {
   // Listar publicaciones
-  list: async (skip = 0, limit = 20) => {
-    const response = await api.get(`/api/publications?skip=${skip}&limit=${limit}`);
+  list: async (skip = 0, limit = 20, collectionId = null) => {
+    const qs = `skip=${skip}&limit=${limit}${collectionId ? `&collection_id=${collectionId}` : ''}`;
+    const response = await api.get(`/api/publications?${qs}`);
     return response.data;
   },
 

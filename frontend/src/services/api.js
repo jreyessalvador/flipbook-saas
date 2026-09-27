@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { withTenantHeader } from './tenantContext';
 
 // Asegurar que si el navegador está en HTTPS, la API también sea HTTPS ignorando strings HTTP en el .env
 let baseApiUrl = import.meta.env.VITE_API_URL || 'https://api.flipbook.local';
@@ -26,7 +27,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    return config;
+    return withTenantHeader(config);
   },
   (error) => {
     return Promise.reject(error);
