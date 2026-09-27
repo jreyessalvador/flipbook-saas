@@ -92,6 +92,7 @@ const PublicReader = () => {
   const [currentSpreadIndex, setCurrentSpreadIndex] = useState(0);
   const { vw, vh } = useViewportSize();
   const singlePage = vw < SINGLE_PAGE_MAX_WIDTH || vw < vh;
+  const compact = singlePage || vh < 500; // movil en horizontal: poca altura
   const [stageRef, stageSize] = useElementSize();
   const anchorPageRef = useRef(1); // pagina visible, para no perder el sitio al rotar
   const touchRef = useRef(null);
@@ -212,8 +213,8 @@ const PublicReader = () => {
   const slots = singlePage ? 1 : 2; // spread reserva siempre 2 huecos: la escala no "salta" en portada
   // Area medida por ResizeObserver; mientras no haya medida se estima con el
   // viewport (cabecera ~52px, pie ~64px, padding) para no pintar nunca de mas.
-  const boxW = stageSize.width > 0 ? stageSize.width : vw - (singlePage ? 16 : 32);
-  const boxH = stageSize.height > 0 ? stageSize.height : vh - 116 - (singlePage ? 16 : 32);
+  const boxW = stageSize.width > 0 ? stageSize.width : vw - (compact ? 12 : 32);
+  const boxH = stageSize.height > 0 ? stageSize.height : vh - (compact ? 96 : 116) - (compact ? 12 : 32);
   const availW = Math.max(0, boxW - 2 * FRAME_PAD - (slots - 1) * PAGE_GAP);
   const availH = Math.max(0, boxH - 2 * FRAME_PAD);
   const fitScale = Math.max(0.15, Math.min(1.25, availW / (slots * pageWpx), availH / pageHpx));
@@ -244,7 +245,7 @@ const PublicReader = () => {
         justifyContent: 'space-between',
         alignItems: 'center',
         gap: '0.75rem',
-        padding: singlePage ? '0.5rem 0.75rem' : '0.75rem 1.5rem',
+        padding: compact ? '0.4rem 0.75rem' : '0.75rem 1.5rem',
         backgroundColor: 'var(--color-navy, #14213d)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         color: '#fff',
@@ -258,7 +259,7 @@ const PublicReader = () => {
           >
             ← Volver
           </button>
-          <span style={{ fontSize: singlePage ? '0.95rem' : '1.1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{publication.title}</span>
+          <span style={{ fontSize: compact ? '0.95rem' : '1.1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{publication.title}</span>
         </div>
 
         {!singlePage && (
@@ -270,7 +271,7 @@ const PublicReader = () => {
 
       {/* Main Canvas Display (Modo Lectura / Spread View) */}
       <div
-        style={{ flex: 1, minHeight: 0, padding: singlePage ? '0.5rem' : '1rem', display: 'flex' }}
+        style={{ flex: 1, minHeight: 0, padding: compact ? '0.35rem' : '1rem', display: 'flex' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
@@ -290,8 +291,8 @@ const PublicReader = () => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: singlePage ? '0.75rem' : '1.5rem',
-        padding: singlePage ? '0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom))' : '1rem',
+        gap: compact ? '0.75rem' : '1.5rem',
+        padding: compact ? '0.35rem 0.75rem calc(0.35rem + env(safe-area-inset-bottom))' : '1rem',
         backgroundColor: 'var(--color-navy, #14213d)',
         borderTop: '1px solid rgba(255, 255, 255, 0.08)',
         zIndex: 50,
@@ -305,7 +306,7 @@ const PublicReader = () => {
             backgroundColor: isFirst ? 'rgba(255,255,255,0.05)' : 'var(--color-gold, #c9a24b)',
             color: isFirst ? '#64748b' : '#0c1526',
             border: 'none',
-            padding: '0.6rem 1.25rem',
+            padding: compact ? '0.45rem 1rem' : '0.6rem 1.25rem',
             borderRadius: '6px',
             fontWeight: 700,
             cursor: isFirst ? 'not-allowed' : 'pointer'
@@ -326,7 +327,7 @@ const PublicReader = () => {
             backgroundColor: isLast ? 'rgba(255,255,255,0.05)' : 'var(--color-gold, #c9a24b)',
             color: isLast ? '#64748b' : '#0c1526',
             border: 'none',
-            padding: '0.6rem 1.25rem',
+            padding: compact ? '0.45rem 1rem' : '0.6rem 1.25rem',
             borderRadius: '6px',
             fontWeight: 700,
             cursor: isLast ? 'not-allowed' : 'pointer'
