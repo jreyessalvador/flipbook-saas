@@ -1841,3 +1841,22 @@ location ~ "^/r/(?<og_t>[a-z0-9-]+)/(?<og_c>[a-z0-9-]+)/(?<og_e>[a-z0-9-]+)/?$" 
 }
 ```
   - Verificado en DEV: migración con respaldo `~/backups/flipbook-dev/pre-0009-2026-09-27.dump`; ediciones privadas → 404 en `/r/...`; OG por URL amigable con canonical `https://dev-revistas…/r/default/general/destinos-y-negocios-34`; crear edición → slug `no-1-oct`, duplicado → `no-1-oct-2`; QA aislamiento 26 PASS y RBAC 37/37 PASS.
+
+## 14. PRODUCCIÓN revistas.cetrix.com.mx (desde 27-sep-2026)
+
+- **Dónde**: Contabo 1, `/srv/apps/flipbook` (clon de `redesign/editor-v2`, commit desplegado `3fa9e37`), compose **`docker-compose.prod.yml`**, proyecto `flipbook-prod`, contenedores `flipbook-prod-*`. `.env` propio (chmod 600, secretos nuevos; plantilla `.env.prod.example`). Datos en `./data/{postgres,redis,minio}`.
+- **Puertos** (127.0.0.1, registrados en `/srv/apps/PORTS.md`): web 3400 · API 4400 · PostgreSQL 5443 · Redis 6390 · MinIO 9012/9013.
+- **Diferencias con DEV**: imágenes construidas (sin bind-mount ni `--reload`), uvicorn 2 workers, `DEBUG=False` (sin `/api/docs`, `/api/redoc`, `/openapi.json`), frontend estático en nginx (index.html sin caché, `/assets/` inmutable), sin basic auth ni allowlist, indexable (`robots.txt` bloquea panel y API privada).
+- **nginx host**: `/etc/nginx/sites-available/revistas.cetrix.com.mx` (TLS Let's Encrypt webroot, vence 26-dic-2026; `/api/`→4400; reglas OG de `/leer/` y `/r/`→3400). El `map $revistas_og_bot` vive ahora en **`/etc/nginx/conf.d/revistas-og-bot.conf`**, compartido con DEV (no volver a declararlo en un site). OJO: el nginx del host es anterior a 1.25 → `listen 443 ssl http2;` (la directiva `http2 on;` no existe) y validar con `sudo nginx -t` SIN tuberías antes de recargar.
+- **Carga inicial**: copia completa de DEV (decisión de Carlos): `pg_dump -Fc` → `pg_restore --no-owner` y bucket `flipbook-assets` con `mc mirror` (binario `mc` dentro de la imagen minio/minio; la imagen `minio/mc` ya no se puede descargar). 2 empresas, 11 usuarios, 6 ediciones (3 públicas), 88 páginas, 502 objetos / 174 MiB.
+- **Respaldo**: `backup_flipbookprod` en `/usr/local/bin/backup-others.sh` (diario con el resto de stacks): pg_dump + tar de MinIO + .env + compose, GPG AES256 → `/srv/backups/flipbook-prod/daily` (14 copias) y S3 `contabo/flipbook-prod/`. Probado el 27-sep.
+- **Actualizar producción** (tras validar el lote en DEV y con aprobación de Carlos):
+```bash
+cd /srv/apps/flipbook
+docker exec flipbook-prod-postgres pg_dump -U flipbook -d flipbook -Fc > ~/backups/flipbook-prod-pre-$(date +%F-%H%M).dump
+git -c safe.directory=$PWD pull --ff-only
+# si el lote trae migracion: docker exec -i flipbook-prod-postgres psql -v ON_ERROR_STOP=1 -U flipbook -d flipbook < backend/migrations/NNNN.sql
+docker compose -f docker-compose.prod.yml up -d --build backend pdf-worker frontend
+curl -s https://revistas.cetrix.com.mx/health
+```
+- **PROHIBIDO** en Contabo 1: `docker system prune`, `docker volume prune`, `docker compose down -v`, tocar otros stacks.
