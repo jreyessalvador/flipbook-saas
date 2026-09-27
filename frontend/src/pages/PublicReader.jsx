@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { PageCanvas, computeSpreadViews } from '../components/editor/CanvasEditorV2';
 import { createPageEditorStore } from '../store/pageEditorStore';
+import '../styles/PageViewer.css'; // clases .page-viewer-flip* (efecto pasar pagina, Lote UX-12)
 
 const ReaderPage = ({ page, publication, totalPages, onHotspotActivate, scale }) => {
   const [useStore] = useState(() => createPageEditorStore());
@@ -45,6 +46,26 @@ const PX_PER_MM = 3; // debe coincidir con CanvasEditorV2
 const FRAME_PAD = 4; // padding del marco negro
 const PAGE_GAP = 2;
 const SINGLE_PAGE_MAX_WIDTH = 768;
+const FLIP_HALF_MS = 220;
+const ZOOM_STEPS = [1, 1.5, 2, 3];
+const SOUND_KEY = 'reader.sound';
+
+const iconBtn = {
+  background: 'rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  color: '#fff',
+  borderRadius: '6px',
+  minWidth: '2.1rem',
+  height: '2.1rem',
+  padding: '0 0.4rem',
+  fontSize: '1rem',
+  lineHeight: 1,
+  cursor: 'pointer',
+};
+
+const readSoundPref = () => {
+  try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; }
+};
 
 const useElementSize = () => {
   // callback ref: el nodo aparece solo cuando termina la carga
@@ -96,6 +117,16 @@ const PublicReader = () => {
   const [stageRef, stageSize] = useElementSize();
   const anchorPageRef = useRef(1); // pagina visible, para no perder el sitio al rotar
   const touchRef = useRef(null);
+  const rootRef = useRef(null);
+  // Efecto de pasar pagina (mismo que el visor interno, Lote UX-12)
+  const [flipState, setFlipState] = useState(null); // null | { direction, phase }
+  const flipTimeoutRef = useRef(null);
+  useEffect(() => () => window.clearTimeout(flipTimeoutRef.current), []);
+  const [soundOn, setSoundOn] = useState(readSoundPref);
+  const [zoomIdx, setZoomIdx] = useState(0);
+  const zoom = ZOOM_STEPS[zoomIdx];
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canFullscreen = typeof document !== 'undefined' && !!document.fullscreenEnabled;
 
   const activateHotspot = (hotspot, sourcePage) => {
     const props = hotspot?.props || {};
@@ -165,16 +196,69 @@ const PublicReader = () => {
     if (v?.left) anchorPageRef.current = v.left.page_number;
   }, [currentSpreadIndex, spreadViews]);
 
-  const goPrev = useCallback(() => setCurrentSpreadIndex((i) => Math.max(0, i - 1)), []);
-  const goNext = useCallback(
-    () => setCurrentSpreadIndex((i) => Math.min(Math.max(0, spreadViews.length - 1), i + 1)),
-    [spreadViews.length]
-  );
+  const playPageTurnSound = useCallback(() => {
+    if (!soundOn) return;
+    try {
+      const audio = new Audio('/sounds/page-turn.mp3');
+      audio.volume = 0.55;
+      audio.play().catch(() => {});
+    } catch { /* cosmetico: nunca debe romper la navegacion */ }
+  }, [soundOn]);
+
+  const flipTo = useCallback((targetIdx, direction) => {
+    if (flipState) return; // animacion en curso: ignora pulsaciones repetidas
+    if (targetIdx < 0 || targetIdx >= spreadViews.length) return;
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    playPageTurnSound();
+    if (reduceMotion) { setCurrentSpreadIndex(targetIdx); return; }
+    setFlipState({ direction, phase: 'out' });
+    window.clearTimeout(flipTimeoutRef.current);
+    flipTimeoutRef.current = window.setTimeout(() => {
+      setCurrentSpreadIndex(targetIdx); // el contenido cambia con la hoja de canto
+      setFlipState({ direction, phase: 'in' });
+      flipTimeoutRef.current = window.setTimeout(() => setFlipState(null), FLIP_HALF_MS);
+    }, FLIP_HALF_MS);
+  }, [flipState, spreadViews.length, playPageTurnSound]);
+
+  const goPrev = useCallback(() => flipTo(currentSpreadIndex - 1, 'prev'), [flipTo, currentSpreadIndex]);
+  const goNext = useCallback(() => flipTo(currentSpreadIndex + 1, 'next'), [flipTo, currentSpreadIndex]);
+
+  const toggleSound = () => {
+    setSoundOn((on) => {
+      try { localStorage.setItem(SOUND_KEY, on ? 'off' : 'on'); } catch { /* sin storage */ }
+      return !on;
+    });
+  };
+
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else rootRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
+  // Titulo de la pestana = titulo de la revista
+  useEffect(() => {
+    if (!publication?.title) return undefined;
+    const prev = document.title;
+    document.title = publication.title;
+    return () => { document.title = prev; };
+  }, [publication?.title]);
+
+  // Al cambiar de pagina se vuelve al tamano ajustado
+  useEffect(() => { setZoomIdx(0); }, [currentSpreadIndex, singlePage]);
 
   useEffect(() => {
     const onKey = (e) => {
+      if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') goNext();
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') goPrev();
+      else if (e.key === '+' || e.key === '=') setZoomIdx((z) => Math.min(ZOOM_STEPS.length - 1, z + 1));
+      else if (e.key === '-') setZoomIdx((z) => Math.max(0, z - 1));
+      else if (e.key === '0') setZoomIdx(0);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -218,11 +302,14 @@ const PublicReader = () => {
   const availW = Math.max(0, boxW - 2 * FRAME_PAD - (slots - 1) * PAGE_GAP);
   const availH = Math.max(0, boxH - 2 * FRAME_PAD);
   const fitScale = Math.max(0.15, Math.min(1.25, availW / (slots * pageWpx), availH / pageHpx));
+  const renderScale = fitScale * zoom;
   const pageLabel = singlePage
     ? `${currentPages[0]?.page_number ?? '-'} / ${pages.length}`
     : `Página ${currentPages.map((pg) => pg.page_number).join('-')}`;
 
   const onTouchStart = (e) => {
+    const pinchZoomed = (window.visualViewport?.scale || 1) > 1.05;
+    if (e.touches.length > 1 || zoom > 1 || pinchZoomed) { touchRef.current = null; return; }
     const t = e.touches[0];
     touchRef.current = { x: t.clientX, y: t.clientY };
   };
@@ -238,7 +325,7 @@ const PublicReader = () => {
   };
 
   return (
-    <div style={{ height: '100dvh', minHeight: '-webkit-fill-available', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div ref={rootRef} style={{ height: '100dvh', minHeight: '-webkit-fill-available', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Reader Header */}
       <header style={{
         display: 'flex',
@@ -262,11 +349,21 @@ const PublicReader = () => {
           <span style={{ fontSize: compact ? '0.95rem' : '1.1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{publication.title}</span>
         </div>
 
-        {!singlePage && (
-          <div style={{ fontSize: '0.9rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-            Spread {currentSpreadIndex + 1} de {spreadViews.length}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+          {!singlePage && (
+            <span style={{ fontSize: '0.9rem', color: '#94a3b8', whiteSpace: 'nowrap', marginRight: '0.5rem' }}>
+              Spread {currentSpreadIndex + 1} de {spreadViews.length}
+            </span>
+          )}
+          <button type="button" onClick={toggleSound} style={iconBtn} title={soundOn ? 'Silenciar sonido de página' : 'Activar sonido de página'} aria-label={soundOn ? 'Silenciar sonido' : 'Activar sonido'} aria-pressed={soundOn}>
+            {soundOn ? '🔊' : '🔇'}
+          </button>
+          {canFullscreen && (
+            <button type="button" onClick={toggleFullscreen} style={iconBtn} title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}>
+              {isFullscreen ? '🗗' : '⛶'}
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Main Canvas Display (Modo Lectura / Spread View) */}
@@ -275,11 +372,14 @@ const PublicReader = () => {
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-       <div ref={stageRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', gap: `${PAGE_GAP}px`, backgroundColor: '#000', padding: `${FRAME_PAD}px`, borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+       <div ref={stageRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: zoom > 1 ? 'auto' : 'hidden', perspective: '2200px', WebkitOverflowScrolling: 'touch' }}>
+        <div
+          className={`page-viewer-flip-inner${currentPages.length > 1 ? ' page-viewer-flip-inner-spread' : ''}${flipState ? ` page-viewer-flipping page-viewer-flipping-${flipState.direction} page-viewer-flipping-${flipState.phase}` : ''}`}
+          style={{ margin: 'auto', display: 'flex', gap: `${PAGE_GAP}px`, backgroundColor: '#000', padding: `${FRAME_PAD}px`, borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}
+        >
           {currentPages.map((p) => (
             <div key={p.id || p.page_number} style={{ backgroundColor: '#fff', lineHeight: 0 }}>
-              <ReaderPage page={p} publication={publication} totalPages={pages.length} onHotspotActivate={activateHotspot} scale={fitScale} />
+              <ReaderPage page={p} publication={publication} totalPages={pages.length} onHotspotActivate={activateHotspot} scale={renderScale} />
             </div>
           ))}
         </div>
@@ -299,7 +399,7 @@ const PublicReader = () => {
         flexShrink: 0
       }}>
         <button
-          disabled={isFirst}
+          disabled={isFirst || !!flipState}
           onClick={goPrev}
           aria-label="Página anterior"
           style={{
@@ -318,9 +418,16 @@ const PublicReader = () => {
         <span style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
           {pageLabel}
         </span>
+        {vw >= 480 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} role="group" aria-label="Zoom">
+          <button type="button" style={iconBtn} onClick={() => setZoomIdx((z) => Math.max(0, z - 1))} disabled={zoomIdx === 0} aria-label="Alejar" title="Alejar (−)">−</button>
+          <button type="button" style={{ ...iconBtn, minWidth: '3.2rem', fontSize: '0.8rem' }} onClick={() => setZoomIdx(0)} title="Ajustar a pantalla (0)" aria-label="Ajustar a pantalla">{Math.round(zoom * 100)}%</button>
+          <button type="button" style={iconBtn} onClick={() => setZoomIdx((z) => Math.min(ZOOM_STEPS.length - 1, z + 1))} disabled={zoomIdx === ZOOM_STEPS.length - 1} aria-label="Acercar" title="Acercar (+)">+</button>
+        </div>
+        )}
 
         <button
-          disabled={isLast}
+          disabled={isLast || !!flipState}
           onClick={goNext}
           aria-label="Página siguiente"
           style={{
