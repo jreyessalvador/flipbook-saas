@@ -122,7 +122,7 @@ async def upload_asset(
 
         if file_size > max_size:
             raise HTTPException(status_code=400, detail=f"Archivo demasiado grande (máx {max_size_label})")
-        require_storage_quota(db, current_user.tenant_id, file_size)
+        require_storage_quota(db, current_user.effective_tenant_id, file_size)
 
         minio_client.put_object(
             BUCKET_NAME,
@@ -140,7 +140,7 @@ async def upload_asset(
         # de imagen, duracion de audio/video) es una mejora futura opcional,
         # no bloqueante para este lote.
         asset_row = Asset(
-            tenant_id=current_user.tenant_id,
+            tenant_id=current_user.effective_tenant_id,
             kind=asset_kind,
             storage_key=object_name,
             mime_type=file.content_type,
@@ -189,7 +189,7 @@ async def list_library_assets(
     (limite fijo de 100, orden mas reciente primero) -- si el volumen crece
     lo suficiente para que haga falta, se agrega cursor/paginacion despues.
     """
-    query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
+    query = db.query(Asset).filter(Asset.tenant_id == current_user.effective_tenant_id)
     if kind:
         if kind not in ("image", "video", "audio"):
             raise HTTPException(status_code=400, detail="kind debe ser image, video o audio")

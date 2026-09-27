@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
 
 from app.db.session import get_db
 from app.models.user import User
@@ -16,6 +16,7 @@ from app.schemas.publication import (
     PublicationResponse,
 )
 from app.api.auth import get_current_user
+from app.schemas.collection import MoveEditionRequest
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
 from app.config import settings
 from app.services.quota import require_publication_quota, require_storage_quota
@@ -34,13 +35,13 @@ def get_publications_stats(
     Resumen para el Dashboard (Lote UX-1) -- antes el Dashboard mostraba
     0/0/0 MB fijos en el frontend, sin llamar a ningun endpoint. Todo se
     calcula aqui con agregados de SQL (COUNT/SUM) filtrados por
-    current_user.tenant_id -- nunca se trae la lista completa a Python solo
+    current_user.effective_tenant_id -- nunca se trae la lista completa a Python solo
     para contarla/sumarla. Ruta declarada ANTES de GET /{publication_id}
     para que FastAPI no intente interpretar 'stats' como un publication_id
     (aunque al tener 2 segmentos de ruta no colisiona, se deja aqui arriba
     por claridad).
     """
-    tenant_id = current_user.tenant_id
+    tenant_id = current_user.effective_tenant_id
 
     total_publications = db.query(func.count(Publication.id))\
         .filter(Publication.tenant_id == tenant_id)\
@@ -70,14 +71,18 @@ def create_publication(
     
     # Extraer total_pages antes de crear la publicación
     total_pages = publication_data.total_pages if publication_data.total_pages else 10
-    require_publication_quota(db, current_user.tenant_id)
+    require_publication_quota(db, current_user.effective_tenant_id)
     
     # Crear publicación
-    publication_dict = publication_data.dict(exclude={'total_pages'})
+    publication_dict = publication_data.dict(exclude={'total_pages', 'collection_id'})
+    from app.api.collections import get_collection_in_tenant, get_default_collection
+    collection = (get_collection_in_tenant(db, publication_data.collection_id, current_user.effective_tenant_id)
+                  if publication_data.collection_id else get_default_collection(db, current_user.effective_tenant_id))
     new_publication = Publication(
         **publication_dict,
         total_pages=total_pages,
-        tenant_id=current_user.tenant_id,
+        tenant_id=current_user.effective_tenant_id,
+        collection_id=collection.id,
         created_by=current_user.id
     )
 
@@ -112,6 +117,7 @@ async def import_pdf_publication(
     file: UploadFile = File(...),
     title: str = Form(...),
     description: str | None = Form(None),
+    collection_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -127,19 +133,24 @@ async def import_pdf_publication(
         raise HTTPException(status_code=400, detail="El archivo no contiene una cabecera PDF válida")
     if len(raw_pdf) > settings.MAX_PDF_SIZE:
         raise HTTPException(status_code=400, detail="PDF demasiado grande (máximo 50 MB)")
-    require_publication_quota(db, current_user.tenant_id)
-    require_storage_quota(db, current_user.tenant_id, len(raw_pdf))
+    require_publication_quota(db, current_user.effective_tenant_id)
+    require_storage_quota(db, current_user.effective_tenant_id, len(raw_pdf))
     if not title.strip():
         raise HTTPException(status_code=400, detail="El título es obligatorio")
 
+    from app.api.collections import get_collection_in_tenant, get_default_collection
+    collection = (get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
+                  if collection_id else get_default_collection(db, current_user.effective_tenant_id))
+
     ensure_bucket()
-    source_key = f"tenant-{current_user.tenant_id}/imports/{uuid.uuid4()}.pdf"
+    source_key = f"tenant-{current_user.effective_tenant_id}/imports/{uuid.uuid4()}.pdf"
     minio_client.put_object(BUCKET_NAME, source_key, BytesIO(raw_pdf), len(raw_pdf), content_type="application/pdf")
 
     publication = Publication(
         title=title.strip(), description=description, creation_type="pdf",
         status="processing", total_pages=0, pdf_url=build_asset_url(source_key),
-        is_public=False, tenant_id=current_user.tenant_id, created_by=current_user.id,
+        is_public=False, tenant_id=current_user.effective_tenant_id, created_by=current_user.id,
+        collection_id=collection.id,
     )
     db.add(publication)
     db.commit()
@@ -153,15 +164,22 @@ async def import_pdf_publication(
 def list_publications(
     skip: int = 0,
     limit: int = 20,
+    collection_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Listar publicaciones del tenant"""
+    """Listar ediciones del tenant (opcionalmente de una coleccion)"""
+    limit = max(1, min(limit, 200))
     # Sin un ORDER BY PostgreSQL puede devolver las filas en distinto orden
     # después de un UPDATE (por ejemplo, al activar is_public). Con LIMIT,
     # eso hacía que una revista publicada pareciera "desaparecer" del panel.
-    publications = db.query(Publication)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+    query = db.query(Publication)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)
+    if collection_id:
+        from app.api.collections import get_collection_in_tenant
+        col = get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
+        query = query.filter(Publication.collection_id == col.id)
+    publications = query\
         .order_by(Publication.updated_at.desc(), Publication.id.desc())\
         .offset(skip)\
         .limit(limit)\
@@ -245,7 +263,7 @@ def get_publication(
     """Obtener una publicación"""
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
 
     if not publication:
@@ -263,7 +281,7 @@ def update_publication(
     """Actualizar publicación"""
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
 
     if not publication:
@@ -281,6 +299,8 @@ def update_publication(
         changes["title"] = title
     if "description" in changes:
         changes["description"] = (changes["description"] or "").strip() or None
+    if "edition_label" in changes:
+        changes["edition_label"] = (changes["edition_label"] or "").strip() or None
 
     for key, value in changes.items():
         setattr(publication, key, value)
@@ -289,6 +309,33 @@ def update_publication(
     db.refresh(publication)
 
     return publication
+
+@router.post("/{publication_id}/move", response_model=PublicationResponse)
+def move_publication(
+    publication_id: str,
+    data: MoveEditionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Mover una edicion a otra coleccion de la MISMA empresa (Lote C).
+
+    Solo cambia collection_id: paginas, versiones publicadas, enlaces /leer
+    y QR siguen siendo los mismos. La FK compuesta de BD impide cruzar
+    empresas aunque esta validacion fallara.
+    """
+    from app.api.collections import get_collection_in_tenant
+    publication = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
+        .first()
+    if not publication:
+        raise HTTPException(status_code=404, detail="Publication not found")
+    target = get_collection_in_tenant(db, data.collection_id, current_user.effective_tenant_id)
+    publication.collection_id = target.id
+    db.commit()
+    db.refresh(publication)
+    return publication
+
 
 @router.delete("/{publication_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_publication(
@@ -299,7 +346,7 @@ def delete_publication(
     """Eliminar publicación"""
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
 
     if not publication:
@@ -369,7 +416,7 @@ def publish_publication(
     """Congela el estado actual en un PublicationVersion nuevo y lo marca como vigente."""
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
@@ -404,7 +451,7 @@ def unpublish_publication(
     """
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
@@ -427,7 +474,7 @@ def set_publication_visibility(
     """Muestra u oculta una versión vigente del catálogo y Reader públicos."""
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
@@ -452,7 +499,7 @@ def list_publication_versions(
 ):
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")

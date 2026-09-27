@@ -16,6 +16,8 @@ class PublicationCreate(PublicationBase):
     orientation: Optional[str] = Field("portrait", pattern="^(portrait|landscape)$")
     creation_type: Optional[str] = Field("blank", pattern="^(blank|pdf)$")
     total_pages: Optional[int] = Field(10, ge=2, le=500)  # Mínimo 2 (portada + contraportada)
+    collection_id: Optional[uuid.UUID] = None  # Lote C: sin valor = coleccion "General"
+    edition_label: Optional[str] = Field(None, max_length=100)
 
 class PublicationUpdate(PublicationBase):
     """
@@ -28,6 +30,7 @@ class PublicationUpdate(PublicationBase):
     """
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=500)
+    edition_label: Optional[str] = Field(None, max_length=100)
 
 
 class PublicationVisibilityUpdate(BaseModel):
@@ -55,6 +58,8 @@ class PublicationResponse(PublicationBase):
     updated_at: datetime
     tenant_id: uuid.UUID
     created_by: uuid.UUID
+    collection_id: Optional[uuid.UUID] = None
+    edition_label: Optional[str] = None
 
     class Config:
         from_attributes = True

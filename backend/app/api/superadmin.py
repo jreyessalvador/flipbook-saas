@@ -156,3 +156,49 @@ def accept_invitation(data: InviteAcceptRequest, db: Session = Depends(get_db)):
     membership.status, membership.accepted_at, membership.invite_token_hash = "active", datetime.now(timezone.utc), None
     db.commit()
     return {"status": "accepted"}
+
+
+# ---------------------------------------------------------------------------
+# Lote C (2026-09-27): categorias COMUNES de la plataforma (kiosco publico).
+# Solo Super Admin CETRIX las gestiona; las empresas eligen una por coleccion.
+# No se borran (las colecciones las referencian): se desactivan.
+# ---------------------------------------------------------------------------
+from app.models.collection import Category as _Category
+from app.schemas.collection import CategoryCreate as _CategoryCreate, CategoryUpdate as _CategoryUpdate
+
+
+@router.get("/categories")
+def sa_list_categories(_: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    rows = db.query(_Category).order_by(_Category.sort_order, _Category.name).all()
+    return [{"id": str(c.id), "slug": c.slug, "name": c.name, "sort_order": c.sort_order, "is_active": c.is_active} for c in rows]
+
+
+@router.post("/categories", status_code=status.HTTP_201_CREATED)
+def sa_create_category(data: _CategoryCreate, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    from app.api.collections import slugify
+    name = data.name.strip()
+    base = slugify(name, 60); slug, n = base, 2
+    while db.query(_Category.id).filter(_Category.slug == slug).first():
+        slug = f"{base}-{n}"; n += 1
+    cat = _Category(name=name, slug=slug, sort_order=data.sort_order)
+    db.add(cat)
+    audit(db, current_user, "category.created", entity_type="category", details={"name": name})
+    db.commit(); db.refresh(cat)
+    return {"id": str(cat.id), "slug": cat.slug, "name": cat.name, "sort_order": cat.sort_order, "is_active": cat.is_active}
+
+
+@router.patch("/categories/{category_id}")
+def sa_update_category(category_id: str, data: _CategoryUpdate, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    cat = db.query(_Category).filter(_Category.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    changes = data.dict(exclude_unset=True)
+    if "name" in changes and changes["name"] is not None:
+        cat.name = changes["name"].strip()
+    if "sort_order" in changes and changes["sort_order"] is not None:
+        cat.sort_order = changes["sort_order"]
+    if "is_active" in changes and changes["is_active"] is not None:
+        cat.is_active = changes["is_active"]
+    audit(db, current_user, "category.updated", entity_type="category", entity_id=cat.id, details=changes)
+    db.commit()
+    return {"id": str(cat.id), "slug": cat.slug, "name": cat.name, "sort_order": cat.sort_order, "is_active": cat.is_active}

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from datetime import datetime, timezone
 import hashlib
+import uuid
 
 from app.db.session import get_db
 from app.models.user import User
@@ -21,10 +22,30 @@ class PasswordResetConfirm(BaseModel):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+def _is_platform_superadmin(db: Session, user_id) -> bool:
+    from app.models.commercial import Role, UserPlatformRole
+    return db.query(UserPlatformRole).join(Role).filter(
+        UserPlatformRole.user_id == user_id,
+        Role.scope == "platform",
+        Role.code == "superadmin",
+    ).first() is not None
+
+
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> User:
+    """Usuario autenticado + CONTEXTO DE TENANT (Lote C, 2026-09-27).
+
+    Toda consulta de negocio debe filtrar por ``current_user.effective_tenant_id``
+    (atributo de instancia, NO columna: nunca se persiste):
+    - usuario normal: su tenant, exigiendo usuario activo, membresia activa
+      y empresa no suspendida/cancelada;
+    - Super Admin CETRIX: su tenant, o el indicado en la cabecera
+      ``X-Tenant-Id`` (selector "Empresa" del panel) para dar soporte y
+      gestionar cualquier empresa. La cabecera se IGNORA para no-superadmin.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -37,10 +58,43 @@ def get_current_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
+    if user is None or not user.is_active:
         raise credentials_exception
+
+    from app.models.tenant import Tenant
+    from app.models.commercial import TenantMembership
+    is_superadmin = _is_platform_superadmin(db, user.id)
+    effective_tenant_id = user.tenant_id
+    acting_as = False
+
+    requested = request.headers.get("X-Tenant-Id")
+    if requested and is_superadmin:
+        try:
+            requested_uuid = uuid.UUID(requested)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="X-Tenant-Id inválido")
+        if not db.query(Tenant.id).filter(Tenant.id == requested_uuid).first():
+            raise HTTPException(status_code=404, detail="Empresa no encontrada")
+        effective_tenant_id = requested_uuid
+        acting_as = requested_uuid != user.tenant_id
+
+    if not is_superadmin:
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        if tenant is None or tenant.status in ("suspended", "cancelled"):
+            raise HTTPException(status_code=403, detail="La cuenta de tu empresa está suspendida. Contacta con soporte.")
+        membership = db.query(TenantMembership).filter(
+            TenantMembership.tenant_id == user.tenant_id,
+            TenantMembership.user_id == user.id,
+            TenantMembership.status == "active",
+        ).first()
+        if membership is None:
+            raise HTTPException(status_code=403, detail="No tienes acceso activo a esta empresa")
+
+    user.effective_tenant_id = effective_tenant_id
+    user.is_platform_superadmin = is_superadmin
+    user.acting_as_tenant = acting_as
     return user
 
 @router.post("/login", response_model=Token)
@@ -75,17 +129,16 @@ def login(
 def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # El rol legacy `users.role` pertenece al tenant; el acceso de plataforma
     # se concede exclusivamente mediante la relación global creada para CETRIX.
-    from app.models.commercial import Role, UserPlatformRole
-    is_superadmin = db.query(UserPlatformRole).join(Role).filter(
-        UserPlatformRole.user_id == current_user.id,
-        Role.scope == "platform",
-        Role.code == "superadmin",
-    ).first() is not None
+    from app.models.tenant import Tenant
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.effective_tenant_id).first()
     return {
         "id": current_user.id, "email": current_user.email,
         "full_name": current_user.full_name, "role": current_user.role,
         "is_active": current_user.is_active, "created_at": current_user.created_at,
-        "is_superadmin": is_superadmin,
+        "is_superadmin": current_user.is_platform_superadmin,
+        "tenant_id": current_user.effective_tenant_id,
+        "tenant_name": tenant.name if tenant else None,
+        "acting_as_tenant": current_user.acting_as_tenant,
     }
 
 @router.post("/password-reset/confirm")
@@ -101,11 +154,17 @@ def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get
     db.commit()
     return {"status": "password_updated"}
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def register(
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
+    # Registro abierto DESACTIVADO (Lote C, 2026-09-27): creaba usuarios
+    # editores dentro del tenant "default" (datos de CETRIX). Las altas son
+    # solo por invitacion (Super Admin -> owner -> equipo).
+    if not getattr(settings, "ALLOW_PUBLIC_REGISTER", False):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
     # Verificar si el usuario ya existe
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:

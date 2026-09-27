@@ -20,6 +20,9 @@ class UserResponse(UserBase):
     is_active: bool
     is_superadmin: bool = False
     created_at: datetime
+    tenant_id: Optional[uuid.UUID] = None
+    tenant_name: Optional[str] = None
+    acting_as_tenant: bool = False
     
     class Config:
         from_attributes = True

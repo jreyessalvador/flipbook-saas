@@ -51,7 +51,7 @@ def acquire_lock(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _get_publication_or_404(db, publication_id, current_user.tenant_id)
+    _get_publication_or_404(db, publication_id, current_user.effective_tenant_id)
 
     # UPSERT atomico (INSERT ... ON CONFLICT DO UPDATE) en vez de
     # SELECT-luego-INSERT/UPDATE: la version anterior (SELECT para ver si

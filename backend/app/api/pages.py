@@ -48,7 +48,7 @@ def get_publication_pages(
 ):
     """Obtener todas las páginas de una publicación"""
     # Verificar que la publicación existe y pertenece al tenant
-    _get_publication_in_tenant(db, publication_id, current_user.tenant_id)
+    _get_publication_in_tenant(db, publication_id, current_user.effective_tenant_id)
     
     # Obtener páginas ordenadas por número
     pages = db.query(Page)\
@@ -71,7 +71,7 @@ def insert_pages(
     primero desplaza los números posteriores y luego crea el bloque nuevo; la
     portada y la contraportada nunca se sustituyen ni se convierten en contenido.
     """
-    publication = _get_publication_in_tenant(db, publication_id, current_user.tenant_id)
+    publication = _get_publication_in_tenant(db, publication_id, current_user.effective_tenant_id)
     _require_active_edit_lock(db, publication_id, current_user.id)
 
     anchor = db.query(Page).filter(
@@ -127,7 +127,7 @@ def get_page(
     # Verificar que la página pertenece a una publicación del tenant
     publication = db.query(Publication)\
         .filter(Publication.id == page.publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     
     if not publication:
@@ -151,7 +151,7 @@ def update_page(
     # Verificar permisos
     publication = db.query(Publication)\
         .filter(Publication.id == page.publication_id)\
-        .filter(Publication.tenant_id == current_user.tenant_id)\
+        .filter(Publication.tenant_id == current_user.effective_tenant_id)\
         .first()
     
     if not publication:
@@ -199,7 +199,7 @@ def get_page_elements(
     current_user: User = Depends(get_current_user),
 ):
     """Carga completa de una pagina: UNA sola peticion, sin cascada async por elemento."""
-    page = _get_page_in_tenant(db, page_id, current_user.tenant_id)
+    page = _get_page_in_tenant(db, page_id, current_user.effective_tenant_id)
     elements = db.query(PageElement)\
         .filter(PageElement.page_id == page.id)\
         .order_by(PageElement.z_index)\
@@ -222,7 +222,7 @@ def save_page_elements(
     ESTA pagina (y solo esta -- page_id es explicito en cada INSERT, nunca se
     tocan elementos de otras paginas).
     """
-    page = _get_page_in_tenant(db, page_id, current_user.tenant_id)
+    page = _get_page_in_tenant(db, page_id, current_user.effective_tenant_id)
 
     # La validación del schema garantiza el formato. Aquí se garantiza además
     # que el destino de un enlace interno pertenece a ESTA publicación, para

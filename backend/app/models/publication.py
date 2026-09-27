@@ -38,6 +38,9 @@ class Publication(Base):
 
     # Relaciones
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    # Lote C: toda edicion pertenece a una coleccion de SU tenant (FK compuesta en BD)
+    collection_id = Column(UUID(as_uuid=True), ForeignKey("collections.id"), nullable=False, index=True)
+    edition_label = Column(String(100), nullable=True)  # "Sep 2026", "No. 34"
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # Timestamps
