@@ -177,3 +177,6 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | L7 Imagen OG 1200x630 · L8 UI categorías Super Admin | Pendiente |
 | L9 Resend (invitaciones/reset) | Pendiente: Carlos verifica dominio y da la clave por .env |
 | L10 Producción revistas.cetrix.com.mx | **En marcha desde 27-sep-2026** con L1–L3 (`3fa9e37`), copia completa de DEV. Los lotes siguientes se suben con el procedimiento de RECETA §14 |
+
+## Siguiente sesión (desde 28-sep-2026)
+Plan detallado y listo para implementar de L5, L7a (miniaturas + OG), estantería pública, PDF→hotspots, L6, L8, L9 y la web comercial: **`docs/PLAN-SIGUIENTES-LOTES.md`** (orden recomendado, decisiones pendientes de Carlos, migraciones 0011-0013 propuestas, API, frontend, QA y criterios de aceptación).

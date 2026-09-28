@@ -1898,3 +1898,7 @@ Pedido de Carlos con vídeo de referencia: al llegar a una hoja, los hotspots (i
 - `FlipBook.css`: sobre `.reader-hotspot` (el `<button>` que pinta `HotspotElement` en modo lectura) → relleno celeste translúcido + borde discontinuo (fundido ~2,2 s) y un destello que lo recorre (~1,1 s). Solo en páginas en reposo (`.fb-base`), nunca en la hoja que gira. Con ratón, el hotspot se insinúa al pasar por encima. `prefers-reduced-motion`: sin destello, solo el fundido.
 - Aplica al Reader público, `/embed/` y al visor interno. Verificado con Playwright (4 hotspots en 2 páginas: aparece, destello, desaparece a los ~2 s).
 - **PRODUCCIÓN (28-sep-2026, validado por Carlos en DEV)**: merge ff `329717e`, solo `up -d --build frontend`; respaldo `~/backups/flipbook-prod-pre-flip3-2026-09-28-2043.dump`, rollback `flipbook-prod-frontend:rollback-pre-flip3`. Verificado `/health`, CSS con `fb-hotspot-hint` servido, Reader 200, `/embed/` con `frame-ancestors *`.
+
+## 18. Siguientes lotes — plan para otra sesión (28-sep-2026)
+
+Ver **`docs/PLAN-SIGUIENTES-LOTES.md`**: checklist de arranque, flujo DEV → validación → PROD, orden recomendado (L5 → L7a → estantería → PDF→hotspots → L6 → L8 → L9 → web comercial) y especificación de cada lote con criterios de aceptación. Nada de ese plan está implementado aún.
