@@ -10,6 +10,7 @@ import { pageAPI } from '../../services/pageAPI';
 import { assetAPI } from '../../services/assetAPI';
 import { lockAPI } from '../../services/lockAPI';
 import { API_URL } from '../../services/api';
+import { getCachedImage, loadImage, resolveAssetUrl } from '../../services/imageCache';
 import '../../styles/CanvasEditorV2.css';
 
 import UiIcon from '../common/Icon';
@@ -350,24 +351,32 @@ function GalleryModal({ el, onClose, onSave, libraryImages, libraryLoading, onUp
   );
 }
 
+// Lote FLIP-2: usa la caché compartida de services/imageCache.js -- si la
+// imagen ya se cargó (o se precargó para la hoja siguiente del visor) está
+// disponible en el PRIMER render, sin el frame en blanco que se veía al
+// pasar página. Si `src` cambia, se conserva la imagen anterior hasta que
+// llega la nueva (mismo comportamiento que antes).
 function useHtmlImage(src) {
-  const [image, setImage] = useState(null);
+  const url = resolveAssetUrl(src);
+  const [image, setImage] = useState(() => getCachedImage(url));
   useEffect(() => {
-    if (!src) {
+    if (!url) {
       setImage(null);
-      return;
+      return undefined;
+    }
+    const cached = getCachedImage(url);
+    if (cached) {
+      setImage(cached);
+      return undefined;
     }
     let cancelled = false;
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.src = src.startsWith('http') ? src : `${API_URL}${src}`;
-    img.onload = () => {
-      if (!cancelled) setImage(img);
-    };
+    loadImage(url).then((img) => {
+      if (!cancelled && img) setImage(img);
+    });
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [url]);
   return image;
 }
 

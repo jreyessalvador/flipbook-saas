@@ -1,11 +1,14 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../services/AuthContext';
 import { can } from '../../services/permissions';
 import { useParams, useNavigate } from 'react-router-dom';
 import { publicationAPI } from '../../services/publicationAPI';
 import { pageAPI } from '../../services/pageAPI';
-import { createPageEditorStore } from '../../store/pageEditorStore';
-import { computeSpreadViews, PageCanvas } from './CanvasEditorV2';
+import { elementAPI } from '../../services/elementAPI';
+import { collectElementImageUrls, preloadImages } from '../../services/imageCache';
+import { computeSpreadViews } from './CanvasEditorV2';
+import FlipBook, { pagesOfView } from '../reader/FlipBook';
+import StaticPage from '../reader/StaticPage';
 import '../../styles/PageViewer.css';
 import Icon from '../common/Icon';
 import '../../styles/CanvasEditorV2.css'; // reutiliza .editor-v2-pagenav (barra inferior compacta, mismo lenguaje visual que el editor)
@@ -89,58 +92,74 @@ const PageViewer = () => {
 
   const currentView = views[currentViewIndex];
 
-  // Lote UX-12: efecto visual + sonido de "pasar página" al usar
-  // Anterior/Siguiente en el visor público (fuera del editor). El cambio
-  // de contenido real ocurre en el instante en que la hoja queda de canto
-  // (rotateY 90°, invisible), para que el usuario nunca vea un "salto"
-  // brusco de contenido -- ver .page-viewer-flipping* en PageViewer.css.
-  const [flipState, setFlipState] = useState(null); // null | { direction: 'next'|'prev', phase: 'out'|'in' }
-  const flipTimeoutRef = useRef(null);
-  useEffect(() => () => window.clearTimeout(flipTimeoutRef.current), []);
-  const FLIP_HALF_MS = 220;
+  // Lote FLIP-2 (28-sep-2026): pasar pagina con hoja real (FlipBook).
+  // Antes (UX-12) giraba el spread completo y los elementos de la pagina
+  // nueva se pedian a la API DESPUES del giro -- por eso se veia una hoja
+  // gris y luego "Cargando pagina...". Ahora los elementos se guardan en una
+  // cache de solo lectura por pagina, se precargan las hojas vecinas y el
+  // FlipBook no empieza a girar hasta tener datos + imagenes listos.
+  // (Solo lectura: cada StaticPage copia los elementos a su propio store, la
+  // advertencia de elementAPI.js sobre no compartir elements aplica al editor.)
+  const flipBookRef = useRef(null);
+  const [pageData, setPageData] = useState({}); // pageId -> { elements, error }
+  const pageDataRef = useRef({});
+  const inflightRef = useRef(new Map());
 
+  const fetchPage = useCallback((pageId) => {
+    if (!pageId) return Promise.resolve(null);
+    if (pageDataRef.current[pageId]) return Promise.resolve(pageDataRef.current[pageId]);
+    if (inflightRef.current.has(pageId)) return inflightRef.current.get(pageId);
+    const req = elementAPI.get(pageId)
+      .then((data) => ({ elements: data.elements || [], error: null }))
+      .catch((err) => ({ elements: [], error: err?.response?.data?.detail || 'No se pudo cargar la página' }))
+      .then((entry) => {
+        inflightRef.current.delete(pageId);
+        if (!entry.error) pageDataRef.current[pageId] = entry;
+        setPageData((prev) => ({ ...prev, [pageId]: entry }));
+        return entry;
+      });
+    inflightRef.current.set(pageId, req);
+    return req;
+  }, []);
+
+  const ensurePages = useCallback(async (pgs, imageTimeoutMs) => {
+    const entries = await Promise.all(pgs.map((pg) => fetchPage(pg?.id)));
+    await preloadImages(entries.flatMap((e) => collectElementImageUrls(e?.elements)), imageTimeoutMs);
+  }, [fetchPage]);
+
+  // Antes de girar: datos + imagenes de las 4 paginas implicadas (max 2,5 s)
+  const preparePages = useCallback(
+    (pgs) => Promise.race([ensurePages(pgs, 1200), new Promise((r) => window.setTimeout(r, 2500))]),
+    [ensurePages],
+  );
+
+  // Vista actual + precarga de las vecinas (±2)
+  useEffect(() => {
+    if (!views.length) return undefined;
+    ensurePages(pagesOfView(views[currentViewIndex]), 8000);
+    const t = window.setTimeout(() => {
+      const around = [1, -1, 2, -2].flatMap((d) => pagesOfView(views[currentViewIndex + d]));
+      ensurePages(around, 8000);
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [views, currentViewIndex, ensurePages]);
+
+  const turnSoundRef = useRef(null);
   const playPageTurnSound = () => {
     try {
-      const audio = new Audio('/sounds/page-turn.mp3');
+      if (!turnSoundRef.current) {
+        turnSoundRef.current = new Audio('/sounds/page-turn.mp3');
+        turnSoundRef.current.preload = 'auto';
+      }
+      const audio = turnSoundRef.current.cloneNode();
       audio.volume = 0.55;
-      // Los navegadores pueden bloquear el primer play() sin interaccion
-      // previa del usuario -- aqui SIEMPRE hay un click de por medio
-      // (Anterior/Siguiente), pero el .catch() evita un error de consola
-      // sin sentido en el caso raro de que el navegador lo bloquee igual.
       audio.play().catch(() => {});
     } catch (_err) {
-      // no-op: el efecto de sonido es un detalle cosmetico, nunca debe
-      // romper la navegacion si el navegador no soporta Audio por algun motivo.
+      // no-op: el sonido es cosmetico, nunca debe romper la navegacion
     }
   };
 
-  const flipToIndex = (targetIdx, direction) => {
-    if (flipState) return; // ya hay una animacion en curso -- ignora clics repetidos
-    if (targetIdx < 0 || targetIdx >= views.length) return;
-    playPageTurnSound();
-    setFlipState({ direction, phase: 'out' });
-    window.clearTimeout(flipTimeoutRef.current);
-    flipTimeoutRef.current = window.setTimeout(() => {
-      setCurrentViewIndex(targetIdx);
-      setFlipState({ direction, phase: 'in' });
-      flipTimeoutRef.current = window.setTimeout(() => {
-        setFlipState(null);
-      }, FLIP_HALF_MS);
-    }, FLIP_HALF_MS);
-  };
-
-  const [useLeftStore] = useState(() => createPageEditorStore());
-  const [useRightStore] = useState(() => createPageEditorStore());
   const leftPageId = currentView?.left?.id || null;
-  const rightPageId = currentView?.right?.id || null;
-
-  useEffect(() => {
-    if (leftPageId) useLeftStore.getState().loadPage(leftPageId);
-  }, [leftPageId, useLeftStore]);
-  useEffect(() => {
-    if (rightPageId) useRightStore.getState().loadPage(rightPageId);
-    else useRightStore.setState({ elements: [], pageId: null, isLoading: false });
-  }, [rightPageId, useRightStore]);
 
   const activeLeftPageNumber = currentView?.left?.page_number;
   const activeRightPageNumber = currentView?.right?.page_number;
@@ -149,21 +168,16 @@ const PageViewer = () => {
     setPageJumpDraft(activeLeftPageNumber ? String(activeLeftPageNumber) : '');
   }, [activeLeftPageNumber]);
 
-  const goToViewIndex = (idx) => {
-    if (idx < 0 || idx >= views.length) return;
-    setCurrentViewIndex(idx);
-  };
-  const handlePrev = () => flipToIndex(currentViewIndex - 1, 'prev');
-  const handleNext = () => flipToIndex(currentViewIndex + 1, 'next');
+  const handlePrev = () => flipBookRef.current?.prev();
+  const handleNext = () => flipBookRef.current?.next();
   const commitPageJump = () => {
-    if (flipState) return; // evita pisar el cambio de indice que la animacion en curso hara al terminar
     const n = parseInt(pageJumpDraft, 10);
     if (!Number.isFinite(n) || n < 1 || n > totalPages) {
       setPageJumpDraft(activeLeftPageNumber ? String(activeLeftPageNumber) : '');
       return;
     }
     const idx = findViewIndexForPageNumber(views, n);
-    if (idx >= 0) setCurrentViewIndex(idx);
+    if (idx >= 0) flipBookRef.current?.flipTo(idx);
   };
 
   // Fit-to-screen: identico criterio al editor (ver CanvasEditorV2.jsx) --
@@ -177,9 +191,9 @@ const PageViewer = () => {
     const recomputeScale = () => {
       const stageWidthPx = publication.page_width * PX_PER_MM;
       const stageHeightPx = publication.page_height * PX_PER_MM;
-      const isSpread = !!currentView.right;
-      const CANVAS_WRAP_GAP = 3; // Lote UX-12: debe coincidir con el `gap` de .page-viewer-canvas-wrap en PageViewer.css (antes 24, igual que el editor)
-      const contentWidthPx = isSpread ? stageWidthPx * 2 + CANVAS_WRAP_GAP : stageWidthPx;
+      // Lote FLIP-2: en modo dual el libro reserva SIEMPRE 2 huecos (la
+      // portada va a la derecha del lomo), asi la escala no salta al abrirla.
+      const contentWidthPx = viewMode === 'dual' ? stageWidthPx * 2 : stageWidthPx;
       const availableWidth = wrap.clientWidth - 48;
       const availableHeight = wrap.clientHeight - 48;
       if (availableWidth <= 0 || availableHeight <= 0) return;
@@ -190,7 +204,7 @@ const PageViewer = () => {
     const observer = new ResizeObserver(recomputeScale);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [publication, currentView?.right, currentView?.left?.id]);
+  }, [publication, viewMode, !!currentView]);
 
   if (loadErr) {
     return (
@@ -248,51 +262,35 @@ const PageViewer = () => {
         </div>
       </div>
 
-      <div className="page-viewer-flip-perspective">
-        {/* Lote UX-12 (correccion visual): el rotateY 3D se aplica a este
-            DIV INTERNO, sizeado al contenido real (solo el ancho de la(s)
-            pagina(s)), nunca al wrap exterior de abajo -- ese wrap sigue
-            siendo el flex:1 de ancho completo que CanvasEditorV2.css
-            necesita para el calculo de fitScale (ResizeObserver sobre
-            canvasWrapRef). Rotar el wrap completo (mucho mas ancho que la
-            pagina visible, centrada con justify-content) hacia un
-            transform-origin del 100%/0% terminaba pivotando sobre el borde
-            de la PANTALLA en vez del borde de la PAGINA -- de ahi el
-            trapecio gris gigante y la hoja encogida/sesgada que reporto
-            Carlos. */}
-        <div
-          ref={canvasWrapRef}
-          className={`editor-v2-canvas-wrap page-viewer-canvas-wrap${currentView.right ? ' editor-v2-canvas-wrap-spread' : ''}`}
-        >
-          <div
-            className={`page-viewer-flip-inner${currentView.right ? ' page-viewer-flip-inner-spread' : ''}${flipState ? ` page-viewer-flipping page-viewer-flipping-${flipState.direction} page-viewer-flipping-${flipState.phase}` : ''}`}
-          >
-            <div className="editor-v2-page-slot">
-              <PageCanvas
-                useStoreHook={useLeftStore}
-                canEdit={false}
+      <div
+        ref={canvasWrapRef}
+        className="editor-v2-canvas-wrap page-viewer-canvas-wrap"
+      >
+        <FlipBook
+          ref={flipBookRef}
+          views={views}
+          index={currentViewIndex}
+          onIndexChange={setCurrentViewIndex}
+          mode={viewMode === 'single' ? 'single' : 'spread'}
+          pageWidth={publication.page_width * PX_PER_MM * fitScale}
+          pageHeight={publication.page_height * PX_PER_MM * fitScale}
+          onFlipStart={playPageTurnSound}
+          preparePages={preparePages}
+          renderPage={(p) => {
+            const entry = pageData[p.id];
+            return (
+              <StaticPage
+                page={p}
+                elements={entry?.elements}
+                loading={!entry}
+                error={entry?.error}
                 publication={publication}
-                pageNumber={activeLeftPageNumber}
                 totalPages={totalPages}
-                onFocus={() => {}}
                 scale={fitScale}
               />
-            </div>
-            {currentView.right && (
-              <div className="editor-v2-page-slot">
-                <PageCanvas
-                  useStoreHook={useRightStore}
-                  canEdit={false}
-                  publication={publication}
-                  pageNumber={activeRightPageNumber}
-                  totalPages={totalPages}
-                  onFocus={() => {}}
-                  scale={fitScale}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+            );
+          }}
+        />
       </div>
 
       {/* Barra inferior compacta (Lote UX-3 parte 2): reemplaza la franja
@@ -300,7 +298,7 @@ const PageViewer = () => {
           miniaturas por cada pagina (que ocupaba demasiado alto, reportado
           por Carlos) -- mismas clases .editor-v2-pagenav que el editor. */}
       <div className="editor-v2-pagenav">
-        <button type="button" onClick={handlePrev} disabled={currentViewIndex <= 0 || !!flipState} aria-label="Hoja anterior">
+        <button type="button" onClick={handlePrev} disabled={currentViewIndex <= 0} aria-label="Hoja anterior">
           ← Anterior
         </button>
         <span className="editor-v2-pagenav-position">
@@ -318,7 +316,7 @@ const PageViewer = () => {
           />
           <span className="editor-v2-pagenav-label"> {currentView.right ? `(hoja ${positionLabel})` : `/ ${totalPages}`}</span>
         </span>
-        <button type="button" onClick={handleNext} disabled={currentViewIndex >= views.length - 1 || !!flipState} aria-label="Hoja siguiente">
+        <button type="button" onClick={handleNext} disabled={currentViewIndex >= views.length - 1} aria-label="Hoja siguiente">
           Siguiente →
         </button>
       </div>

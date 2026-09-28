@@ -1,39 +1,13 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { PageCanvas, computeSpreadViews } from '../components/editor/CanvasEditorV2';
-import { createPageEditorStore } from '../store/pageEditorStore';
+import { computeSpreadViews } from '../components/editor/CanvasEditorV2';
+import FlipBook, { pagesOfView } from '../components/reader/FlipBook';
+import StaticPage from '../components/reader/StaticPage';
 import Icon from '../components/common/Icon';
-import '../styles/PageViewer.css'; // clases .page-viewer-flip* (efecto pasar pagina, Lote UX-12)
+import { collectElementImageUrls, preloadImages } from '../services/imageCache';
 
-const ReaderPage = ({ page, publication, totalPages, onHotspotActivate, scale }) => {
-  const [useStore] = useState(() => createPageEditorStore());
-
-  useEffect(() => {
-    useStore.setState({
-      pageId: page.id || `public-${page.page_number}`,
-      version: 0,
-      elements: (page.elements || []).map((element) => ({ ...element })),
-      selectedElementIds: [],
-      isLoading: false,
-      loadError: null,
-    });
-  }, [page, useStore]);
-
-  return (
-    <PageCanvas
-      useStoreHook={useStore}
-      canEdit={false}
-      publication={publication}
-      pageNumber={page.page_number}
-      totalPages={totalPages}
-      onFocus={() => {}}
-      onHotspotActivate={(hotspot) => onHotspotActivate(hotspot, page)}
-      scale={scale}
-    />
-  );
-};
-
+const imageUrlsOfPages = (pgs) => pgs.flatMap((pg) => collectElementImageUrls(pg?.elements));
 
 // ---------------------------------------------------------------------------
 // Lectura responsive (2026-09-27, reportado por Carlos en iPhone 13 Pro): la
@@ -44,10 +18,8 @@ const ReaderPage = ({ page, publication, totalPages, onHotspotActivate, scale })
 //  - swipe izquierda/derecha en tactil y flechas del teclado.
 // ---------------------------------------------------------------------------
 const PX_PER_MM = 3; // debe coincidir con CanvasEditorV2
-const FRAME_PAD = 4; // padding del marco negro
-const PAGE_GAP = 2;
+const FRAME_PAD = 10; // aire para la sombra del libro (antes marco negro de 4px)
 const SINGLE_PAGE_MAX_WIDTH = 768;
-const FLIP_HALF_MS = 220;
 const ZOOM_STEPS = [1, 1.5, 2, 3];
 const SOUND_KEY = 'reader.sound';
 
@@ -117,12 +89,9 @@ const PublicReader = () => {
   const compact = singlePage || vh < 500; // movil en horizontal: poca altura
   const [stageRef, stageSize] = useElementSize();
   const anchorPageRef = useRef(1); // pagina visible, para no perder el sitio al rotar
-  const touchRef = useRef(null);
   const rootRef = useRef(null);
-  // Efecto de pasar pagina (mismo que el visor interno, Lote UX-12)
-  const [flipState, setFlipState] = useState(null); // null | { direction, phase }
-  const flipTimeoutRef = useRef(null);
-  useEffect(() => () => window.clearTimeout(flipTimeoutRef.current), []);
+  // Efecto de pasar pagina: FlipBook (Lote FLIP-2) -- hoja real de dos caras
+  const flipBookRef = useRef(null);
   const [soundOn, setSoundOn] = useState(readSoundPref);
   const [zoomIdx, setZoomIdx] = useState(0);
   const zoom = ZOOM_STEPS[zoomIdx];
@@ -144,7 +113,7 @@ const PublicReader = () => {
         ? sortedPages.map((pg) => ({ left: pg, right: null }))
         : computeSpreadViews(sortedPages, publication?.total_pages ?? sortedPages.length);
       const viewIndex = views.findIndex((view) => view.left?.id === target.id || view.right?.id === target.id);
-      if (viewIndex >= 0) setCurrentSpreadIndex(viewIndex);
+      if (viewIndex >= 0) flipBookRef.current?.flipTo(viewIndex);
       return;
     }
     if (action === 'url' && /^https:\/\//i.test(props.value || '')) window.open(props.value, '_blank', 'noopener,noreferrer');
@@ -211,32 +180,32 @@ const PublicReader = () => {
     if (v?.left) anchorPageRef.current = v.left.page_number;
   }, [currentSpreadIndex, spreadViews]);
 
+  const turnSoundRef = useRef(null);
   const playPageTurnSound = useCallback(() => {
     if (!soundOn) return;
     try {
-      const audio = new Audio('/sounds/page-turn.mp3');
+      if (!turnSoundRef.current) {
+        turnSoundRef.current = new Audio('/sounds/page-turn.mp3');
+        turnSoundRef.current.preload = 'auto';
+      }
+      const audio = turnSoundRef.current.cloneNode();
       audio.volume = 0.55;
       audio.play().catch(() => {});
     } catch { /* cosmetico: nunca debe romper la navegacion */ }
   }, [soundOn]);
 
-  const flipTo = useCallback((targetIdx, direction) => {
-    if (flipState) return; // animacion en curso: ignora pulsaciones repetidas
-    if (targetIdx < 0 || targetIdx >= spreadViews.length) return;
-    const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    playPageTurnSound();
-    if (reduceMotion) { setCurrentSpreadIndex(targetIdx); return; }
-    setFlipState({ direction, phase: 'out' });
-    window.clearTimeout(flipTimeoutRef.current);
-    flipTimeoutRef.current = window.setTimeout(() => {
-      setCurrentSpreadIndex(targetIdx); // el contenido cambia con la hoja de canto
-      setFlipState({ direction, phase: 'in' });
-      flipTimeoutRef.current = window.setTimeout(() => setFlipState(null), FLIP_HALF_MS);
-    }, FLIP_HALF_MS);
-  }, [flipState, spreadViews.length, playPageTurnSound]);
+  // Antes de girar: imagenes de las paginas implicadas ya decodificadas
+  const preparePages = useCallback((pgs) => preloadImages(imageUrlsOfPages(pgs), 1200), []);
 
-  const goPrev = useCallback(() => flipTo(currentSpreadIndex - 1, 'prev'), [flipTo, currentSpreadIndex]);
-  const goNext = useCallback(() => flipTo(currentSpreadIndex + 1, 'next'), [flipTo, currentSpreadIndex]);
+  // Precarga en segundo plano de las hojas vecinas (±2 vistas)
+  useEffect(() => {
+    const around = [1, -1, 2, -2].flatMap((d) => pagesOfView(spreadViews[currentSpreadIndex + d]));
+    const t = window.setTimeout(() => preloadImages(imageUrlsOfPages(around), 8000), 150);
+    return () => window.clearTimeout(t);
+  }, [currentSpreadIndex, spreadViews]);
+
+  const goPrev = useCallback(() => flipBookRef.current?.prev(), []);
+  const goNext = useCallback(() => flipBookRef.current?.next(), []);
 
   const toggleSound = () => {
     setSoundOn((on) => {
@@ -314,30 +283,13 @@ const PublicReader = () => {
   // viewport (cabecera ~52px, pie ~64px, padding) para no pintar nunca de mas.
   const boxW = stageSize.width > 0 ? stageSize.width : vw - (compact ? 12 : 32);
   const boxH = stageSize.height > 0 ? stageSize.height : vh - (compact ? 96 : 116) - (compact ? 12 : 32);
-  const availW = Math.max(0, boxW - 2 * FRAME_PAD - (slots - 1) * PAGE_GAP);
+  const availW = Math.max(0, boxW - 2 * FRAME_PAD);
   const availH = Math.max(0, boxH - 2 * FRAME_PAD);
   const fitScale = Math.max(0.15, Math.min(1.25, availW / (slots * pageWpx), availH / pageHpx));
   const renderScale = fitScale * zoom;
   const pageLabel = singlePage
     ? `${currentPages[0]?.page_number ?? '-'} / ${pages.length}`
     : `Página ${currentPages.map((pg) => pg.page_number).join('-')}`;
-
-  const onTouchStart = (e) => {
-    const pinchZoomed = (window.visualViewport?.scale || 1) > 1.05;
-    if (e.touches.length > 1 || zoom > 1 || pinchZoomed) { touchRef.current = null; return; }
-    const t = e.touches[0];
-    touchRef.current = { x: t.clientX, y: t.clientY };
-  };
-  const onTouchEnd = (e) => {
-    const start = touchRef.current;
-    touchRef.current = null;
-    if (!start) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // no es swipe horizontal
-    if (dx < 0) goNext(); else goPrev();
-  };
 
   return (
     <div ref={rootRef} style={{ height: '100dvh', minHeight: '-webkit-fill-available', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -385,20 +337,30 @@ const PublicReader = () => {
       {/* Main Canvas Display (Modo Lectura / Spread View) */}
       <div
         style={{ flex: 1, minHeight: 0, padding: compact ? '0.35rem' : '1rem', display: 'flex' }}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
       >
-       <div ref={stageRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: zoom > 1 ? 'auto' : 'hidden', perspective: '2200px', WebkitOverflowScrolling: 'touch' }}>
-        <div
-          className={`page-viewer-flip-inner${currentPages.length > 1 ? ' page-viewer-flip-inner-spread' : ''}${flipState ? ` page-viewer-flipping page-viewer-flipping-${flipState.direction} page-viewer-flipping-${flipState.phase}` : ''}`}
-          style={{ margin: 'auto', display: 'flex', gap: `${PAGE_GAP}px`, backgroundColor: '#000', padding: `${FRAME_PAD}px`, borderRadius: '4px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}
-        >
-          {currentPages.map((p) => (
-            <div key={p.id || p.page_number} style={{ backgroundColor: '#fff', lineHeight: 0 }}>
-              <ReaderPage page={p} publication={publication} totalPages={pages.length} onHotspotActivate={activateHotspot} scale={renderScale} />
-            </div>
-          ))}
-        </div>
+       <div ref={stageRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: zoom > 1 ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch' }}>
+        <FlipBook
+          ref={flipBookRef}
+          views={spreadViews}
+          index={currentSpreadIndex}
+          onIndexChange={setCurrentSpreadIndex}
+          mode={singlePage ? 'single' : 'spread'}
+          pageWidth={pageWpx * renderScale}
+          pageHeight={pageHpx * renderScale}
+          onFlipStart={playPageTurnSound}
+          preparePages={preparePages}
+          dragEnabled={zoom === 1}
+          renderPage={(p) => (
+            <StaticPage
+              page={p}
+              elements={p.elements}
+              publication={publication}
+              totalPages={pages.length}
+              onHotspotActivate={activateHotspot}
+              scale={renderScale}
+            />
+          )}
+        />
        </div>
       </div>
 
@@ -415,7 +377,7 @@ const PublicReader = () => {
         flexShrink: 0
       }}>
         <button
-          disabled={isFirst || !!flipState}
+          disabled={isFirst}
           onClick={goPrev}
           aria-label="Página anterior"
           style={{
@@ -443,7 +405,7 @@ const PublicReader = () => {
         )}
 
         <button
-          disabled={isLast || !!flipState}
+          disabled={isLast}
           onClick={goNext}
           aria-label="Página siguiente"
           style={{

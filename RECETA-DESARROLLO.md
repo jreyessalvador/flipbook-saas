@@ -1860,3 +1860,16 @@ docker compose -f docker-compose.prod.yml up -d --build backend pdf-worker front
 curl -s https://revistas.cetrix.com.mx/health
 ```
 - **PROHIBIDO** en Contabo 1: `docker system prune`, `docker volume prune`, `docker compose down -v`, tocar otros stacks.
+
+## 15. Lote FLIP-2 — pasar página con hoja real (28-sep-2026)
+
+**Problema reportado por Carlos (vídeo)**: el efecto de UX-12 "no tiene la impresión de hojas de revista, solo el sonido". Diagnóstico frame a frame: (1) giraba el *spread completo* como una puerta hasta quedar de canto (se veía un panel gris plano), (2) el contenido cambiaba de golpe y (3) los elementos de las páginas nuevas se pedían a la API *después* del giro → 1-2 s de "Cargando página…" en blanco.
+
+**Solución (decisión: opción C ampliada de §9p, sin dependencias nuevas)**:
+- `components/reader/FlipBook.jsx` + `styles/FlipBook.css`: libro de 2 huecos unidos por el lomo; solo gira la hoja que se pasa, con **dos caras reales** (anverso = página actual, reverso = página siguiente), sobre la página de destino ya montada debajo. Sombra proyectada que sigue el borde de la hoja (calculado con la misma perspectiva del CSS), brillo/curvatura sobre la hoja, sombra de lomo. Portada a la derecha del lomo y contraportada a la izquierda, con desplazamiento para centrarlas (como Issuu/Joomag).
+- **Arrastre** con ratón (borde exterior) o dedo (mitad de la página): la hoja sigue al puntero; <30 % vuelve atrás; "fling" rápido completa. El click sintético tras arrastrar se corta para no disparar hotspots.
+- **Precarga**: las 4 páginas implicadas se montan en estado "prep" (idéntico al reposo) y no se gira hasta tener datos + imágenes (tope 1,2-2,5 s). Hojas vecinas (±2) precargadas en segundo plano. `services/imageCache.js`: caché compartida de `HTMLImageElement` decodificados; `useHtmlImage` (CanvasEditorV2) la usa → sin frame blanco al montar.
+- Progreso por `requestAnimationFrame` escrito en variables CSS (`--fb-angle`, `--fb-s`, `--fb-er`, `--fb-el`, `--fb-shift`), nunca en estado React (no re-renderiza Konva a 60 fps). Clic repetido durante el giro se encadena (no se bloquean los botones). `prefers-reduced-motion` → cambio instantáneo.
+- Modo página simple (móvil / "Vista simple"): la hoja gira sobre su borde izquierdo y descubre la siguiente.
+- Integrado en `PublicReader.jsx` (/leer, /r/...) y `PageViewer.jsx` (visor interno; ahora con caché de elementos por página de solo lectura en vez de 2 stores con `loadPage`). Eliminadas las reglas `.page-viewer-flip*` de UX-12. El swipe manual de PublicReader lo sustituye el arrastre del FlipBook.
+- Verificado con Playwright contra API simulada (10 páginas, 300 ms de latencia en imágenes): giros adelante/atrás, arrastre y móvil 390px, sin errores de consola.

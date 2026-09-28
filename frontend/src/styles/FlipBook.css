@@ -1,0 +1,166 @@
+/* FlipBook -- Lote FLIP-2 (28-sep-2026). Ver components/reader/FlipBook.jsx.
+   Variables que escribe el JS en cada frame del giro:
+     --fb-angle     grados de la hoja (0 = plana en su hueco, +-180 = del otro lado)
+     --fb-s         sin(angulo): 0 plana, 1 vertical -- intensidad de sombras
+     --fb-er/--fb-el  borde libre proyectado de la hoja, 0..1 desde el lomo
+                      hacia la derecha / izquierda
+     --fb-shift     desplazamiento horizontal del libro (centrar portada)
+     --fb-backfade  opacidad del reverso en modo pagina simple */
+
+.fb-book {
+  position: relative;
+  flex-shrink: 0;
+  margin: auto;
+  transform: translateX(var(--fb-shift, var(--fb-rest-shift, 0px)));
+  transition: transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.fb-book.fb-flipping {
+  transition: none;
+}
+.fb-book.fb-hover-next,
+.fb-book.fb-hover-prev {
+  cursor: grab;
+}
+
+.fb-page {
+  position: absolute;
+  top: 0;
+  width: var(--fb-w);
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  line-height: 0;
+}
+.fb-slot-left,
+.fb-slot-center { left: 0; }
+.fb-slot-right { left: var(--fb-w); }
+
+/* El Stage de Konva trae su propia sombra de "hoja del editor": en el libro
+   la sombra la pone la pagina entera. */
+.fb-page .editor-v2-stage { box-shadow: none; }
+.fb-page .editor-v2-loading,
+.fb-page .editor-v2-error { box-sizing: border-box; line-height: 1.4; }
+
+.fb-base {
+  z-index: 1;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* --- Hoja que gira ------------------------------------------------------- */
+.fb-leaf {
+  z-index: 3;
+  pointer-events: none;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow:
+    0 0 calc(var(--fb-s, 0) * 42px) rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.32)),
+    0 12px 28px rgba(0, 0, 0, calc(0.28 - var(--fb-s, 0) * 0.2));
+}
+.fb-leaf.fb-origin-left { transform-origin: 0 50%; }
+.fb-leaf.fb-origin-right { transform-origin: 100% 50%; }
+.fb-leaf.fb-front {
+  transform: rotateY(calc(var(--fb-angle, 0) * 1deg));
+}
+/* Reverso = la misma hoja girada 180deg sobre su eje central, expresado
+   respecto a la bisagra (mismo transform-origin que el anverso). */
+.fb-leaf.fb-back.fb-origin-left {
+  transform: rotateY(calc(var(--fb-angle, 0) * 1deg)) translateX(100%) rotateY(180deg);
+}
+.fb-leaf.fb-back.fb-origin-right {
+  transform: rotateY(calc(var(--fb-angle, 0) * 1deg)) translateX(-100%) rotateY(180deg);
+}
+.fb-mode-single .fb-leaf.fb-back {
+  opacity: var(--fb-backfade, 1);
+}
+.fb-blank {
+  background: linear-gradient(to right, #efece5, #fbfaf6 35%, #fdfcf9);
+}
+
+/* Luz sobre la hoja en movimiento: oscurece junto a la bisagra y en el borde
+   libre, con un brillo intermedio -- da sensacion de papel curvado. */
+.fb-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.fb-leaf.fb-hinge-left .fb-shade {
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.28)) 0%,
+    rgba(0, 0, 0, 0) 14%,
+    rgba(255, 255, 255, calc(var(--fb-s, 0) * 0.22)) 48%,
+    rgba(0, 0, 0, 0) 72%,
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.34)) 100%
+  );
+}
+.fb-leaf.fb-hinge-right .fb-shade {
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.28)) 0%,
+    rgba(0, 0, 0, 0) 14%,
+    rgba(255, 255, 255, calc(var(--fb-s, 0) * 0.22)) 48%,
+    rgba(0, 0, 0, 0) 72%,
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.34)) 100%
+  );
+}
+
+/* Sombra de lomo (encuadernacion) -- solo en modo revista abierta. */
+.fb-mode-spread .fb-hinge-left::after,
+.fb-mode-spread .fb-hinge-right::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9%;
+  z-index: 2;
+  pointer-events: none;
+}
+.fb-mode-spread .fb-hinge-left::after {
+  left: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.06) 35%, rgba(0, 0, 0, 0));
+}
+.fb-mode-spread .fb-hinge-right::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.06) 35%, rgba(0, 0, 0, 0));
+}
+
+/* --- Sombras proyectadas sobre las paginas de abajo ---------------------- */
+.fb-cast {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: var(--fb-w);
+  z-index: 2;
+  pointer-events: none;
+}
+.fb-cast-right {
+  left: var(--fb-w);
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) calc(var(--fb-er, 0) * 100%),
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.42)) calc(var(--fb-er, 0) * 100%),
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.12)) calc(var(--fb-er, 0) * 100% + 6%),
+    rgba(0, 0, 0, 0) calc(var(--fb-er, 0) * 100% + 24%)
+  );
+}
+.fb-cast-left {
+  left: 0;
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, 0) calc(var(--fb-el, 0) * 100%),
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.42)) calc(var(--fb-el, 0) * 100%),
+    rgba(0, 0, 0, calc(var(--fb-s, 0) * 0.12)) calc(var(--fb-el, 0) * 100% + 6%),
+    rgba(0, 0, 0, 0) calc(var(--fb-el, 0) * 100% + 24%)
+  );
+}
+.fb-mode-single .fb-cast-right { left: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-book { transition: none; }
+}
