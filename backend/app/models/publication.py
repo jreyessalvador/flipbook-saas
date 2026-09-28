@@ -32,6 +32,12 @@ class Publication(Base):
 
     # Sonido de "pase de pagina" del Reader (opcional, ver seccion 8 del doc de arquitectura)
     page_turn_sound_asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=True)
+    # Lote L4 (migracion 0010): ajustes de la edicion, leidos en vivo por el
+    # Reader (no forman parte del snapshot publicado).
+    sound_enabled = Column(Boolean, nullable=False, default=True)
+    seo_title = Column(String(70), nullable=True)
+    seo_description = Column(String(160), nullable=True)
+    seo_indexable = Column(Boolean, nullable=False, default=True)
 
     # Publicacion inmutable actualmente vigente para el Reader (seccion 5)
     published_version_id = Column(UUID(as_uuid=True), ForeignKey("publication_versions.id"), nullable=True)
@@ -54,6 +60,15 @@ class Publication(Base):
     creator = relationship("User", back_populates="publications")
     pages = relationship("Page", back_populates="publication", cascade="all, delete-orphan")
     collection = relationship("Collection", lazy="selectin", viewonly=True)
+    page_turn_sound = relationship("Asset", foreign_keys=[page_turn_sound_asset_id], lazy="selectin", viewonly=True)
+
+    @property
+    def page_turn_sound_url(self):
+        """URL relativa del sonido propio de pasar pagina (None = sonido por defecto)."""
+        asset = self.page_turn_sound
+        if asset is None or not asset.storage_key:
+            return None
+        return f"/api/assets/serve/{asset.storage_key}"
 
     @property
     def public_path(self):

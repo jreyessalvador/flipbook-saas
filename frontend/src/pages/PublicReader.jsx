@@ -36,8 +36,13 @@ const iconBtn = {
   cursor: 'pointer',
 };
 
+// Preferencia del LECTOR (localStorage): 'on' | 'off' | null (sin elegir).
+// Si no ha elegido, manda el ajuste de la edicion (Lote L4, viewer.sound_enabled).
 const readSoundPref = () => {
-  try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; }
+  try {
+    const v = localStorage.getItem(SOUND_KEY);
+    return v === 'on' ? true : v === 'off' ? false : null;
+  } catch { return null; }
 };
 
 const useElementSize = () => {
@@ -76,7 +81,7 @@ const useViewportSize = () => {
   return { vw: w, vh: h };
 };
 
-const PublicReader = () => {
+const PublicReader = ({ embed = false }) => {
   const { id: routeId, tenant, collection, edition } = useParams();
   const navigate = useNavigate();
   const [publication, setPublication] = useState(null);
@@ -92,7 +97,8 @@ const PublicReader = () => {
   const rootRef = useRef(null);
   // Efecto de pasar pagina: FlipBook (Lote FLIP-2) -- hoja real de dos caras
   const flipBookRef = useRef(null);
-  const [soundOn, setSoundOn] = useState(readSoundPref);
+  const [soundPref, setSoundPref] = useState(readSoundPref);
+  const soundOn = soundPref ?? (publication?.viewer?.sound_enabled ?? true);
   const [zoomIdx, setZoomIdx] = useState(0);
   const zoom = ZOOM_STEPS[zoomIdx];
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -147,7 +153,7 @@ const PublicReader = () => {
 
       // Enlaces antiguos /leer/{id}: mostrar en la barra la URL canonica amigable
       const canonical = pubRes.data?.url_path;
-      if (routeId && canonical && canonical.startsWith('/r/') && window.location.pathname !== canonical) {
+      if (!embed && routeId && canonical && canonical.startsWith('/r/') && window.location.pathname !== canonical) {
         window.history.replaceState(window.history.state, '', canonical + window.location.search + window.location.hash);
       }
       setPublication(pubRes.data);
@@ -185,14 +191,17 @@ const PublicReader = () => {
     if (!soundOn) return;
     try {
       if (!turnSoundRef.current) {
-        turnSoundRef.current = new Audio('/sounds/page-turn.mp3');
+        // Lote L4: sonido propio de la edicion (biblioteca de la empresa) o el predeterminado
+        const custom = publication?.viewer?.sound_url;
+        const API = import.meta.env.VITE_API_URL || '';
+        turnSoundRef.current = new Audio(custom ? (custom.startsWith('http') ? custom : `${API}${custom}`) : '/sounds/page-turn.mp3');
         turnSoundRef.current.preload = 'auto';
       }
       const audio = turnSoundRef.current.cloneNode();
       audio.volume = 0.55;
       audio.play().catch(() => {});
     } catch { /* cosmetico: nunca debe romper la navegacion */ }
-  }, [soundOn]);
+  }, [soundOn, publication?.viewer?.sound_url]);
 
   // Antes de girar: imagenes de las paginas implicadas ya decodificadas
   const preparePages = useCallback((pgs) => preloadImages(imageUrlsOfPages(pgs), 1200), []);
@@ -208,10 +217,9 @@ const PublicReader = () => {
   const goNext = useCallback(() => flipBookRef.current?.next(), []);
 
   const toggleSound = () => {
-    setSoundOn((on) => {
-      try { localStorage.setItem(SOUND_KEY, on ? 'off' : 'on'); } catch { /* sin storage */ }
-      return !on;
-    });
+    const next = !soundOn;
+    try { localStorage.setItem(SOUND_KEY, next ? 'on' : 'off'); } catch { /* sin storage */ }
+    setSoundPref(next);
   };
 
   useEffect(() => {
@@ -307,6 +315,18 @@ const PublicReader = () => {
         flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+          {embed ? (
+            // Lote L4: dentro de un iframe no hay "Volver"; enlace a la version completa
+            <a
+              href={publication.url_path || `/leer/${publication.id}`}
+              target="_blank"
+              rel="noopener"
+              style={{ color: 'var(--color-gold, #c9a24b)', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
+              title="Abrir en Cetrix Revistas"
+            >
+              Cetrix Revistas ↗
+            </a>
+          ) : (
           <button
             onClick={() => navigate(publication.collection?.slug && publication.tenant?.slug ? `/r/${publication.tenant.slug}/${publication.collection.slug}` : '/')}
             style={{ background: 'none', border: 'none', color: 'var(--color-gold, #c9a24b)', fontSize: '1rem', cursor: 'pointer', fontWeight: 600 }}
@@ -314,6 +334,7 @@ const PublicReader = () => {
           >
             ← Volver
           </button>
+          )}
           <span style={{ fontSize: compact ? '0.95rem' : '1.1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{publication.title}</span>
         </div>
 

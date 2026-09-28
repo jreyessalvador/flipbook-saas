@@ -31,10 +31,6 @@ const Publications = () => {
   const [showConfigStep, setShowConfigStep] = useState(false);
   const [pdfFile, setPdfFile] = useState(null);
   const [importNotice, setImportNotice] = useState(null);
-  // Editar titulo/descripcion de una publicacion ya creada
-  const [editing, setEditing] = useState(null); // { id, title, description }
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [editError, setEditError] = useState(null);
   // Compartir / QR del Reader publico
   const [shareFor, setShareFor] = useState(null);
   const [qrFor, setQrFor] = useState(null);
@@ -169,30 +165,6 @@ const Publications = () => {
     } catch (err) {
       console.error('Error creating publication:', err);
       alert(err?.response?.data?.detail || err.message || 'Error al crear la publicación');
-    }
-  };
-
-  const openEdit = (pub) => {
-    setEditError(null);
-    setEditing({ id: pub.id, title: pub.title || '', edition_label: pub.edition_label || '', description: pub.description || '' });
-  };
-
-  const handleSaveEdit = async (e) => {
-    e.preventDefault();
-    const title = editing.title.trim();
-    if (!title) { setEditError('El título no puede estar vacío'); return; }
-    setSavingEdit(true);
-    setEditError(null);
-    try {
-      await publicationAPI.update(editing.id, { title, edition_label: editing.edition_label.trim(), description: editing.description.trim() });
-      setEditing(null);
-      await loadPublications();
-    } catch (err) {
-      console.error('Error updating publication:', err);
-      const detail = err?.response?.data?.detail;
-      setEditError(typeof detail === 'string' ? detail : 'No se pudieron guardar los cambios');
-    } finally {
-      setSavingEdit(false);
     }
   };
 
@@ -367,9 +339,9 @@ const Publications = () => {
                   {canEdit && <button
                     type="button"
                     className="btn-edit-meta"
-                    onClick={() => openEdit(pub)}
-                    title="Editar título y descripción"
-                    aria-label={`Editar título y descripción de ${pub.title}`}
+                    onClick={() => navigate(`/publications/${pub.id}/ajustes`)}
+                    title="Ajustes de la edición"
+                    aria-label={`Ajustes de ${pub.title}`}
                   >
                     <Icon name="pencil" size={16} />
                   </button>}
@@ -436,6 +408,9 @@ const Publications = () => {
                         Abrir lector público
                       </button>
                     )}
+                    {canEdit && <button className="btn-secondary" onClick={() => navigate(`/publications/${pub.id}/ajustes`)} title="Info, visor, SEO, clonar e insertar">
+                      <Icon name="settings" size={15} style={{ marginRight: 6 }} />Ajustes
+                    </button>}
                     {canEdit && <button className="btn-secondary" onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
                     </button>}
@@ -478,57 +453,6 @@ const Publications = () => {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setMoving(null)} disabled={movingBusy}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={movingBusy || !moving.target}>{movingBusy ? 'Moviendo…' : 'Mover'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Editar título/descripción */}
-      {editing && (
-        <div className="modal-overlay" onClick={() => !savingEdit && setEditing(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Editar edición</h3>
-            <form onSubmit={handleSaveEdit}>
-              <div className="form-group">
-                <label>Título *</label>
-                <input
-                  type="text"
-                  required
-                  maxLength="200"
-                  autoFocus
-                  value={editing.title}
-                  onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Edición (opcional)</label>
-                <input
-                  type="text"
-                  maxLength="100"
-                  value={editing.edition_label}
-                  onChange={(e) => setEditing({ ...editing, edition_label: e.target.value })}
-                  placeholder="Ej: Sep 2026 · No. 35"
-                />
-              </div>
-              <div className="form-group">
-                <label>Descripción</label>
-                <textarea
-                  maxLength="500"
-                  rows="4"
-                  value={editing.description}
-                  onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  placeholder="Describe brevemente el contenido..."
-                />
-              </div>
-              {editError && <div className="error-message">{editError}</div>}
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setEditing(null)} disabled={savingEdit}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary" disabled={savingEdit}>
-                  {savingEdit ? 'Guardando…' : 'Guardar'}
-                </button>
               </div>
             </form>
           </div>

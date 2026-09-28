@@ -59,6 +59,12 @@ export const publicationAPI = {
     return response.data;
   },
 
+  // Lote L4: clonar edición completa como borrador privado
+  clone: async (id, data = {}) => {
+    const response = await api.post(`/api/publications/${id}/clone`, data);
+    return response.data;
+  },
+
   // Eliminar publicación
   delete: async (id) => {
     await api.delete(`/api/publications/${id}`);

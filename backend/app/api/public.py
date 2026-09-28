@@ -113,6 +113,16 @@ def _catalog_item(pub, snapshot, collection, tenant, category) -> dict:
         },
         "tenant": {"name": tenant.name, "slug": tenant.subdomain},
         "url_path": _url_path(tenant, collection, pub),
+        # Lote L4: ajustes del visor y SEO, leidos en vivo (no del snapshot)
+        "viewer": {
+            "sound_enabled": bool(pub.sound_enabled) if pub.sound_enabled is not None else True,
+            "sound_url": pub.page_turn_sound_url,
+        },
+        "seo": {
+            "title": pub.seo_title,
+            "description": pub.seo_description,
+            "indexable": bool(pub.seo_indexable) if pub.seo_indexable is not None else True,
+        },
     }
 
 
@@ -251,7 +261,11 @@ def _open_graph_html(request: Request, row) -> HTMLResponse:
     e = lambda v: html.escape(str(v or ""), quote=True)
     base_title = pub.title or "Revista digital"
     title = f"{base_title} · {pub.edition_label}" if pub.edition_label and pub.edition_label not in base_title else base_title
-    description = pub.description or f"Lee «{base_title}» de {tenant.name} en formato revista digital interactiva."
+    if pub.seo_title:  # Lote L4: titulo SEO propio de la edicion
+        title = pub.seo_title
+    description = pub.seo_description or pub.description or f"Lee «{base_title}» de {tenant.name} en formato revista digital interactiva."
+    robots = "" if (pub.seo_indexable is None or pub.seo_indexable) else '<meta name="robots" content="noindex, nofollow">\n'
+
     image_tags = (
         f'<meta property="og:image" content="{e(image_url)}">\n'
         f'<meta property="og:image:alt" content="{e(title)}">\n'
@@ -261,7 +275,7 @@ def _open_graph_html(request: Request, row) -> HTMLResponse:
 <html lang="es"><head><meta charset="utf-8">
 <title>{e(title)} · Cetrix Revistas</title>
 <meta name="description" content="{e(description)}">
-<link rel="canonical" href="{e(reader_url)}">
+{robots}<link rel="canonical" href="{e(reader_url)}">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Cetrix Revistas">
 <meta property="og:locale" content="es_ES">
@@ -273,7 +287,10 @@ def _open_graph_html(request: Request, row) -> HTMLResponse:
 <meta name="twitter:description" content="{e(description)}">
 <meta http-equiv="refresh" content="0; url={e(reader_url)}">
 </head><body><p><a href="{e(reader_url)}">{e(title)}</a></p></body></html>"""
-    return HTMLResponse(content=body, headers={"Cache-Control": "public, max-age=300"})
+    headers = {"Cache-Control": "public, max-age=300"}
+    if robots:
+        headers["X-Robots-Tag"] = "noindex, nofollow"
+    return HTMLResponse(content=body, headers=headers)
 
 
 @router.get("/og/{id}", response_class=HTMLResponse, include_in_schema=False)

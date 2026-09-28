@@ -9,6 +9,7 @@ import Publications from './pages/Publications';
 import Collections from './pages/Collections';
 const Team = lazy(() => import('./pages/Team'));
 const PageViewer = lazy(() => import('./components/editor/PageViewer'));
+const EditionSettings = lazy(() => import('./pages/EditionSettings'));
 const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
 const PublicReader = lazy(() => import('./pages/PublicReader'));
@@ -27,6 +28,9 @@ function App() {
           <Route path="/leer/:id" element={<PublicReader />} />
           <Route path="/r/:tenant/:collection" element={<PublicCollection />} />
           <Route path="/r/:tenant/:collection/:edition" element={<PublicReader />} />
+          {/* Lote L4: versión insertable (iframe) del lector, sin cabecera del panel */}
+          <Route path="/embed/leer/:id" element={<PublicReader embed />} />
+          <Route path="/embed/r/:tenant/:collection/:edition" element={<PublicReader embed />} />
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />
@@ -66,6 +70,16 @@ function App() {
                   <Navbar />
                   <Publications />
                 </>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Lote L4: ajustes de edición (Info · Visor · SEO · Compartir e insertar) */}
+          <Route
+            path="/publications/:id/ajustes"
+            element={
+              <ProtectedRoute>
+                <><Navbar /><EditionSettings /></>
               </ProtectedRoute>
             }
           />

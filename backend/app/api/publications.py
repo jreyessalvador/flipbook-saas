@@ -14,6 +14,7 @@ from app.schemas.publication import (
     PublicationUpdate,
     PublicationVisibilityUpdate,
     PublicationResponse,
+    PublicationClone,
 )
 from app.api.auth import get_current_user
 from app.core.rbac import require_role
@@ -23,6 +24,7 @@ from app.config import settings
 from app.services.quota import require_publication_quota, require_storage_quota
 from io import BytesIO
 import uuid
+import copy
 
 router = APIRouter()
 
@@ -330,6 +332,20 @@ def update_publication(
         changes["description"] = (changes["description"] or "").strip() or None
     if "edition_label" in changes:
         changes["edition_label"] = (changes["edition_label"] or "").strip() or None
+    # Lote L4: SEO -- vacio = usar titulo/descripcion de la edicion
+    for key in ("seo_title", "seo_description"):
+        if key in changes:
+            changes[key] = (changes[key] or "").strip() or None
+    for key in ("sound_enabled", "seo_indexable"):
+        if key in changes and changes[key] is None:
+            changes.pop(key)  # booleanos NOT NULL: null no significa nada
+    if changes.get("page_turn_sound_asset_id") is not None:
+        asset = db.query(Asset).filter(
+            Asset.id == changes["page_turn_sound_asset_id"],
+            Asset.tenant_id == current_user.effective_tenant_id,
+        ).first()
+        if not asset or asset.kind != "audio":
+            raise HTTPException(status_code=422, detail="El sonido debe ser un audio de la biblioteca de tu empresa")
 
     for key, value in changes.items():
         setattr(publication, key, value)
@@ -367,6 +383,90 @@ def move_publication(
     db.commit()
     db.refresh(publication)
     return publication
+
+
+@router.post("/{publication_id}/clone", response_model=PublicationResponse, status_code=status.HTTP_201_CREATED)
+def clone_publication(
+    publication_id: str,
+    data: PublicationClone,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("editor")),
+):
+    """Clona una edicion completa (Lote L4) como BORRADOR PRIVADO.
+
+    Copia ajustes, paginas y elementos del borrador actual (no del snapshot
+    publicado). Los archivos (imagenes, audio, video) se reutilizan por
+    referencia: los elementos apuntan a los mismos objetos de MinIO, no se
+    duplican. Cuenta para la cuota de ediciones del plan.
+    """
+    from app.api.collections import get_collection_in_tenant
+    from app.core.slugs import unique_publication_slug
+    tenant_id = current_user.effective_tenant_id
+    source = db.query(Publication)\
+        .filter(Publication.id == publication_id)\
+        .filter(Publication.tenant_id == tenant_id)\
+        .first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Publication not found")
+    require_publication_quota(db, tenant_id)
+
+    collection = get_collection_in_tenant(db, data.collection_id, tenant_id) if data.collection_id \
+        else get_collection_in_tenant(db, source.collection_id, tenant_id)
+    title = (data.title or "").strip() or f"{source.title} (copia)"
+    if data.edition_label is None:
+        edition_label = source.edition_label
+    else:
+        edition_label = data.edition_label.strip() or None
+
+    clone = Publication(
+        title=title[:200],
+        description=source.description,
+        status="draft",
+        is_public=False,
+        total_pages=source.total_pages,
+        page_size=source.page_size,
+        page_width=source.page_width,
+        page_height=source.page_height,
+        orientation=source.orientation,
+        creation_type=source.creation_type,
+        page_turn_sound_asset_id=source.page_turn_sound_asset_id,
+        sound_enabled=source.sound_enabled,
+        seo_title=None,          # el SEO es propio de cada edicion
+        seo_description=None,
+        seo_indexable=source.seo_indexable,
+        tenant_id=tenant_id,
+        collection_id=collection.id,
+        edition_label=edition_label,
+        created_by=current_user.id,
+    )
+    clone.slug = unique_publication_slug(db, collection.id, edition_label or title)
+    db.add(clone)
+    db.flush()
+
+    pages = db.query(Page).filter(Page.publication_id == source.id).order_by(Page.page_number).all()
+    for page in pages:
+        new_page = Page(
+            publication_id=clone.id,
+            page_number=page.page_number,
+            page_type=page.page_type,
+            content={},
+            thumbnail_url=page.thumbnail_url,
+        )
+        db.add(new_page)
+        db.flush()
+        for el in db.query(PageElement).filter(PageElement.page_id == page.id).all():
+            db.add(PageElement(
+                page_id=new_page.id,
+                kind=el.kind,
+                x=el.x, y=el.y, width=el.width, height=el.height,
+                rotation_deg=el.rotation_deg,
+                z_index=el.z_index,
+                props=copy.deepcopy(el.props or {}),
+            ))
+
+    db.commit()
+    db.refresh(clone)
+    return clone
 
 
 @router.delete("/{publication_id}", status_code=status.HTTP_204_NO_CONTENT)
