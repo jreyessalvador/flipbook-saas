@@ -171,7 +171,7 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | L1 Marca + favicon | Hecho (`dca418a`) |
 | L2 Pulido (Dashboard real, lazy routes, fuera editor v1, sin emojis) | Hecho (`ab50fb7`, `99839a2`) |
 | L3 Kiosco + URLs amigables `/r/{empresa}/{coleccion}/{edicion}` | Hecho en DEV (`008be6a`, migración 0009) — ver RECETA §13 |
-| L4 Ajustes de edición (Info/Visor/SEO, clonar, iframe) | Pendiente |
+| L4 Ajustes de edición (Info/Visor/SEO, clonar, iframe) | Hecho en DEV (`dd2f693`, `a3578f1`, migración 0010) — ver RECETA §16 |
 | L5 Descarga PDF por edición + papelera 30 días | Pendiente |
 | L6 Estadísticas sin cookies + `views_count` | Pendiente |
 | L7 Imagen OG 1200x630 · L8 UI categorías Super Admin | Pendiente |

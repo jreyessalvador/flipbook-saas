@@ -1873,3 +1873,19 @@ curl -s https://revistas.cetrix.com.mx/health
 - Modo página simple (móvil / "Vista simple"): la hoja gira sobre su borde izquierdo y descubre la siguiente.
 - Integrado en `PublicReader.jsx` (/leer, /r/...) y `PageViewer.jsx` (visor interno; ahora con caché de elementos por página de solo lectura en vez de 2 stores con `loadPage`). Eliminadas las reglas `.page-viewer-flip*` de UX-12. El swipe manual de PublicReader lo sustituye el arrastre del FlipBook.
 - Verificado con Playwright contra API simulada (10 páginas, 300 ms de latencia en imágenes): giros adelante/atrás, arrastre y móvil 390px, sin errores de consola.
+
+## 16. Lote L4 — Ajustes de edición, clonar e insertar (28-sep-2026)
+
+Decisiones de Carlos: página con pestañas (no modal); en Visor solo el **sonido**; iframe insertable en **cualquier dominio**; clonar = **todo, como borrador**.
+
+- **Página** `/publications/:id/ajustes` (`pages/EditionSettings.jsx`, `styles/EditionSettings.css`), pestañas con `#hash` (`#info`, `#visor`, `#seo`, `#insertar`), barra fija «Guardar cambios» con aviso de cambios sin guardar. Sustituye al modal «Editar edición» de Mis publicaciones (el lápiz y el botón «Ajustes» llevan aquí).
+  - **Info**: título, etiqueta, descripción, ficha técnica y **Clonar** (título, etiqueta, colección destino).
+  - **Visor**: sonido activado/desactivado por defecto + sonido propio (audio de la biblioteca de la empresa, subida ≤2 MB, escucha previa).
+  - **SEO**: título (70), descripción (160), `noindex`, vista previa tipo Google.
+  - **Compartir e insertar**: enlace, código iframe adaptable o de tamaño fijo, vista previa en vivo. Solo con edición publicada y visible.
+- **Migración `0010_edition_settings.sql`** (idempotente): `seo_title`, `seo_description`, `seo_indexable`, `sound_enabled`. Los ajustes se leen **en vivo** (no del snapshot): cambian sin volver a publicar.
+- **API**: `PUT /api/publications/{id}` acepta los campos nuevos (`page_turn_sound_asset_id` validado: audio y de la misma empresa); `POST /api/publications/{id}/clone` (editor+, cuota del plan, borrador privado, páginas y elementos copiados, archivos por referencia, SEO vacío, slug nuevo). Públicas: `viewer{sound_enabled,sound_url}` y `seo{title,description,indexable}`; el HTML OG usa el SEO y añade `noindex` + `X-Robots-Tag` si procede.
+- **Reader**: el sonido arranca según el ajuste de la edición salvo que el lector ya haya elegido (localStorage `on`/`off`); sonido propio si existe. **Embed**: `/embed/r/{e}/{c}/{ed}` y `/embed/leer/{id}` (sin «Volver», enlace «Cetrix Revistas ↗», no reescribe la URL).
+- **nginx del contenedor frontend** (`frontend/nginx.conf`, PROD): `frame-ancestors *` solo en `/embed/`; `frame-ancestors 'self'` en el resto (antes cualquier web podía enmarcar el panel → clickjacking). Validado con `nginx -t`. En DEV (vite) no aplica.
+- **QA**: `backend/tests/qa_lote_l4_ajustes.py` — 32/32 PASS en DEV; regresión aislamiento 26 PASS y RBAC 37/37 PASS. Respaldo DEV previo: `~/backups/flipbook-dev/pre-0010-2026-09-28-1800.dump`.
+- **Pendiente para PROD**: respaldo, `git pull`, migración 0010, `up -d --build backend pdf-worker frontend` (procedimiento §14).
