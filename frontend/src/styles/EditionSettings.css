@@ -204,3 +204,15 @@
   .es-savebar { flex-direction: column; align-items: stretch; }
   .es-savebar > div { justify-content: flex-end; }
 }
+
+/* Los .btn-primary globales ocupan el 100% del ancho: aqui van a su tamano */
+.es-page .es-copyrow .btn-primary,
+.es-page .es-row .btn-primary,
+.es-page .es-row .btn-secondary,
+.es-page .es-savebar .btn-primary,
+.es-page .es-savebar .btn-secondary {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
+.es-copyrow input { flex: 1 1 auto; }

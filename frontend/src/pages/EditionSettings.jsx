@@ -46,7 +46,10 @@ export default function EditionSettings() {
   const { user } = useAuth();
   const canEdit = can(user, 'editor');
 
-  const [tab, setTab] = useState(() => (window.location.hash || '').replace('#', '') || 'info');
+  const [tab, setTab] = useState(() => {
+    const h = (window.location.hash || '').replace('#', '');
+    return TABS.some((t) => t.key === h) ? h : 'info';
+  });
   const [pub, setPub] = useState(null);
   const [form, setForm] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -64,6 +67,14 @@ export default function EditionSettings() {
   }, [id]);
 
   useEffect(() => { if (tab) window.history.replaceState(null, '', `#${tab}`); }, [tab]);
+  useEffect(() => {
+    const onHash = () => {
+      const h = (window.location.hash || '').replace('#', '');
+      if (TABS.some((t) => t.key === h)) setTab(h);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const dirty = useMemo(() => {
     if (!pub || !form) return false;
