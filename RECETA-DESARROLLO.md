@@ -1890,3 +1890,10 @@ Decisiones de Carlos: página con pestañas (no modal); en Visor solo el **sonid
 - **QA**: `backend/tests/qa_lote_l4_ajustes.py` — 32/32 PASS en DEV; regresión aislamiento 26 PASS y RBAC 37/37 PASS. Respaldo DEV previo: `~/backups/flipbook-dev/pre-0010-2026-09-28-1800.dump`.
 - **PRODUCCIÓN (28-sep-2026, validado por Carlos en DEV)**: merge ff a `redesign/editor-v2`; respaldo `~/backups/flipbook-prod-pre-l4-2026-09-28-1941.dump`; imágenes de rollback `flipbook-prod-{backend,frontend}:rollback-pre-l4`; migración 0010 aplicada; `up -d --build backend pdf-worker frontend`. Verificado: `/health` ok, API pública con `viewer`/`seo`, OG para bots, `/embed/...` → `frame-ancestors *`, resto → `frame-ancestors 'self'`.
 - **Lección nginx** (`c32eeb2`): en `location /embed/` usar `try_files /index.html =404;` — si `/index.html` es el ÚLTIMO argumento de `try_files` hace redirección interna a `location /` y se aplica la cabecera de ésta ('self'), no la del embed.
+
+## 17. Lote FLIP-3 — brillo en zonas interactivas al pasar hoja (28-sep-2026)
+
+Pedido de Carlos con vídeo de referencia: al llegar a una hoja, los hotspots (ir a página, URL, correo, teléfono, vídeo…) se iluminan un instante para que el lector sepa que se pueden pulsar.
+- `FlipBook.jsx`: clase `fb-hint` durante ~2,6 s cada vez que el libro queda en reposo en una vista nueva (también al abrir y al cambiar de modo); se quita y se vuelve a poner en el frame siguiente para reiniciar la animación.
+- `FlipBook.css`: sobre `.reader-hotspot` (el `<button>` que pinta `HotspotElement` en modo lectura) → relleno celeste translúcido + borde discontinuo (fundido ~2,2 s) y un destello que lo recorre (~1,1 s). Solo en páginas en reposo (`.fb-base`), nunca en la hoja que gira. Con ratón, el hotspot se insinúa al pasar por encima. `prefers-reduced-motion`: sin destello, solo el fundido.
+- Aplica al Reader público, `/embed/` y al visor interno. Verificado con Playwright (4 hotspots en 2 páginas: aparece, destello, desaparece a los ~2 s).

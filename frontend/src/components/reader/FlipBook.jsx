@@ -295,6 +295,23 @@ const FlipBook = forwardRef(function FlipBook(
 
   useEffect(() => () => { tokenRef.current += 1; cancelAnimationFrame(rafRef.current); }, []);
 
+  // Lote FLIP-3 (28-sep-2026, video de referencia de Carlos): al quedar en
+  // reposo en una hoja nueva (y al abrir la revista), las zonas interactivas
+  // -- hotspots: ir a pagina, URL, correo, telefono, video... -- emiten un
+  // brillo breve para que el lector sepa que ahi se puede pulsar. Solo CSS
+  // (.fb-hint en FlipBook.css): quitar y volver a poner la clase en el frame
+  // siguiente reinicia la animacion.
+  const [hint, setHint] = useState(false);
+  const flipping = !!flip;
+  useEffect(() => {
+    if (flipping) { setHint(false); return undefined; }
+    setHint(false);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setHint(true)); });
+    const off = window.setTimeout(() => setHint(false), 2600);
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); window.clearTimeout(off); };
+  }, [index, flipping, mode]);
+
   // --- Arrastre (ratón / táctil) ---------------------------------------------
   const zoneAt = (clientX, pointerType) => {
     const node = bookRef.current;
@@ -465,7 +482,7 @@ const FlipBook = forwardRef(function FlipBook(
   return (
     <div
       ref={bookRef}
-      className={`fb-book fb-mode-${mode}${flip ? ` fb-flipping fb-dir-${flip.dir}` : ''}${hoverZone ? ` fb-hover-${hoverZone}` : ''} ${className}`}
+      className={`fb-book fb-mode-${mode}${flip ? ` fb-flipping fb-dir-${flip.dir}` : ''}${hint ? ' fb-hint' : ''}${hoverZone ? ` fb-hover-${hoverZone}` : ''} ${className}`}
       style={{
         width: bookW,
         height: pageHeight,
