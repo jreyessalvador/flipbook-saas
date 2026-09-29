@@ -21,8 +21,10 @@ export default function SuperAdmin() {
   const [plans, setPlans] = useState([]);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', subdomain: '', plan_code: 'professional' });
-  const [ownerEmail, setOwnerEmail] = useState('');
-  const [invite, setInvite] = useState('');
+  // Fix 29-sep-2026: un correo POR empresa (antes un unico estado compartido
+  // hacia que lo escrito en una fila apareciera en todas).
+  const [ownerEmails, setOwnerEmails] = useState({});
+  const [invite, setInvite] = useState(null); // { url, email, tenantName, expiresAt }
   const [members, setMembers] = useState(null);
 
   const load = () => api.get('/api/superadmin/overview')
@@ -53,14 +55,22 @@ export default function SuperAdmin() {
   };
 
   const inviteOwner = async (tenant) => {
-    if (!ownerEmail) {
-      setError('Introduce el correo del propietario');
+    const email = (ownerEmails[tenant.id] || '').trim();
+    if (!email) {
+      setError(`Introduce el correo del propietario de ${tenant.name}`);
       return;
     }
+    if (!window.confirm(`¿Crear invitación de OWNER para ${email} en la empresa "${tenant.name}"?`)) return;
     try {
-      const response = await api.post(`/api/superadmin/tenants/${tenant.id}/owner-invitations`, { email: ownerEmail });
-      setInvite(`${window.location.origin}/aceptar-invitacion?token=${response.data.invite_token}`);
-      setOwnerEmail('');
+      setError('');
+      const response = await api.post(`/api/superadmin/tenants/${tenant.id}/owner-invitations`, { email });
+      setInvite({
+        url: `${window.location.origin}/aceptar-invitacion?token=${response.data.invite_token}`,
+        email: response.data.email,
+        tenantName: tenant.name,
+        expiresAt: response.data.expires_at,
+      });
+      setOwnerEmails((prev) => ({ ...prev, [tenant.id]: '' }));
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'No se pudo crear la invitación');
     }
@@ -85,7 +95,7 @@ export default function SuperAdmin() {
   const resetPassword = async (member) => {
     try {
       const response = await api.post(`/api/superadmin/users/${member.user_id}/password-reset`);
-      setInvite(`${window.location.origin}/restablecer-contrasena?token=${response.data.reset_token}`);
+      setInvite({ url: `${window.location.origin}/restablecer-contrasena?token=${response.data.reset_token}`, email: member.email, tenantName: members?.tenant?.name });
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'No se pudo crear el enlace de restablecimiento');
     }
@@ -114,10 +124,10 @@ export default function SuperAdmin() {
           <button className="primary-action" type="submit">Crear empresa</button>
         </form>
       </section>
-      {invite && <section className="superadmin-invite"><strong>Enlace temporal creado</strong><p>Compártelo solo con la persona correspondiente y antes de que caduque.</p><code>{invite}</code></section>}
+      {invite && <section className="superadmin-invite"><strong>Enlace temporal creado{invite.email ? ` · ${invite.email}` : ''}{invite.tenantName ? ` · ${invite.tenantName}` : ''}</strong><p>No se envía ningún correo automáticamente: compártelo solo con esa persona por un canal seguro{invite.expiresAt ? ` antes del ${new Date(invite.expiresAt).toLocaleDateString('es-MX')}` : ' antes de que caduque'}.</p><code>{invite.url}</code></section>}
       <section className="superadmin-card">
         <div className="section-heading"><div><span className="section-kicker">CARTERA ACTIVA</span><h3>Empresas registradas</h3></div><p>{data ? `${data.tenants.length} empresa(s) gestionada(s)` : 'Cargando información…'}</p></div>
-        {!data ? <div className="superadmin-loading">Cargando panel…</div> : <div className="tenant-table-wrap"><table className="tenant-table"><thead><tr><th>Empresa</th><th>Estado</th><th>Contrato</th><th>Consumo</th><th>Gestión</th></tr></thead><tbody>{data.tenants.map((tenant) => <tr key={tenant.id}><td><strong>{tenant.name}</strong><small>{tenant.subdomain}</small></td><td><span className={`status-pill ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span></td><td>{tenant.subscription ? <><strong>{tenant.subscription.plan}</strong><small>{tenant.subscription.currency} {tenant.subscription.unit_amount} / mes</small><select onChange={(event) => changePlan(tenant, event.target.value)} defaultValue=""><option value="" disabled>Cambiar plan…</option>{plans.filter((plan) => plan.is_active).map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</select></> : <span className="muted">Sin suscripción</span>}</td><td><strong>{formatBytes(tenant.usage.storage_bytes)}</strong><small>{tenant.usage.seats} seats · {tenant.usage.active_publications} publicaciones</small></td><td><div className="tenant-actions"><button className="secondary-action" onClick={() => toggle(tenant)}>{tenant.status === 'active' ? 'Suspender' : 'Reactivar'}</button><button className="link-action" onClick={() => loadMembers(tenant)}>Miembros</button><div className="invite-inline"><input type="email" placeholder="owner@empresa.com" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /><button className="link-action" onClick={() => inviteOwner(tenant)}>Invitar owner</button></div></div></td></tr>)}</tbody></table></div>}
+        {!data ? <div className="superadmin-loading">Cargando panel…</div> : <div className="tenant-table-wrap"><table className="tenant-table"><thead><tr><th>Empresa</th><th>Estado</th><th>Contrato</th><th>Consumo</th><th>Gestión</th></tr></thead><tbody>{data.tenants.map((tenant) => <tr key={tenant.id}><td><strong>{tenant.name}</strong><small>{tenant.subdomain}</small></td><td><span className={`status-pill ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span></td><td>{tenant.subscription ? <><strong>{tenant.subscription.plan}</strong><small>{tenant.subscription.currency} {tenant.subscription.unit_amount} / mes</small><select onChange={(event) => changePlan(tenant, event.target.value)} defaultValue=""><option value="" disabled>Cambiar plan…</option>{plans.filter((plan) => plan.is_active).map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</select></> : <span className="muted">Sin suscripción</span>}</td><td><strong>{formatBytes(tenant.usage.storage_bytes)}</strong><small>{tenant.usage.seats} seats · {tenant.usage.active_publications} publicaciones</small></td><td><div className="tenant-actions"><button className="secondary-action" onClick={() => toggle(tenant)}>{tenant.status === 'active' ? 'Suspender' : 'Reactivar'}</button><button className="link-action" onClick={() => loadMembers(tenant)}>Miembros</button><div className="invite-inline"><input type="email" placeholder="owner@empresa.com" value={ownerEmails[tenant.id] || ''} onChange={(event) => { const value = event.target.value; setOwnerEmails((prev) => ({ ...prev, [tenant.id]: value })); }} /><button className="link-action" onClick={() => inviteOwner(tenant)}>Invitar owner</button></div></div></td></tr>)}</tbody></table></div>}
       </section>
       {members && <section className="superadmin-card"><div className="section-heading"><h3>Miembros · {members.tenant.name}</h3><button className="link-action" onClick={() => setMembers(null)}>Cerrar</button></div>{members.rows.map((member) => <div className="invite-inline" key={member.id}><span>{member.email} · {member.role} · {member.status}</span>{member.status !== 'revoked' && <><button className="link-action" onClick={() => resetPassword(member)}>Restablecer contraseña</button><button className="secondary-action" onClick={() => revoke(member.id)}>Revocar</button></>}</div>)}</section>}
     </main>
