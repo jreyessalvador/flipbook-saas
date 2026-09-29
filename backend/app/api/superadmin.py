@@ -91,7 +91,7 @@ def create_password_reset(user_id: str, current_user: User = Depends(require_sup
     if not user: raise HTTPException(status_code=404,detail="Usuario no encontrado")
     raw=secrets.token_urlsafe(32); db.query(PasswordResetToken).filter(PasswordResetToken.user_id==user.id,PasswordResetToken.used_at.is_(None)).update({"used_at":datetime.now(timezone.utc)})
     db.add(PasswordResetToken(user_id=user.id,token_hash=hashlib.sha256(raw.encode()).hexdigest(),expires_at=datetime.now(timezone.utc)+timedelta(hours=2),requested_by=current_user.id)); audit(db,current_user,"password_reset.created",entity_type="user",entity_id=user.id,details={"email":user.email}); db.commit()
-    email_sent = mailer.send_password_reset(user.email, raw, minutes_valid=120)
+    email_sent = mailer.delivered(mailer.send_password_reset(user.email, raw, minutes_valid=120))
     # El token se sigue devolviendo al Super Admin como respaldo (si el correo falla).
     return {"email":user.email,"reset_token":raw,"expires_in_minutes":120,"email_sent":email_sent}
 
@@ -149,7 +149,7 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
     db.commit()
     # L9: se envia por correo; el token se sigue devolviendo al Super Admin
     # como respaldo por si el correo no sale (o no esta configurado).
-    email_sent = mailer.send_invitation(user.email, raw_token, tenant.name, "owner", current_user.full_name or None)
+    email_sent = mailer.delivered(mailer.send_invitation(user.email, raw_token, tenant.name, "owner", current_user.full_name or None))
     return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token, "email_sent": email_sent}
 
 @router.post("/invitations/accept")

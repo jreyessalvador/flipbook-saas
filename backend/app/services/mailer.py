@@ -47,6 +47,12 @@ def is_configured() -> bool:
     return bool(settings.SMTP_HOST)
 
 
+def delivered(ok: bool) -> bool:
+    """True solo si el correo salio DE VERDAD (en dry-run nadie lo recibe:
+    los endpoints devuelven entonces el enlace como si hubiera fallado)."""
+    return bool(ok) and not settings.MAIL_DRY_RUN
+
+
 def public_url(path: str) -> str:
     base = (settings.APP_PUBLIC_URL or "").rstrip("/")
     return f"{base}{path}"

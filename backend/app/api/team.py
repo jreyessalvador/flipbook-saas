@@ -95,8 +95,8 @@ def _deliver_invite(db, email, raw, tenant_id, role_code, actor):
     el token solo viaja al cliente si el correo NO salio (respaldo)."""
     from app.models.tenant import Tenant
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    sent = mailer.send_invitation(email, raw, tenant.name if tenant else "tu empresa", role_code,
-                                  getattr(actor, "full_name", None) or None, days_valid=INVITE_DAYS)
+    sent = mailer.delivered(mailer.send_invitation(email, raw, tenant.name if tenant else "tu empresa", role_code,
+                                                   getattr(actor, "full_name", None) or None, days_valid=INVITE_DAYS))
     return {"email_sent": sent, "invite_token": None if sent else raw}
 
 
