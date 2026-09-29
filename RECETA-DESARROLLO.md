@@ -1945,3 +1945,49 @@ muchos hotspots (y cualquier otro elemento) sin repetir el botón del rail.
   `flipbook-prod-frontend:rollback-pre-ed1`. Verificado `/health` ok, raíz 200 y
   bundle `CanvasEditorV2-*.js` servido con el portapapeles y la etiqueta de hotspot.
   Rollback: `docker tag flipbook-prod-frontend:rollback-pre-ed1 flipbook-prod-frontend:latest && docker compose -f docker-compose.prod.yml up -d --no-build frontend`.
+
+## 19. Lote L9 — correo transaccional por SMTP (29-sep-2026)
+
+Decisión de Carlos: **SMTP de IONOS** con el buzón `no-reply@cetrix.com.mx`
+(no Resend). `cetrix.com.mx` ya tenía SPF `include:_spf-us.ionos.com`, DKIM
+IONOS (`s1-ionos`/`s2-ionos._domainkey`) y DMARC `p=none` → no hubo que tocar
+DNS. Contabo 1 alcanza `smtp.ionos.mx` en 587/465/25. El código es SMTP
+genérico: cambiar a Resend u otro = cambiar `SMTP_*`/`MAIL_FROM` en `.env`.
+
+- **`backend/app/services/mailer.py`**: smtplib (STARTTLS/SSL/none), timeout 20 s,
+  1 reintento en errores transitorios (no en auth/destinatario rechazado),
+  nunca lanza excepción, log `app.mailer` sin contraseña ni tokens (email
+  enmascarado). Plantilla HTML azul marino/dorado + texto plano, `Message-ID`,
+  `Auto-Submitted`. `MAIL_DRY_RUN=true` escribe el correo en el log.
+  `delivered(ok)` = salió de verdad (False en dry-run).
+- **Variables** (`config.py`, compose dev/prod, `.env*.example`): `SMTP_HOST`,
+  `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `MAIL_FROM`,
+  `MAIL_REPLY_TO`, `MAIL_DRY_RUN`, `APP_PUBLIC_URL` (base de los enlaces).
+  DEV: `MAIL_DRY_RUN=true`. PROD: `smtp.ionos.mx:587` starttls.
+  **`SMTP_PASSWORD` solo en el `.env` del servidor, entre comillas simples**
+  (compose interpola `$` si no).
+- **Dónde se envía**: invitación de owner (Super Admin), invitación y reenvío
+  de equipo, restablecer contraseña desde Super Admin, y el nuevo
+  **«¿Olvidaste tu contraseña?»** (`POST /api/auth/password-reset/request`,
+  página `/recuperar-contrasena`, enlace en Login): respuesta 202 idéntica
+  exista o no la cuenta; solo cuentas activas con contraseña propia; máx.
+  1 correo / 5 min por cuenta; enlace 2 h, un uso; invalida los anteriores.
+- **Respuestas**: equipo → `email_sent`; `invite_token` solo si el correo NO
+  salió (respaldo). Super Admin → `email_sent` y conserva siempre el enlace.
+- **Fixes incluidos**: (1) Super Admin: correo de «Invitar owner» independiente
+  por empresa (antes un único estado compartido; solo visual), confirmación
+  con email+empresa, aviso con destinatario/empresa/caducidad. (2) Invitar
+  como owner a una cuenta **ya activa** la dejaba en `invited` (y aceptar
+  rechaza cuentas activas → perdía el acceso): ahora asigna owner directo
+  (`already_active: true`), sin invitación ni correo.
+- **QA**: `backend/tests/qa_lote_l9_correo.py` 18/18 PASS (SMTP falso local,
+  dry-run, fallo de red, APIs, recuperar contraseña); regresión aislamiento
+  26, RBAC 37/37, L4 32/32 PASS.
+- **PRODUCCIÓN (29-sep-2026, pedido de Carlos)**: `redesign/editor-v2` @
+  `bc28e82`, `up -d --build backend pdf-worker frontend` (sin migración).
+  Respaldo `~/backups/flipbook-prod-pre-l9-2026-09-29-1408.dump` y `.env` previo
+  `~/backups/flipbook-prod-env-pre-l9-2026-09-29-1408`; rollback
+  `flipbook-prod-{backend,frontend}:rollback-pre-l9` (backend = `docker commit`
+  del contenedor en marcha: su imagen original ya no existía como tag).
+  Verificado `/health`, STARTTLS con smtp.ionos.mx OK, `/recuperar-contrasena`
+  200. **Pendiente: Carlos pone `SMTP_PASSWORD` y recrea el backend.**

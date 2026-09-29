@@ -42,7 +42,7 @@
 | 4 | **PDF → hotspots** (enlaces del PDF importado) | Aprovecha FLIP-3 (brillo en hotspots) | No | S |
 | 5 | **L6** Estadísticas sin cookies + `views_count` | Da datos reales para la web comercial | Sí (0013) | M |
 | 6 | **L8** UI de categorías en Super Admin | API ya existe; solo falta pantalla | No | S |
-| 7 | **L9** Correo con Resend (invitaciones y restablecer contraseña) | Bloqueado: Carlos verifica dominio y da la clave | No | S |
+| 7 | **L9** Correo (SMTP IONOS no-reply@cetrix.com.mx) | ✅ EN PRODUCCIÓN 29-sep-2026 (RECETA §19) | No | S |
 | 8 | **Web profesional** (landing) | Sigue el Claude Doc «Propuesta web Cetrix Revistas» | No | L |
 
 ---
