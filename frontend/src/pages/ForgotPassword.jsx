@@ -44,7 +44,7 @@ export default function ForgotPassword() {
             <button className="btn-primary" disabled={busy}>{busy ? 'Enviando…' : 'Enviar enlace'}</button>
           </form>
         )}
-        <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.9rem' }}><Link to="/login">Volver a iniciar sesión</Link></p>
+        <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.9rem' }}><Link to="/?acceso=1">Volver a iniciar sesión</Link></p>
       </section>
     </main>
   );

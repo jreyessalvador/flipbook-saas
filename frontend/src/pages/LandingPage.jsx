@@ -15,7 +15,9 @@ const LandingPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get('categoria') || '';
   const [loading, setLoading] = useState(true);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  // ?acceso=1 abre directamente el modal de acceso (enlaces de vuelta desde
+  // recuperar/restablecer contraseña).
+  const [showLoginModal, setShowLoginModal] = useState(() => searchParams.get('acceso') === '1');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -412,6 +414,11 @@ const LandingPage = () => {
                 {isSubmitting ? 'Iniciando Sesión...' : 'Ingresar'}
               </button>
             </form>
+            <p style={{ textAlign: 'center', marginTop: '1.1rem', fontSize: '0.9rem' }}>
+              <Link to="/recuperar-contrasena" onClick={() => setShowLoginModal(false)} style={{ color: 'var(--color-gold, #c9a24b)' }}>
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </p>
           </div>
         </div>
       )}
