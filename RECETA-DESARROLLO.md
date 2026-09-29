@@ -1902,3 +1902,40 @@ Pedido de Carlos con vídeo de referencia: al llegar a una hoja, los hotspots (i
 ## 18. Siguientes lotes — plan para otra sesión (28-sep-2026)
 
 Ver **`docs/PLAN-SIGUIENTES-LOTES.md`**: checklist de arranque, flujo DEV → validación → PROD, orden recomendado (L5 → L7a → estantería → PDF→hotspots → L6 → L8 → L9 → web comercial) y especificación de cada lote con criterios de aceptación. Nada de ese plan está implementado aún.
+
+## 18. Lote ED-1 — hotspots visibles en el editor + portapapeles (29-sep-2026)
+
+Pedido de Carlos: (1) en la vista de edición el hotspot no se distinguía sobre
+contenido (cian 12 % + borde fino); (2) copiar/pegar elementos para colocar
+muchos hotspots (y cualquier otro elemento) sin repetir el botón del rail.
+
+- **Hotspot en el editor** (`HotspotElement`, solo `canEdit`): relleno magenta
+  `rgba(219,39,119,.28)`, trazo blanco sólido 4 px + trazo magenta discontinuo
+  encima (contrasta en fondos claros y oscuros) y etiqueta sólida
+  `HOTSPOT · <acción>`; en ámbar `⚠ HOTSPOT sin destino` si la acción es
+  "Ir a página" sin página elegida. El visor público NO cambia (sigue
+  transparente + brillo FLIP-3).
+- **Portapapeles** (`CanvasEditorV2.jsx`, helpers de módulo + `pasteElements`
+  en `pageEditorStore.js`): Ctrl/Cmd+C copia, X corta, V pega, D duplica;
+  botones Copiar / Pegar (n) / Duplicar en la barra. Todos los tipos de
+  elemento (imagen, texto, figura, audio, vídeo, galería/slider, embed,
+  hotspot). Actúa sobre la página enfocada del spread.
+  - Memoria de módulo + `localStorage` (`cetrix-revistas-editor-clipboard-v1`,
+    TTL 12 h): sobrevive a cambiar de hoja y permite pegar en otra
+    edición/pestaña. Solo definiciones de elementos (las URLs de assets ya
+    subidos se reutilizan), nunca binarios.
+  - Posición: en la misma hoja de origen se desplaza 16 px por pegado; en otra
+    hoja el primer pegado conserva la posición exacta y los siguientes se
+    escalonan. Siempre se recorta dentro de la página. Los pegados quedan
+    seleccionados y por encima de todas las capas, respetando su orden relativo.
+  - Pegar un elemento bloqueado lo pega desbloqueado. Pegar hotspots "Ir a
+    página" en OTRA edición limpia `target_page_id` (y avisa).
+  - Atajos ignorados mientras el foco está en input/textarea/select (panel,
+    edición inline de texto); si hay texto seleccionado fuera del lienzo,
+    Ctrl+C conserva la copia nativa.
+- **Verificación**: `vite build` OK; prueba unitaria
+  `frontend/tests/unit_ed1_clipboard.mjs` (clonado sin id, desplazamiento y
+  recorte, desbloqueo, limpieza de destino entre ediciones, orden z, ids
+  temporales, aislamiento de mutaciones) PASS. DEV Contabo 1 en rama
+  `feat/editor-clipboard-hotspot` (Vite dev con HMR). Pendiente validación
+  visual de Carlos en DEV antes de PROD (solo `up -d --build frontend`).
