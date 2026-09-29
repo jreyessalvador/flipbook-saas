@@ -45,14 +45,20 @@ r = mailer.send_invitation("dest@example.com", "TOK123", "Destinos & Negocios", 
 time.sleep(0.5)
 ok(r is True and len(received) == 1, f"envio SMTP real al servidor falso ({r}, {len(received)})")
 if received:
-    raw = received[0][2].decode("utf-8", "replace")
+    import email as _em
+    def _flat(b):
+        m = _em.message_from_bytes(b); out = [str(m)]
+        for part in m.walk():
+            if part.get_content_maintype() == "text": out.append(part.get_payload(decode=True).decode("utf-8", "replace"))
+        return "\n".join(out)
+    raw = _flat(received[0][2])
     ok(received[0][1] == ["dest@example.com"], "destinatario correcto")
     ok("https://revistas.example/aceptar-invitacion?token=TOK123" in raw, "enlace de invitacion con APP_PUBLIC_URL")
     ok("multipart/alternative" in raw and "text/html" in raw and "text/plain" in raw, "HTML + texto plano")
     ok("Destinos &amp; Negocios" in raw or "Destinos =26 Negocios" in raw or "Destinos &amp;amp;" not in raw, "nombre de empresa escapado en HTML")
     ok("Message-ID:" in raw and "Auto-Submitted: auto-generated" in raw, "cabeceras Message-ID y Auto-Submitted")
 r2 = mailer.send_password_reset("dest@example.com", "RST9", 120); time.sleep(0.5)
-ok(r2 and "restablecer-contrasena?token=RST9" in received[-1][2].decode("utf-8","replace"), "correo de restablecer con enlace")
+ok(r2 and "restablecer-contrasena?token=RST9" in _flat(received[-1][2]), "correo de restablecer con enlace")
 settings.SMTP_PORT, settings.SMTP_TIMEOUT = 2599, 3
 t0 = time.time(); r3 = mailer.send_invitation("x@example.com", "T", "E", "editor", None)
 ok(r3 is False and time.time() - t0 < 15, f"servidor caido -> False sin excepcion ({time.time()-t0:.1f}s)")
@@ -71,8 +77,18 @@ ok(st == 200 and "email_sent" in rs and rs.get("invite_token"), f"reenvio devuel
 st, _ = call("DELETE", f"/api/team/members/{inv['membership_id']}", OW)
 st, ov = call("GET", "/api/superadmin/overview", SA)
 demo = [t for t in ov["tenants"] if t["subdomain"] == "empresa-demo"][0]
-st, oi = call("POST", f"/api/superadmin/tenants/{demo['id']}/owner-invitations", SA, {"email": "owner.demo@example.com"})
-ok(st in (201, 409) and (st == 409 or ("email_sent" in oi and oi.get("invite_token"))), f"owner-invitation incluye email_sent y conserva enlace ({st})")
+ne = f"qa9.owner.{secrets.token_hex(3)}@example.com"
+st, oi = call("POST", f"/api/superadmin/tenants/{demo['id']}/owner-invitations", SA, {"email": ne})
+ok(st == 201 and "email_sent" in oi and oi.get("invite_token"), f"owner-invitation (cuenta nueva) incluye email_sent y conserva enlace ({st})")
+st, oa = call("POST", f"/api/superadmin/tenants/{demo['id']}/owner-invitations", SA, {"email": "owner.demo@example.com"})
+st2, me = call("GET", "/api/auth/me", OW)
+ok(st == 201 and oa.get("already_active") and me.get("tenant_role") == "owner", f"invitar a cuenta YA activa no la bloquea: rol owner directo ({st}, {me.get('tenant_role')})")
+from app.db.session import SessionLocal as _SL
+from app.models.user import User as _U
+from app.models.commercial import TenantMembership as _TM
+_d = _SL(); _u = _d.query(_U).filter(_U.email == ne).first()
+if _u: _d.query(_TM).filter(_TM.user_id == _u.id).delete(); _d.delete(_u); _d.commit()
+_d.close()
 
 # --- 3. ¿Olvidaste tu contraseña? --------------------------------------------
 from app.db.session import SessionLocal

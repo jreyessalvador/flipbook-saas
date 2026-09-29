@@ -138,6 +138,21 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
     owner_role = db.query(Role).filter(Role.scope == "tenant", Role.code == "owner").first()
     if not owner_role: raise HTTPException(status_code=500, detail="Roles base no inicializados")
     membership = db.query(TenantMembership).filter(TenantMembership.tenant_id == tenant.id, TenantMembership.user_id == user.id).first()
+    # Fix L9 (29-sep-2026): antes, "invitar" a una cuenta YA ACTIVA la dejaba
+    # en estado 'invited' (y /invitations/accept la rechaza por estar activa):
+    # la persona perdia el acceso a su empresa. Ahora a una cuenta activa solo
+    # se le asigna el rol owner directamente, sin invitacion ni correo.
+    if user.is_active and user.password_hash and not user.password_hash.startswith("!"):
+        if not membership:
+            membership = TenantMembership(tenant_id=tenant.id, user_id=user.id, role_id=owner_role.id)
+            db.add(membership)
+        membership.role_id, membership.status = owner_role.id, "active"
+        membership.accepted_at = membership.accepted_at or datetime.now(timezone.utc)
+        membership.invite_token_hash, membership.revoked_at = None, None
+        db.flush()
+        audit(db, current_user, "membership.owner_assigned", tenant.id, "membership", membership.id, {"email": user.email})
+        db.commit()
+        return {"email": user.email, "already_active": True, "email_sent": False, "invite_token": None, "expires_at": None}
     raw_token = secrets.token_urlsafe(32)
     if not membership:
         membership = TenantMembership(tenant_id=tenant.id, user_id=user.id, role_id=owner_role.id)

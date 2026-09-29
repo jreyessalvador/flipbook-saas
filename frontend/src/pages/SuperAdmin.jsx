@@ -64,6 +64,12 @@ export default function SuperAdmin() {
     try {
       setError('');
       const response = await api.post(`/api/superadmin/tenants/${tenant.id}/owner-invitations`, { email });
+      if (response.data.already_active) {
+        setInvite(null);
+        setOwnerEmails((prev) => ({ ...prev, [tenant.id]: '' }));
+        window.alert(`${response.data.email} ya tenía cuenta activa: se le asignó el rol de propietario en "${tenant.name}". Puede entrar con su contraseña de siempre.`);
+        return;
+      }
       setInvite({
         url: `${window.location.origin}/aceptar-invitacion?token=${response.data.invite_token}`,
         email: response.data.email,
