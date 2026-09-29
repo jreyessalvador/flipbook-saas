@@ -1937,5 +1937,11 @@ muchos hotspots (y cualquier otro elemento) sin repetir el botón del rail.
   `frontend/tests/unit_ed1_clipboard.mjs` (clonado sin id, desplazamiento y
   recorte, desbloqueo, limpieza de destino entre ediciones, orden z, ids
   temporales, aislamiento de mutaciones) PASS. DEV Contabo 1 en rama
-  `feat/editor-clipboard-hotspot` (Vite dev con HMR). Pendiente validación
-  visual de Carlos en DEV antes de PROD (solo `up -d --build frontend`).
+  `feat/editor-clipboard-hotspot` (Vite dev con HMR). Carlos validó en DEV
+  (hotspots copiados/pegados en la misma hoja) el 29-sep-2026.
+- **PRODUCCIÓN (29-sep-2026, aprobado por Carlos)**: merge ff `42389e5` a
+  `redesign/editor-v2`, solo `up -d --build frontend` (sin migración ni backend);
+  respaldo `~/backups/flipbook-prod-pre-ed1-2026-09-29-1053.dump`, rollback
+  `flipbook-prod-frontend:rollback-pre-ed1`. Verificado `/health` ok, raíz 200 y
+  bundle `CanvasEditorV2-*.js` servido con el portapapeles y la etiqueta de hotspot.
+  Rollback: `docker tag flipbook-prod-frontend:rollback-pre-ed1 flipbook-prod-frontend:latest && docker compose -f docker-compose.prod.yml up -d --no-build frontend`.
