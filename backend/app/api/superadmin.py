@@ -13,6 +13,7 @@ from app.models.commercial import TenantMembership
 from app.models.audit_log import AuditLog
 from app.models.password_reset_token import PasswordResetToken
 from app.core.security import get_password_hash
+from app.services import mailer
 
 router = APIRouter()
 def audit(db, actor, action, tenant_id=None, entity_type="tenant", entity_id=None, details=None):
@@ -90,7 +91,9 @@ def create_password_reset(user_id: str, current_user: User = Depends(require_sup
     if not user: raise HTTPException(status_code=404,detail="Usuario no encontrado")
     raw=secrets.token_urlsafe(32); db.query(PasswordResetToken).filter(PasswordResetToken.user_id==user.id,PasswordResetToken.used_at.is_(None)).update({"used_at":datetime.now(timezone.utc)})
     db.add(PasswordResetToken(user_id=user.id,token_hash=hashlib.sha256(raw.encode()).hexdigest(),expires_at=datetime.now(timezone.utc)+timedelta(hours=2),requested_by=current_user.id)); audit(db,current_user,"password_reset.created",entity_type="user",entity_id=user.id,details={"email":user.email}); db.commit()
-    return {"email":user.email,"reset_token":raw,"expires_in_minutes":120}
+    email_sent = mailer.send_password_reset(user.email, raw, minutes_valid=120)
+    # El token se sigue devolviendo al Super Admin como respaldo (si el correo falla).
+    return {"email":user.email,"reset_token":raw,"expires_in_minutes":120,"email_sent":email_sent}
 
 @router.post("/tenants", status_code=status.HTTP_201_CREATED)
 def create_tenant(data: TenantCreateRequest, current_user: User = Depends(require_superadmin), db: Session = Depends(get_db)):
@@ -144,8 +147,10 @@ def invite_owner(tenant_id: str, data: OwnerInviteRequest, current_user: User = 
     membership.invite_expires_at, membership.accepted_at, membership.revoked_at = datetime.now(timezone.utc) + timedelta(days=7), None, None
     audit(db, current_user, "membership.owner_invited", tenant.id, "membership", membership.id, {"email": user.email})
     db.commit()
-    # El token solo se devuelve ahora para que el panel lo entregue por canal seguro.
-    return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token}
+    # L9: se envia por correo; el token se sigue devolviendo al Super Admin
+    # como respaldo por si el correo no sale (o no esta configurado).
+    email_sent = mailer.send_invitation(user.email, raw_token, tenant.name, "owner", current_user.full_name or None)
+    return {"email": user.email, "expires_at": membership.invite_expires_at, "invite_token": raw_token, "email_sent": email_sent}
 
 @router.post("/invitations/accept")
 def accept_invitation(data: InviteAcceptRequest, db: Session = Depends(get_db)):

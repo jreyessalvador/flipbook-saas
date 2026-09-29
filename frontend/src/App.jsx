@@ -17,6 +17,7 @@ const PublicCollection = lazy(() => import('./pages/PublicCollection'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />
+          <Route path="/recuperar-contrasena" element={<ForgotPassword />} />
           <Route path="/team" element={<ProtectedRoute><><Navbar /><Team /></></ProtectedRoute>} />
           <Route path="/superadmin" element={<ProtectedRoute><><Navbar /><SuperAdmin /></></ProtectedRoute>} />
 

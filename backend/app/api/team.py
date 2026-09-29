@@ -6,8 +6,8 @@ owner/admin de cada empresa gestiona su equipo dentro de su ambito:
 - respeta ``max_seats`` del plan (miembros activos + invitados);
 - admin solo gestiona editor/reviewer/reader; owner tambien admin;
 - nadie puede tocar al propietario ni a si mismo desde aqui.
-Sin SMTP todavia: la API devuelve el enlace de invitacion para entregarlo
-por canal seguro (mismo patron que el panel Super Admin).
+L9 (29-sep-2026): la invitacion se envia por correo. Solo si el correo NO
+sale se devuelve el enlace (invite_token) para entregarlo por canal seguro.
 """
 import hashlib
 import secrets
@@ -18,6 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.rbac import ROLE_RANK, require_role, role_rank
+from app.services import mailer
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
 from app.models.commercial import Role, TenantMembership, TenantSubscription
@@ -89,6 +90,16 @@ def _new_invite_token(membership, actor):
     return raw
 
 
+def _deliver_invite(db, email, raw, tenant_id, role_code, actor):
+    """Envia la invitacion por correo. Devuelve el payload comun de respuesta:
+    el token solo viaja al cliente si el correo NO salio (respaldo)."""
+    from app.models.tenant import Tenant
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    sent = mailer.send_invitation(email, raw, tenant.name if tenant else "tu empresa", role_code,
+                                  getattr(actor, "full_name", None) or None, days_valid=INVITE_DAYS)
+    return {"email_sent": sent, "invite_token": None if sent else raw}
+
+
 @router.get("/members")
 def list_members(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     tenant_id = current_user.effective_tenant_id
@@ -151,7 +162,8 @@ def invite_member(data: InviteRequest, db: Session = Depends(get_db), current_us
     _audit(db, current_user, "team.invited", tenant_id, membership.id, {"email": email, "role": data.role})
     db.commit()
     return {"membership_id": str(membership.id), "email": email, "role": data.role,
-            "invite_token": raw, "expires_at": membership.invite_expires_at}
+            "expires_at": membership.invite_expires_at,
+            **_deliver_invite(db, email, raw, tenant_id, data.role, current_user)}
 
 
 @router.post("/members/{membership_id}/resend")
@@ -164,7 +176,8 @@ def resend_invite(membership_id: str, db: Session = Depends(get_db), current_use
     raw = _new_invite_token(m, current_user)
     _audit(db, current_user, "team.invite_resent", m.tenant_id, m.id, {"email": u.email})
     db.commit()
-    return {"email": u.email, "invite_token": raw, "expires_at": m.invite_expires_at}
+    return {"email": u.email, "expires_at": m.invite_expires_at,
+            **_deliver_invite(db, u.email, raw, m.tenant_id, r.code, current_user)}
 
 
 @router.patch("/members/{membership_id}")

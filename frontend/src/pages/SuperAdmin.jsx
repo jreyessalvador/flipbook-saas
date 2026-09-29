@@ -69,6 +69,8 @@ export default function SuperAdmin() {
         email: response.data.email,
         tenantName: tenant.name,
         expiresAt: response.data.expires_at,
+        emailSent: !!response.data.email_sent,
+        kind: 'invite',
       });
       setOwnerEmails((prev) => ({ ...prev, [tenant.id]: '' }));
     } catch (requestError) {
@@ -95,7 +97,7 @@ export default function SuperAdmin() {
   const resetPassword = async (member) => {
     try {
       const response = await api.post(`/api/superadmin/users/${member.user_id}/password-reset`);
-      setInvite({ url: `${window.location.origin}/restablecer-contrasena?token=${response.data.reset_token}`, email: member.email, tenantName: members?.tenant?.name });
+      setInvite({ url: `${window.location.origin}/restablecer-contrasena?token=${response.data.reset_token}`, email: member.email, tenantName: members?.tenant?.name, emailSent: !!response.data.email_sent, kind: 'reset' });
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'No se pudo crear el enlace de restablecimiento');
     }
@@ -124,7 +126,7 @@ export default function SuperAdmin() {
           <button className="primary-action" type="submit">Crear empresa</button>
         </form>
       </section>
-      {invite && <section className="superadmin-invite"><strong>Enlace temporal creado{invite.email ? ` · ${invite.email}` : ''}{invite.tenantName ? ` · ${invite.tenantName}` : ''}</strong><p>No se envía ningún correo automáticamente: compártelo solo con esa persona por un canal seguro{invite.expiresAt ? ` antes del ${new Date(invite.expiresAt).toLocaleDateString('es-MX')}` : ' antes de que caduque'}.</p><code>{invite.url}</code></section>}
+      {invite && <section className="superadmin-invite"><strong>{invite.kind === 'reset' ? 'Restablecer contraseña' : 'Invitación de owner'}{invite.email ? ` · ${invite.email}` : ''}{invite.tenantName ? ` · ${invite.tenantName}` : ''}</strong><p>{invite.emailSent ? `✅ Correo enviado a ${invite.email}. Si no le llega (revisar spam), compártele este mismo enlace por un canal seguro` : '⚠ No se pudo enviar el correo: compártele este enlace solo a esa persona por un canal seguro'}{invite.expiresAt ? ` antes del ${new Date(invite.expiresAt).toLocaleDateString('es-MX')}` : (invite.kind === 'reset' ? ' (caduca en 2 horas)' : ' antes de que caduque')}.</p><code>{invite.url}</code><p><button className="link-action" onClick={() => setInvite(null)}>Cerrar</button></p></section>}
       <section className="superadmin-card">
         <div className="section-heading"><div><span className="section-kicker">CARTERA ACTIVA</span><h3>Empresas registradas</h3></div><p>{data ? `${data.tenants.length} empresa(s) gestionada(s)` : 'Cargando información…'}</p></div>
         {!data ? <div className="superadmin-loading">Cargando panel…</div> : <div className="tenant-table-wrap"><table className="tenant-table"><thead><tr><th>Empresa</th><th>Estado</th><th>Contrato</th><th>Consumo</th><th>Gestión</th></tr></thead><tbody>{data.tenants.map((tenant) => <tr key={tenant.id}><td><strong>{tenant.name}</strong><small>{tenant.subdomain}</small></td><td><span className={`status-pill ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span></td><td>{tenant.subscription ? <><strong>{tenant.subscription.plan}</strong><small>{tenant.subscription.currency} {tenant.subscription.unit_amount} / mes</small><select onChange={(event) => changePlan(tenant, event.target.value)} defaultValue=""><option value="" disabled>Cambiar plan…</option>{plans.filter((plan) => plan.is_active).map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</select></> : <span className="muted">Sin suscripción</span>}</td><td><strong>{formatBytes(tenant.usage.storage_bytes)}</strong><small>{tenant.usage.seats} seats · {tenant.usage.active_publications} publicaciones</small></td><td><div className="tenant-actions"><button className="secondary-action" onClick={() => toggle(tenant)}>{tenant.status === 'active' ? 'Suspender' : 'Reactivar'}</button><button className="link-action" onClick={() => loadMembers(tenant)}>Miembros</button><div className="invite-inline"><input type="email" placeholder="owner@empresa.com" value={ownerEmails[tenant.id] || ''} onChange={(event) => { const value = event.target.value; setOwnerEmails((prev) => ({ ...prev, [tenant.id]: value })); }} /><button className="link-action" onClick={() => inviteOwner(tenant)}>Invitar owner</button></div></div></td></tr>)}</tbody></table></div>}

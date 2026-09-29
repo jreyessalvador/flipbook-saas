@@ -39,7 +39,7 @@ const Team = () => {
     try {
       const res = (await api.post('/api/team/invitations', form)).data;
       setForm(null);
-      setLink({ email: res.email, url: inviteLink(res.invite_token) });
+      setLink({ email: res.email, url: res.invite_token ? inviteLink(res.invite_token) : null, emailSent: !!res.email_sent });
       await load();
     } catch (err) {
       alert(err?.response?.data?.detail || 'No se pudo invitar');
@@ -49,8 +49,8 @@ const Team = () => {
   const resend = async (m) => {
     try {
       const res = (await api.post(`/api/team/members/${m.id}/resend`)).data;
-      setLink({ email: res.email, url: inviteLink(res.invite_token) });
-    } catch (err) { alert(err?.response?.data?.detail || 'No se pudo generar el enlace'); }
+      setLink({ email: res.email, url: res.invite_token ? inviteLink(res.invite_token) : null, emailSent: !!res.email_sent });
+    } catch (err) { alert(err?.response?.data?.detail || 'No se pudo reenviar la invitación'); }
   };
 
   const changeRole = async (m, role) => {
@@ -146,12 +146,18 @@ const Team = () => {
       {link && (
         <div className="modal-overlay" onClick={() => setLink(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Enlace de invitación</h3>
-            <p className="collections-subtitle">Envíaselo a <strong>{link.email}</strong> por un canal de confianza. Caduca en 7 días y solo sirve una vez; con él define su propia contraseña.</p>
-            <div className="share-url-row" style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
-              <input type="text" readOnly value={link.url} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 0, padding: '10px 12px' }} />
-              <button type="button" className="btn-primary" onClick={copy}>{copied ? '¡Copiado!' : 'Copiar'}</button>
-            </div>
+            <h3>{link.emailSent ? 'Invitación enviada' : 'Enlace de invitación'}</h3>
+            {link.emailSent ? (
+              <p className="collections-subtitle">Hemos enviado la invitación por correo a <strong>{link.email}</strong>. El enlace caduca en 7 días y solo sirve una vez; con él define su propia contraseña. Si no la encuentra, que revise la carpeta de spam o usa «Reenviar».</p>
+            ) : (
+              <>
+                <p className="collections-subtitle">No se pudo enviar el correo. Envíale este enlace a <strong>{link.email}</strong> por un canal de confianza. Caduca en 7 días y solo sirve una vez; con él define su propia contraseña.</p>
+                <div className="share-url-row" style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
+                  <input type="text" readOnly value={link.url || ''} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 0, padding: '10px 12px' }} />
+                  <button type="button" className="btn-primary" onClick={copy}>{copied ? '¡Copiado!' : 'Copiar'}</button>
+                </div>
+              </>
+            )}
             <div className="modal-actions"><button type="button" className="btn-secondary" onClick={() => setLink(null)}>Cerrar</button></div>
           </div>
         </div>

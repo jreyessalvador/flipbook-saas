@@ -3,7 +3,9 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import logging
+import secrets
 import hashlib
 import uuid
 
@@ -12,9 +14,14 @@ from app.models.user import User
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.config import settings
+from app.services import mailer
 from app.models.password_reset_token import PasswordResetToken
 
 router = APIRouter()
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
 
 class PasswordResetConfirm(BaseModel):
     token: str
@@ -155,6 +162,37 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         "acting_as_tenant": current_user.acting_as_tenant,
         "tenant_role": current_user.tenant_role,
     }
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+def request_password_reset(data: PasswordResetRequest, db: Session = Depends(get_db)):
+    """'¿Olvidaste tu contraseña?' (L9). Respuesta SIEMPRE identica, exista o
+    no la cuenta (no permite averiguar que emails estan registrados). Solo
+    cuentas activas con contraseña propia; como mucho un correo cada 5 min
+    por cuenta (anti-abuso). Enlace valido 2 h, un solo uso; al crear uno
+    nuevo se invalidan los anteriores."""
+    generic = {"status": "accepted", "detail": "Si el correo corresponde a una cuenta activa, recibirás un enlace para restablecer la contraseña."}
+    email = (data.email or "").strip().lower()
+    if not email or "@" not in email or len(email) > 255 or not mailer.is_configured():
+        return generic
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active or not user.password_hash or user.password_hash.startswith("!"):
+        return generic
+    now = datetime.now(timezone.utc)
+    recent = db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.created_at > now - timedelta(minutes=5),
+    ).first()
+    if recent:
+        return generic
+    raw = secrets.token_urlsafe(32)
+    db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None)).update({"used_at": now})
+    db.add(PasswordResetToken(user_id=user.id, token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+                              expires_at=now + timedelta(hours=2), requested_by=user.id))
+    db.commit()
+    mailer.send_password_reset(user.email, raw, minutes_valid=120)
+    return generic
+
 
 @router.post("/password-reset/confirm")
 def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get_db)):

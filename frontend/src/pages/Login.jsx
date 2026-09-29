@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
 
 const Login = () => {
@@ -70,6 +70,9 @@ const Login = () => {
           </button>
         </form>
 
+        <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.9rem' }}>
+          <Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link>
+        </p>
       </div>
     </div>
   );

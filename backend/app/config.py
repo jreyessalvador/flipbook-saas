@@ -55,6 +55,23 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = os.getenv("PDF_QUEUE_URL", "redis://pdf-queue:6379/0")
     CELERY_RESULT_BACKEND: str = os.getenv("PDF_QUEUE_URL", "redis://pdf-queue:6379/0")
     
+    # Correo saliente (Lote L9, 29-sep-2026). SMTP generico: hoy buzon
+    # no-reply@cetrix.com.mx de IONOS (smtp.ionos.mx:587 STARTTLS); cambiar a
+    # Resend u otro proveedor es solo cambiar estas variables en .env.
+    # La contraseña NUNCA va en el repo: solo en el .env del servidor.
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587") or 587)
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_SECURITY: str = os.getenv("SMTP_SECURITY", "starttls")  # starttls | ssl | none
+    SMTP_TIMEOUT: int = int(os.getenv("SMTP_TIMEOUT", "20") or 20)
+    MAIL_FROM: str = os.getenv("MAIL_FROM", "")
+    MAIL_REPLY_TO: str = os.getenv("MAIL_REPLY_TO", "")
+    # true = no envia: escribe el correo en el log (DEV / pruebas).
+    MAIL_DRY_RUN: bool = os.getenv("MAIL_DRY_RUN", "false").lower() in ("1", "true", "yes")
+    # URL publica base para los enlaces de los correos (sin barra final).
+    APP_PUBLIC_URL: str = os.getenv("APP_PUBLIC_URL", "")
+
     class Config:
         env_file = ".env"
         case_sensitive = True
