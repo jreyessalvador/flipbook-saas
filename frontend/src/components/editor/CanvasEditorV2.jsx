@@ -1127,6 +1127,68 @@ function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // estrella) -- todas comparten el mismo modelo de datos (x, y, width, height
 // como caja contenedora) para no duplicar el manejo de arrastre/transformar/
 // guardado; solo cambia qué nodo Konva se dibuja dentro de esa caja.
+// ---------------------------------------------------------------------------
+// Portapapeles del editor (Lote ED-1, 29-sep-2026 -- pedido de Carlos: poder
+// copiar/pegar cualquier elemento -- imagen, video, figura, sonido, hotspot,
+// galeria/slider, texto, embed -- en la misma hoja, en otra hoja o en otra
+// edicion). Vive en memoria del modulo (sobrevive a cambiar de pagina, que
+// recrea el estado de los stores) y se replica en localStorage para poder
+// pegar en otra pestaña/edicion. Nunca guarda binarios: solo la definicion
+// del elemento (las URLs de assets ya subidos se reutilizan tal cual).
+// Caduca a las 12 h para no arrastrar portapapeles viejos.
+const EDITOR_CLIPBOARD_KEY = 'cetrix-revistas-editor-clipboard-v1';
+const EDITOR_CLIPBOARD_TTL_MS = 12 * 60 * 60 * 1000;
+const PASTE_OFFSET_PX = 16;
+let editorClipboardMem = null;
+
+function readEditorClipboard() {
+  let clip = editorClipboardMem;
+  if (!clip) {
+    try {
+      const raw = window.localStorage.getItem(EDITOR_CLIPBOARD_KEY);
+      if (raw) clip = JSON.parse(raw);
+    } catch { /* storage bloqueado: solo memoria */ }
+  }
+  if (!clip || !Array.isArray(clip.elements) || clip.elements.length === 0) return null;
+  if (Date.now() - (clip.copiedAt || 0) > EDITOR_CLIPBOARD_TTL_MS) return null;
+  editorClipboardMem = clip;
+  return clip;
+}
+
+function writeEditorClipboard(clip) {
+  editorClipboardMem = clip;
+  try { window.localStorage.setItem(EDITOR_CLIPBOARD_KEY, JSON.stringify(clip)); } catch { /* ignorar */ }
+}
+
+function cloneForClipboard(el) {
+  const { id: _id, ...rest } = el;
+  return JSON.parse(JSON.stringify(rest));
+}
+
+// Prepara los elementos del portapapeles para pegarlos en una pagina:
+// desplaza (para que no queden exactamente encima del original), los
+// mantiene dentro de la pagina y, si vienen de OTRA edicion, limpia el
+// destino de los hotspots "Ir a pagina" (esa pagina no existe aqui).
+function prepareClipboardForPaste(elements, { offset, samePublication, pageW, pageH }) {
+  return elements.map((raw) => {
+    const el = JSON.parse(JSON.stringify(raw));
+    const w = el.width || 0;
+    const h = el.height || 0;
+    el.x = Math.max(0, Math.min((el.x || 0) + offset, Math.max(0, pageW - Math.min(w, pageW))));
+    el.y = Math.max(0, Math.min((el.y || 0) + offset, Math.max(0, pageH - Math.min(h, pageH))));
+    if (el.props?.locked) el.props = { ...el.props, locked: false };
+    if (el.kind === 'hotspot' && !samePublication && el.props?.target_page_id) {
+      el.props = { ...el.props, target_page_id: '' };
+    }
+    return el;
+  });
+}
+
+const HOTSPOT_ACTION_LABELS = {
+  page: 'Ir a página', next: 'Pág. siguiente', previous: 'Pág. anterior', cover: 'Portada',
+  back_cover: 'Contraportada', url: 'Enlace URL', email: 'Correo', phone: 'Teléfono',
+};
+
 function HotspotElement({ el, canEdit, onSelect, onChange, shapeRef, onActivate }) {
   const label = el.props?.tooltip || 'Abrir enlace interactivo';
   if (!canEdit) {
@@ -1140,8 +1202,27 @@ function HotspotElement({ el, canEdit, onSelect, onChange, shapeRef, onActivate 
   }
   return (
     <Group ref={shapeRef} x={el.x} y={el.y} width={el.width} height={el.height} rotation={el.rotation_deg} draggable={!el.props?.locked} onClick={onSelect} onTap={onSelect} onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })} onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}>
-      <Rect width={el.width} height={el.height} fill="rgba(14, 116, 144, 0.12)" stroke="#0e7490" strokeWidth={1.5} dash={[6, 4]} cornerRadius={4} />
-      <KonvaText text="Hotspot" x={8} y={Math.max(4, el.height / 2 - 8)} fontSize={13} fill="#0e7490" listening={false} />
+      {/* Lote ED-1 (29-sep-2026, pedido de Carlos): el hotspot anterior
+          (cian 12 % + borde fino) desaparecia sobre fotos. Ahora: relleno
+          magenta semitransparente + doble trazo (blanco solido debajo,
+          magenta discontinuo encima) que contrasta sobre fondos claros y
+          oscuros, y una etiqueta con fondo solido que indica la accion.
+          Solo en el EDITOR: el visor publico sigue sin decoracion. */}
+      <Rect width={el.width} height={el.height} fill="rgba(219, 39, 119, 0.28)" stroke="#ffffff" strokeWidth={4} cornerRadius={4} />
+      <Rect width={el.width} height={el.height} stroke="#db2777" strokeWidth={2.5} dash={[8, 5]} cornerRadius={4} listening={false} />
+      {(() => {
+        const missing = (el.props?.action || 'page') === 'page' && !el.props?.target_page_id;
+        const text = missing ? '⚠ HOTSPOT sin destino' : `HOTSPOT · ${HOTSPOT_ACTION_LABELS[el.props?.action || 'page'] || 'enlace'}`;
+        const fontSize = 11;
+        const chipW = Math.min(el.width - 4, text.length * 6.4 + 12);
+        if (chipW < 24 || el.height < 16) return null;
+        return (
+          <Group x={2} y={2} listening={false}>
+            <Rect width={chipW} height={fontSize + 7} fill={missing ? '#b45309' : '#db2777'} cornerRadius={3} />
+            <KonvaText text={text} x={6} y={3.5} width={chipW - 8} fontSize={fontSize} fontStyle="bold" fill="#ffffff" wrap="none" ellipsis />
+          </Group>
+        );
+      })()}
     </Group>
   );
 }
@@ -2284,19 +2365,126 @@ export default function CanvasEditorV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rightPageId]);
 
-  // Borrar con teclado (Delete/Backspace) cuando hay elementos seleccionados
-  // en el lado ENFOCADO y el foco no está en un input de texto.
+  // --- Portapapeles (Lote ED-1) -------------------------------------------
+  const [clipboardCount, setClipboardCount] = useState(() => readEditorClipboard()?.elements.length || 0);
+  const [clipNotice, setClipNotice] = useState('');
+  const clipNoticeTimer = useRef(null);
+  const flashClipNotice = (msg) => {
+    setClipNotice(msg);
+    clearTimeout(clipNoticeTimer.current);
+    clipNoticeTimer.current = setTimeout(() => setClipNotice(''), 2200);
+  };
+  useEffect(() => () => clearTimeout(clipNoticeTimer.current), []);
+  // Otra pestaña copio algo: reflejar el contador del boton "Pegar".
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== EDITOR_CLIPBOARD_KEY) return;
+      editorClipboardMem = null;
+      setClipboardCount(readEditorClipboard()?.elements.length || 0);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const plural = (n) => (n === 1 ? '1 elemento' : `${n} elementos`);
+
+  const handleCopy = ({ cut = false } = {}) => {
+    const st = focusedStoreHook.getState();
+    const selected = st.elements.filter((e) => st.selectedElementIds.includes(e.id));
+    if (selected.length === 0) return false;
+    writeEditorClipboard({
+      publicationId,
+      pageId: st.pageId,
+      copiedAt: Date.now(),
+      pasteCount: 0,
+      lastPastePageId: null,
+      elements: selected.map(cloneForClipboard),
+    });
+    setClipboardCount(selected.length);
+    if (cut && canEdit) {
+      st.removeSelectedElements();
+      flashClipNotice(`${plural(selected.length)} cortado${selected.length === 1 ? '' : 's'}`);
+    } else {
+      flashClipNotice(`${plural(selected.length)} copiado${selected.length === 1 ? '' : 's'}`);
+    }
+    return true;
+  };
+
+  const handlePaste = () => {
+    if (!canEdit || !publication) return false;
+    const clip = readEditorClipboard();
+    const st = focusedStoreHook.getState();
+    if (!clip || !st.pageId) return false;
+    // Desplazamiento: en la MISMA pagina de origen siempre se desplaza (si
+    // no, la copia queda oculta exactamente encima del original); en otra
+    // pagina el primer pegado conserva la posicion (util para colocar lo
+    // mismo en la misma zona de varias hojas) y los siguientes se escalonan.
+    const pastesHere = clip.lastPastePageId === st.pageId ? clip.pasteCount : 0;
+    const steps = clip.pageId === st.pageId ? pastesHere + 1 : pastesHere;
+    const prepared = prepareClipboardForPaste(clip.elements, {
+      offset: (steps % 12) * PASTE_OFFSET_PX,
+      samePublication: clip.publicationId === publicationId,
+      pageW: publication.page_width * PX_PER_MM,
+      pageH: publication.page_height * PX_PER_MM,
+    });
+    st.pasteElements(prepared);
+    writeEditorClipboard({ ...clip, pasteCount: pastesHere + 1, lastPastePageId: st.pageId });
+    const clearedTargets = clip.publicationId !== publicationId && clip.elements.some((e) => e.kind === 'hotspot' && e.props?.target_page_id);
+    flashClipNotice(`${plural(prepared.length)} pegado${prepared.length === 1 ? '' : 's'}${clearedTargets ? ' · revisa la página destino de los hotspots' : ''}`);
+    return true;
+  };
+
+  const handleDuplicate = () => {
+    if (!canEdit || !publication) return false;
+    const st = focusedStoreHook.getState();
+    const selected = st.elements.filter((e) => st.selectedElementIds.includes(e.id));
+    if (selected.length === 0) return false;
+    const prepared = prepareClipboardForPaste(selected.map(cloneForClipboard), {
+      offset: PASTE_OFFSET_PX,
+      samePublication: true,
+      pageW: publication.page_width * PX_PER_MM,
+      pageH: publication.page_height * PX_PER_MM,
+    });
+    st.pasteElements(prepared);
+    flashClipNotice(`${plural(prepared.length)} duplicado${prepared.length === 1 ? '' : 's'}`);
+    return true;
+  };
+
+  // Atajos de teclado sobre el lado ENFOCADO: Supr/Retroceso borra;
+  // Ctrl/Cmd + C copia, X corta, V pega, D duplica. Se ignoran mientras se
+  // escribe en un campo (inputs del panel, textarea de edicion inline).
+  const shortcutHandlersRef = useRef({});
+  shortcutHandlersRef.current = { handleCopy, handlePaste, handleDuplicate };
   useEffect(() => {
     const onKeyDown = (e) => {
-      const tag = document.activeElement?.tagName;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && focusedState.selectedElementIds.length > 0 && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-        focusedStoreHook.getState().removeSelectedElements();
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+      const st = focusedStoreHook.getState();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && st.selectedElementIds.length > 0) {
+        if (canEdit) st.removeSelectedElements();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      const h = shortcutHandlersRef.current;
+      if (key === 'c' || key === 'x') {
+        // Si el usuario tiene texto seleccionado fuera del lienzo, respetar
+        // la copia nativa del navegador.
+        const txt = window.getSelection?.()?.toString();
+        if (st.selectedElementIds.length === 0 || txt) return;
+        if (h.handleCopy({ cut: key === 'x' })) e.preventDefault();
+      } else if (key === 'v') {
+        if (h.handlePaste()) e.preventDefault();
+      } else if (key === 'd') {
+        e.preventDefault(); // evita "añadir a marcadores" del navegador
+        h.handleDuplicate();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedSide, focusedState.selectedElementIds]);
+  }, [focusedSide, canEdit]);
 
   const anyDirty = leftState.isDirty || rightState.isDirty;
   const anySaving = leftState.isSaving || rightState.isSaving;
@@ -2941,6 +3129,18 @@ export default function CanvasEditorV2() {
             >
               Eliminar seleccionado{focusedState.selectedElementIds.length > 1 ? 's' : ''}
             </button>
+            <div className="editor-v2-clipboard-group" role="group" aria-label="Portapapeles">
+              <button type="button" disabled={focusedState.selectedElementIds.length === 0} title="Copiar selección (Ctrl+C)" onClick={() => handleCopy()}>
+                Copiar
+              </button>
+              <button type="button" disabled={!canEdit || clipboardCount === 0} title={clipboardCount ? `Pegar ${plural(clipboardCount)} en la página enfocada (Ctrl+V)` : 'Nada copiado todavía'} onClick={() => handlePaste()}>
+                Pegar{clipboardCount > 0 ? ` (${clipboardCount})` : ''}
+              </button>
+              <button type="button" disabled={!canEdit || focusedState.selectedElementIds.length === 0} title="Duplicar selección (Ctrl+D)" onClick={() => handleDuplicate()}>
+                Duplicar
+              </button>
+            </div>
+            {clipNotice && <span className="editor-v2-clip-notice" role="status">{clipNotice}</span>}
             <button
               type="button"
               className="editor-v2-pages-manager-trigger"

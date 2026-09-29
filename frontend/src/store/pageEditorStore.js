@@ -131,6 +131,29 @@ export function createPageEditorStore() {
         });
       },
 
+      // Lote ED-1 (29-sep-2026): pegar/duplicar. Recibe elementos YA
+      // clonados (sin id) y los agrega con ids temporales nuevos, por encima
+      // de todas las capas existentes y respetando su orden relativo. Deja
+      // seleccionados los pegados para poder moverlos de inmediato.
+      pasteElements: (items) => {
+        const newIds = [];
+        set((state) => {
+          if (!state.pageId || !Array.isArray(items) || items.length === 0) return;
+          let maxZ = state.elements.reduce((m, e) => Math.max(m, e.z_index ?? 0), -1);
+          const ordered = [...items].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
+          for (const item of ordered) {
+            const { id: _ignored, ...rest } = item;
+            const newId = `tmp-${genTempId()}`;
+            maxZ += 1;
+            state.elements.push({ ...JSON.parse(JSON.stringify(rest)), id: newId, z_index: maxZ });
+            newIds.push(newId);
+          }
+          state.selectedElementIds = newIds;
+          state.isDirty = true;
+        });
+        return newIds;
+      },
+
       updateElement: (id, patch) => {
         set((state) => {
           const el = state.elements.find((e) => e.id === id);

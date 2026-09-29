@@ -909,3 +909,12 @@
 .editor-v2-pages-hint { margin: 8px 0; color: #92400e; font-size: 12px; }
 .editor-v2-pages-error { margin: 8px 0; color: #b91c1c; font-size: 12px; }
 .editor-v2-modal-pages .editor-v2-modal-footer { padding: 8px 0 0; border: 0; }
+
+/* Lote ED-1 (29-sep-2026): portapapeles del editor */
+.editor-v2-clipboard-group { display: inline-flex; gap: 0; margin-left: 8px; }
+.editor-v2-clipboard-group > button { border-radius: 0; margin: 0; border: 1px solid #1e3a5f; background: #fff; color: #1e3a5f; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.editor-v2-clipboard-group > button:hover:not(:disabled) { background: #eef2f8; }
+.editor-v2-clipboard-group > button:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.editor-v2-clipboard-group > button:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+.editor-v2-clipboard-group > button + button { margin-left: -1px; }
+.editor-v2-clip-notice { margin-left: 10px; font-size: 13px; color: #1e3a5f; background: #fdf6e3; border: 1px solid #d4a73a; border-radius: 6px; padding: 3px 10px; white-space: nowrap; }
