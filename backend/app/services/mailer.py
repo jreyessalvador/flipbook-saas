@@ -26,6 +26,14 @@ from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from app.config import settings
 
 logger = logging.getLogger("app.mailer")
+# uvicorn solo configura sus propios loggers: sin esto los INFO del mailer
+# (envios, dry-run) no aparecerian en `docker logs`.
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(_h)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 NAVY = "#1e3a5f"
 GOLD = "#c9a14a"
