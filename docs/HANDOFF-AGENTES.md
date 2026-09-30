@@ -172,6 +172,7 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | L2 Pulido (Dashboard real, lazy routes, fuera editor v1, sin emojis) | Hecho (`ab50fb7`, `99839a2`) |
 | L3 Kiosco + URLs amigables `/r/{empresa}/{coleccion}/{edicion}` | Hecho en DEV (`008be6a`, migración 0009) — ver RECETA §13 |
 | L4 Ajustes de edición (Info/Visor/SEO, clonar, iframe) | **En PRODUCCIÓN** 28-sep-2026 (`dd2f693`, `a3578f1`, `c32eeb2`, migración 0010) — ver RECETA §16 |
+| Guía | Alta y operación de clientes (Super Admin, correo, kiosco) | ver `docs/OPERACION-CLIENTES.md` |
 | ED-1 Hotspots visibles en editor + copiar/cortar/pegar/duplicar elementos | **En PRODUCCIÓN** 29-sep-2026 (`6840d31`, `42389e5`, solo frontend) — ver RECETA §18 |
 | L9 Correo SMTP (IONOS) + recuperar contraseña + fixes Super Admin | **En PRODUCCIÓN** 29-sep-2026 (`e659af6`…`bc28e82`) — ver RECETA §19 |
 | L5 Descarga PDF por edición + papelera 30 días | Pendiente |

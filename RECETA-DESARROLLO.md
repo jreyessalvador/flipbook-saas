@@ -1991,3 +1991,18 @@ genérico: cambiar a Resend u otro = cambiar `SMTP_*`/`MAIL_FROM` en `.env`.
   del contenedor en marcha: su imagen original ya no existía como tag).
   Verificado `/health`, STARTTLS con smtp.ionos.mx OK, `/recuperar-contrasena`
   200. **Pendiente: Carlos pone `SMTP_PASSWORD` y recrea el backend.**
+
+### 19.1 Cierre de L9 y alta del primer cliente real (29/30-sep-2026)
+- **SMTP operativo en PROD**: Carlos puso `SMTP_PASSWORD` en el `.env` y recreó el backend; login en
+  `smtp.ionos.mx` verificado (235). Primer uso real: invitación a Destinos y Negocios.
+- **Fix `fc7fc6d`**: el acceso real de clientes es el **modal de la landing** (`LandingPage.jsx`), no `/login`.
+  Se añadió «¿Olvidaste tu contraseña?» en el modal y `?acceso=1` para abrirlo; recuperar/restablecer
+  vuelven ahí. PROD solo frontend; rollback `flipbook-prod-frontend:rollback-pre-l9b`.
+- **Primer cliente real: Destinos y Negocios** (`destinosynegocios`, plan Business): owner invitado,
+  primera edición «Presentación Corporativa Daniel de Faveri» publicada y visible en el kiosco
+  (colección General, categoría Negocios y economía).
+- **Aclaración kiosco** (surgió en el alta): una edición aparece si está publicada **y** con «Mostrar en
+  catálogo» (`is_public`) y la empresa activa. La categoría es opcional (`outerjoin`); solo afecta a
+  los filtros. Guía operativa completa en `docs/OPERACION-CLIENTES.md`.
+- Ideas anotadas (sin pedir aún): aviso en la tarjeta «Publicada pero no visible en el kiosco» y
+  nombres de colección descriptivos en vez de «General».

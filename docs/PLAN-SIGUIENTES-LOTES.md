@@ -208,3 +208,12 @@ Soft delete oculta en panel, kiosco, `/r/...`, `/leer/`, stats y cuota; restaura
 
 - Certificado Let's Encrypt de `cetrix-odoo.duckdns.org` **caduca el 03-oct-2026** y su renovación falla (webroot `/var/www/html` pero el site odoo18 redirige `/.well-known` a https). Pendiente de decisión de Carlos.
 - Limpieza periódica de imágenes `rollback-pre-*` antiguas en Contabo 1 cuando los lotes estén asentados (conservar la última de cada servicio).
+
+---
+
+## Backlog anotado 30-sep-2026 (sin prioridad asignada por Carlos)
+- **Dominio propio del cliente (Lote D)**: diseño en `docs/dominios-propios.md` (CNAME a
+  `custom.revistas.cetrix.com.mx` + TXT `_cetrix-verify.<host>`); Carlos lo volvió a plantear el 29-sep
+  con Destinos y Negocios como primer cliente real. Nada construido.
+- Aviso en la tarjeta de la edición cuando está publicada pero no visible en el kiosco.
+- Nombres de colección por defecto más descriptivos / invitar a renombrar «General».

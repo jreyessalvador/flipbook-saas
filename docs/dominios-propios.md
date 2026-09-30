@@ -1,6 +1,6 @@
 # Dominios propios por cliente (Lote D) — diseño y guía
 
-Estado: **diseño aprobado para implementar; nada construido aún** (27-sep-2026).
+Estado: **diseño aprobado para implementar; nada construido aún** (27-sep-2026; reconfirmado 30-sep-2026 al entrar el primer cliente real, Destinos y Negocios).
 La tabla `tenant_domains` ya existe desde la migración 0004 (hostname, kind `platform_subdomain|custom`,
 is_primary, status `pending|verifying|verified|failed|disabled`, verification_token_hash, tls_status).
 
