@@ -2370,9 +2370,10 @@ export default function CanvasEditorV2() {
     return true;
   };
 
-  // Atajos de teclado sobre el lado ENFOCADO: Supr/Retroceso borra;
-  // Ctrl/Cmd + C copia, X corta, V pega, D duplica. Se ignoran mientras se
-  // escribe en un campo (inputs del panel, textarea de edicion inline).
+  // Atajos de teclado sobre el lado ENFOCADO: flechas mueven la selección
+  // (Shift = 10 px); Supr/Retroceso borra; Ctrl/Cmd + C copia, X corta, V
+  // pega, D duplica. Se ignoran mientras se escribe en un campo (inputs del
+  // panel, textarea de edicion inline).
   const shortcutHandlersRef = useRef({});
   shortcutHandlersRef.current = { handleCopy, handlePaste, handleDuplicate };
   useEffect(() => {
@@ -2381,6 +2382,31 @@ export default function CanvasEditorV2() {
       const tag = active?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
       const st = focusedStoreHook.getState();
+      const direction = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      }[e.key];
+      if (direction && canEdit && !e.ctrlKey && !e.metaKey && !e.altKey && st.selectedElementIds.length > 0) {
+        const step = e.shiftKey ? 10 : 1;
+        const pageWidth = publication.page_width * PX_PER_MM;
+        const pageHeight = publication.page_height * PX_PER_MM;
+        const selectedIds = new Set(st.selectedElementIds);
+        const patches = {};
+        for (const el of st.elements) {
+          if (!selectedIds.has(el.id) || el.props?.locked) continue;
+          patches[el.id] = {
+            x: Math.max(0, Math.min(pageWidth - el.width, el.x + direction[0] * step)),
+            y: Math.max(0, Math.min(pageHeight - el.height, el.y + direction[1] * step)),
+          };
+        }
+        if (Object.keys(patches).length > 0) {
+          st.updateElements(patches);
+          e.preventDefault(); // evita el desplazamiento vertical de la página
+        }
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && st.selectedElementIds.length > 0) {
         if (canEdit) st.removeSelectedElements();
         return;
@@ -2404,7 +2430,7 @@ export default function CanvasEditorV2() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedSide, canEdit]);
+  }, [focusedSide, focusedStoreHook, canEdit, publication]);
 
   const anyDirty = leftState.isDirty || rightState.isDirty;
   const anySaving = leftState.isSaving || rightState.isSaving;

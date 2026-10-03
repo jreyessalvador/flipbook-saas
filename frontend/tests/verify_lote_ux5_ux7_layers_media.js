@@ -103,6 +103,21 @@ const OUT_DIR = __dirname;
   const greenId = await page.evaluate(() => window.__pageEditorStoreLeft.elements.find((e) => e.props?.fill === '#00ff00').id);
   await page.evaluate((id) => window.__pageEditorStoreLeft.selectElement(id), redId);
   await page.waitForTimeout(150);
+  console.log('3a) flechas: la selección debe moverse 1 px, y Shift+flecha 10 px');
+  const positionBeforeNudge = await page.evaluate((id) => {
+    const el = window.__pageEditorStoreLeft.elements.find((item) => item.id === id);
+    return { x: el.x, y: el.y };
+  }, redId);
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  const positionAfterNudge = await page.evaluate((id) => {
+    const el = window.__pageEditorStoreLeft.elements.find((item) => item.id === id);
+    return { x: el.x, y: el.y };
+  }, redId);
+  if (positionAfterNudge.x !== positionBeforeNudge.x + 1 || positionAfterNudge.y !== positionBeforeNudge.y + 10) {
+    throw new Error(`Las flechas no movieron la selección correctamente: antes=${JSON.stringify(positionBeforeNudge)}, después=${JSON.stringify(positionAfterNudge)}`);
+  }
+  console.log('   OK: ArrowRight +1 px y Shift+ArrowDown +10 px');
   await page.click('button[aria-label="Traer al frente"]');
   await page.waitForTimeout(150);
   let zRed = await page.evaluate((id) => window.__pageEditorStoreLeft.elements.find((e) => e.id === id).z_index, redId);
