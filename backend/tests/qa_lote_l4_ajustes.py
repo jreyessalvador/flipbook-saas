@@ -86,7 +86,7 @@ ok(st == 200 and p["page_turn_sound_url"] == "/api/assets/serve/qa/l4-audio.mp3"
 st, _ = call("POST", f"/api/publications/{ed['id']}/publish", SA); ok(st == 201, f"publicar ({st})")
 st, _ = call("PUT", f"/api/publications/{ed['id']}/visibility", SA, {"is_public": True}); ok(st == 200, "mostrar en catalogo")
 st, pub = call("GET", f"/api/public/publications/{ed['id']}")
-ok(st == 200 and pub["viewer"] == {"sound_enabled": False, "sound_url": "/api/assets/serve/qa/l4-audio.mp3"}, f"publico viewer ({pub.get('viewer') if isinstance(pub, dict) else pub})")
+ok(st == 200 and pub["viewer"] == {"sound_enabled": False, "sound_url": "/api/assets/serve/qa/l4-audio.mp3", "download_url": None}, f"publico viewer ({pub.get('viewer') if isinstance(pub, dict) else pub})")
 ok(pub.get("seo", {}).get("title") == "Titulo SEO QA" and pub["seo"]["indexable"] is False, "publico seo")
 call("PUT", f"/api/publications/{ed['id']}", SA, {"sound_enabled": True})
 st, pub = call("GET", f"/api/public/publications/{ed['id']}"); ok(pub["viewer"]["sound_enabled"] is True, "cambio de ajuste se ve sin republicar")
