@@ -9,7 +9,6 @@ import ShareModal from '../components/share/ShareModal';
 import QrModal from '../components/share/QrModal';
 import { collectElementImageUrls, preloadImages } from '../services/imageCache';
 import { API_URL } from '../services/api';
-import { shareChannels } from '../components/share/shareLinks';
 import '../styles/PublicReader.css';
 
 const imageUrlsOfPages = (pgs) => pgs.flatMap((pg) => collectElementImageUrls(pg?.elements));
@@ -322,10 +321,6 @@ const PublicReader = ({ embed = false }) => {
     return groups;
   }, {});
   const openDrawer = (panel) => setDrawer((current) => current === panel ? null : panel);
-  const sendEmail = () => {
-    const email = shareChannels(publication).find((channel) => channel.key === 'email');
-    if (email) window.location.href = email.href;
-  };
 
   // Escala para que la vista actual quepa en el area disponible
   const pageWpx = publication.page_width * PX_PER_MM;
@@ -416,7 +411,6 @@ const PublicReader = ({ embed = false }) => {
         <button type="button" className={drawer === 'pages' ? 'is-active' : ''} onClick={() => openDrawer('pages')} aria-label="Ver páginas" title="Ver páginas" aria-pressed={drawer === 'pages'}><Icon name="grid" size={20} /></button>
         {hasSiblings && <button type="button" className={drawer === 'publications' ? 'is-active' : ''} onClick={() => openDrawer('publications')} aria-label="Publicaciones de esta colección" title="Publicaciones de esta colección" aria-pressed={drawer === 'publications'}><Icon name="book" size={20} /></button>}
         <button type="button" onClick={() => setShareOpen(true)} aria-label="Compartir publicación" title="Compartir"><Icon name="share" size={20} /></button>
-        <button type="button" onClick={sendEmail} aria-label="Enviar por correo" title="Enviar por correo"><Icon name="mail" size={20} /></button>
         <button type="button" onClick={() => setQrOpen(true)} aria-label="Mostrar código QR" title="Código QR"><Icon name="qr" size={20} /></button>
       </nav>
 
