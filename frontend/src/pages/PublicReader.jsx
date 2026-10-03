@@ -5,9 +5,20 @@ import { computeSpreadViews } from '../components/editor/CanvasEditorV2';
 import FlipBook, { pagesOfView } from '../components/reader/FlipBook';
 import StaticPage from '../components/reader/StaticPage';
 import Icon from '../components/common/Icon';
+import ShareModal from '../components/share/ShareModal';
+import QrModal from '../components/share/QrModal';
 import { collectElementImageUrls, preloadImages } from '../services/imageCache';
+import { API_URL } from '../services/api';
+import { shareChannels } from '../components/share/shareLinks';
+import '../styles/PublicReader.css';
 
 const imageUrlsOfPages = (pgs) => pgs.flatMap((pg) => collectElementImageUrls(pg?.elements));
+const coverSrc = (url) => (url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : null);
+const editionYear = (pub) => {
+  const value = pub.updated_at || pub.created_at;
+  const year = value ? new Date(value).getFullYear() : NaN;
+  return Number.isFinite(year) ? String(year) : 'Ediciones';
+};
 
 // ---------------------------------------------------------------------------
 // Lectura responsive (2026-09-27, reportado por Carlos en iPhone 13 Pro): la
@@ -86,6 +97,10 @@ const PublicReader = ({ embed = false }) => {
   const navigate = useNavigate();
   const [publication, setPublication] = useState(null);
   const [pages, setPages] = useState([]);
+  const [collectionData, setCollectionData] = useState(null);
+  const [drawer, setDrawer] = useState(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentSpreadIndex, setCurrentSpreadIndex] = useState(0);
@@ -135,6 +150,10 @@ const PublicReader = ({ embed = false }) => {
     try {
       setLoading(true);
       setError('');
+      setCollectionData(null);
+      setDrawer(null);
+      setShareOpen(false);
+      setQrOpen(false);
       const API_URL = import.meta.env.VITE_API_URL || '';
 
       // URL amigable /r/{empresa}/{coleccion}/{edicion}: primero se resuelve al id
@@ -158,6 +177,13 @@ const PublicReader = ({ embed = false }) => {
       }
       setPublication(pubRes.data);
       setPages(pagesRes.data || []);
+      const publicTenant = pubRes.data?.tenant?.slug;
+      const publicCollection = pubRes.data?.collection?.slug;
+      if (publicTenant && publicCollection) {
+        axios.get(`${API_URL}/api/public/r/${encodeURIComponent(publicTenant)}/${encodeURIComponent(publicCollection)}`)
+          .then((res) => setCollectionData(res.data))
+          .catch(() => setCollectionData(null));
+      } else setCollectionData(null);
     } catch (err) {
       console.error('Error cargando publicación pública:', err);
       setError(err.response?.data?.detail || 'No se pudo cargar la publicación solicitada.');
@@ -215,6 +241,11 @@ const PublicReader = ({ embed = false }) => {
 
   const goPrev = useCallback(() => flipBookRef.current?.prev(), []);
   const goNext = useCallback(() => flipBookRef.current?.next(), []);
+  const goToPage = useCallback((page) => {
+    const viewIndex = spreadViews.findIndex((view) => view.left?.id === page.id || view.right?.id === page.id);
+    if (viewIndex >= 0) flipBookRef.current?.flipTo(viewIndex);
+    setDrawer(null);
+  }, [spreadViews]);
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -251,6 +282,7 @@ const PublicReader = ({ embed = false }) => {
       else if (e.key === '+' || e.key === '=') setZoomIdx((z) => Math.min(ZOOM_STEPS.length - 1, z + 1));
       else if (e.key === '-') setZoomIdx((z) => Math.max(0, z - 1));
       else if (e.key === '0') setZoomIdx(0);
+      else if (e.key === 'Escape') setDrawer(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -282,6 +314,18 @@ const PublicReader = ({ embed = false }) => {
   const currentPages = [currentSpread.left, currentSpread.right].filter(Boolean);
   const isFirst = currentSpreadIndex === 0;
   const isLast = currentSpreadIndex >= spreadViews.length - 1;
+  const siblings = collectionData?.editions || [];
+  const hasSiblings = siblings.length > 1;
+  const editionsByYear = siblings.reduce((groups, item) => {
+    const year = editionYear(item);
+    (groups[year] ||= []).push(item);
+    return groups;
+  }, {});
+  const openDrawer = (panel) => setDrawer((current) => current === panel ? null : panel);
+  const sendEmail = () => {
+    const email = shareChannels(publication).find((channel) => channel.key === 'email');
+    if (email) window.location.href = email.href;
+  };
 
   // Escala para que la vista actual quepa en el area disponible
   const pageWpx = publication.page_width * PX_PER_MM;
@@ -300,7 +344,7 @@ const PublicReader = ({ embed = false }) => {
     : `Página ${currentPages.map((pg) => pg.page_number).join('-')}`;
 
   return (
-    <div ref={rootRef} style={{ height: '100dvh', minHeight: '-webkit-fill-available', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div ref={rootRef} className="public-reader" style={{ height: '100dvh', minHeight: '-webkit-fill-available', backgroundColor: 'var(--color-navy-dark, #0c1526)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Reader Header */}
       <header style={{
         display: 'flex',
@@ -367,6 +411,41 @@ const PublicReader = ({ embed = false }) => {
         </div>
       </header>
 
+      <div className="public-reader-shell">
+      <nav className="public-reader-rail" aria-label="Herramientas de lectura">
+        <button type="button" className={drawer === 'pages' ? 'is-active' : ''} onClick={() => openDrawer('pages')} aria-label="Ver páginas" title="Ver páginas" aria-pressed={drawer === 'pages'}><Icon name="grid" size={20} /></button>
+        {hasSiblings && <button type="button" className={drawer === 'publications' ? 'is-active' : ''} onClick={() => openDrawer('publications')} aria-label="Publicaciones de esta colección" title="Publicaciones de esta colección" aria-pressed={drawer === 'publications'}><Icon name="book" size={20} /></button>}
+        <button type="button" onClick={() => setShareOpen(true)} aria-label="Compartir publicación" title="Compartir"><Icon name="share" size={20} /></button>
+        <button type="button" onClick={sendEmail} aria-label="Enviar por correo" title="Enviar por correo"><Icon name="mail" size={20} /></button>
+        <button type="button" onClick={() => setQrOpen(true)} aria-label="Mostrar código QR" title="Código QR"><Icon name="qr" size={20} /></button>
+      </nav>
+
+      {drawer && <>
+        <button type="button" className="public-reader-drawer-backdrop" aria-label="Cerrar panel" onClick={() => setDrawer(null)} />
+        <aside className="public-reader-drawer" aria-label={drawer === 'pages' ? 'Páginas de la publicación' : 'Publicaciones de la colección'}>
+          <div className="public-reader-drawer-heading">
+            <div><span>{drawer === 'pages' ? 'Navegación' : 'Colección'}</span><h2>{drawer === 'pages' ? 'Páginas' : collectionData?.collection?.name}</h2></div>
+            <button type="button" onClick={() => setDrawer(null)} aria-label="Cerrar panel"><Icon name="close" size={20} /></button>
+          </div>
+          {drawer === 'pages' ? (
+            <div className="public-reader-page-grid">
+              {pages.map((page) => <button key={page.id} type="button" className={currentPages.some((current) => current?.id === page.id) ? 'is-current' : ''} onClick={() => goToPage(page)} aria-label={`Ir a página ${page.page_number}`}>{page.page_number}</button>)}
+            </div>
+          ) : (
+            <div className="public-reader-editions">
+              {Object.entries(editionsByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, items]) => <section key={year}><h3>{year}</h3>{items.map((item) => {
+                const active = item.id === publication.id;
+                const src = coverSrc(item.cover_url);
+                return <button key={item.id} type="button" className={`public-reader-edition${active ? ' is-current' : ''}`} disabled={active} onClick={() => { setDrawer(null); navigate(item.url_path || `/leer/${item.id}`); }} aria-current={active ? 'page' : undefined}>
+                  <span className="public-reader-edition-cover">{src ? <img src={src} alt="" loading="lazy" decoding="async" /> : <Icon name="book" size={24} />}</span>
+                  <span><strong>{item.title}</strong>{item.edition_label && <small>{item.edition_label}</small>}{active && <em>Estás leyendo esta edición</em>}</span>
+                </button>;
+              })}</section>)}
+            </div>
+          )}
+        </aside>
+      </>}
+
       {/* Main Canvas Display (Modo Lectura / Spread View) */}
       <div
         style={{ flex: 1, minHeight: 0, padding: compact ? '0.35rem' : '1rem', display: 'flex' }}
@@ -395,6 +474,7 @@ const PublicReader = ({ embed = false }) => {
           )}
         />
        </div>
+      </div>
       </div>
 
       {/* Reader Controls (Navegación Inferior) */}
@@ -454,6 +534,8 @@ const PublicReader = ({ embed = false }) => {
           Siguiente ►
         </button>
       </footer>
+      {shareOpen && <ShareModal pub={publication} onClose={() => setShareOpen(false)} />}
+      {qrOpen && <QrModal pub={publication} onClose={() => setQrOpen(false)} />}
     </div>
   );
 };

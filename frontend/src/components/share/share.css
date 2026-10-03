@@ -1,4 +1,7 @@
 /* Compartir + QR de publicaciones (2026-09-27) */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,.58); }
+.modal-content { background: #fff; padding: 1.5rem; border-radius: 12px; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.modal-content h3 { margin: 0 0 1.25rem; color: #17243a; }
 .share-modal, .qr-modal { max-width: 520px; width: 100%; }
 .share-subtitle { margin: -4px 0 16px; color: #555; font-size: 14px; overflow-wrap: anywhere; }
 .share-url-row { display: flex; gap: 8px; margin-bottom: 18px; }
