@@ -205,34 +205,67 @@
 .badge-failed { background: #fee2e2; color: #b91c1c; }
 
 .card-actions {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
 }
 
 /* Acciones de una edición: consistentes y reconocibles como controles.
    El color distingue el tipo de acción; el tamaño no compite por atención. */
 .card-actions .publication-action {
-  min-height: 2.25rem;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.8125rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
+  text-align: center;
+  white-space: normal;
+  border: 1px solid transparent;
 }
 
 .card-actions .publication-action-primary {
   background: var(--color-navy);
+  grid-column: 1 / -1;
 }
 
 .card-actions .publication-action-visibility {
   background: #eff6ff;
   color: #1d4ed8;
+  border-color: #bfdbfe;
 }
 
 .card-actions .publication-action-visibility:hover {
   background: #dbeafe;
+}
+
+.card-actions .btn-secondary.publication-action {
+  background: #ffffff;
+  color: var(--color-navy);
+  border-color: #cbd5e1;
+}
+
+.card-actions .btn-secondary.publication-action:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.card-actions .btn-warning.publication-action {
+  border-color: #fed7aa;
+}
+
+.card-actions .btn-danger.publication-action {
+  border-color: #fecaca;
+}
+
+.card-actions .publication-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Botones */
