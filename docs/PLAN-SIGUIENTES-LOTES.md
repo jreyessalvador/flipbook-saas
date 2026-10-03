@@ -36,7 +36,7 @@
 
 | # | Lote | Por qué en este orden | Toca BD | Tamaño |
 |---|---|---|---|---|
-| 1 | **L5** Descarga PDF por edición + papelera 30 días | Acordado con Carlos como siguiente | Sí (0011) | M |
+| 1 | **L5** Descarga PDF por edición + papelera 30 días | ✅ Implementado en DEV 03-oct-2026 (RECETA §20) | Sí (0011) | M |
 | 2 | **L7a** Miniaturas de portada completas + imagen OG 1200×630 | Prerrequisito de la estantería y mejora inmediata al compartir | Sí (0012) | M |
 | 3 | **Estantería pública** (azul marino + dorado) | Decidido por Carlos «para después»; depende de L7a | No | M |
 | 4 | **PDF → hotspots** (enlaces del PDF importado) | Aprovecha FLIP-3 (brillo en hotspots) | No | S |

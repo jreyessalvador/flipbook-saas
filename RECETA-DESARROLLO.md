@@ -2006,3 +2006,32 @@ genérico: cambiar a Resend u otro = cambiar `SMTP_*`/`MAIL_FROM` en `.env`.
   los filtros. Guía operativa completa en `docs/OPERACION-CLIENTES.md`.
 - Ideas anotadas (sin pedir aún): aviso en la tarjeta «Publicada pero no visible en el kiosco» y
   nombres de colección descriptivos en vez de «General».
+
+## 20. Lote L5 — Papelera 30 días + descarga del PDF original (03-oct-2026)
+
+**Decisiones de Carlos (03-oct):** descarga solo para ediciones **importadas desde PDF** (las del editor no tienen PDF; generarlo = lote futuro con worker en Contabo 2) · descarga **desactivada por defecto** · **admin+ mueve a la papelera y restaura; solo owner elimina definitivamente**; purga automática a los 30 días.
+
+**Modelo** — migración `0011_download_trash.sql` (idempotente): `publications.allow_download BOOLEAN NOT NULL DEFAULT FALSE`, `deleted_at TIMESTAMPTZ`, `deleted_by UUID → users ON DELETE SET NULL`, índice parcial `ix_publications_deleted_at`.
+
+**Borrado lógico global** — `backend/app/db/soft_delete.py` (importado desde `app/db/session.py`): evento `do_orm_execute` + `with_loader_criteria(Publication, deleted_at IS NULL)`. TODA consulta ORM (panel, kiosco, `/r/`, `/leer/`, editor, páginas, bloqueos, stats, cuota, recuentos de colección) oculta las borradas sin tocar cada endpoint. Para verlas: `.execution_options(include_deleted=True)` (papelera, restaurar, purgar, `unique_publication_slug`, borrar colección). Los endpoints públicos filtran además `deleted_at IS NULL` a mano y el borrado pone `is_public=False` (defensa en profundidad).
+- El slug de una borrada sigue reservado (el índice único de BD la cubre) → restaurar nunca choca.
+- Una colección con ediciones en la papelera NO se puede borrar (409).
+- Las borradas no cuentan en la cuota; restaurar comprueba la cuota.
+
+**API**
+| Método | Ruta | Rol | Qué |
+|---|---|---|---|
+| DELETE | `/api/publications/{id}` | admin | mueve a la papelera (`deleted_at`, `deleted_by`, `is_public=false`, libera bloqueo de edición) |
+| GET | `/api/publications/trash[?collection_id=]` | admin | `{retention_days, items[]}` con `days_left`, colección, quién borró |
+| POST | `/api/publications/{id}/restore` | admin | vuelve PRIVADA, misma colección y slug, conserva su estado publicado |
+| DELETE | `/api/publications/{id}/purge` | owner | borrado físico (cascade) + objetos MinIO que solo usaba ella |
+| GET | `/api/public/publications/{id}/download` | público | stream del PDF original, `Content-Disposition: attachment; filename="<slug>.pdf"`; 404 si no es pública/publicada, está borrada, sin PDF o `allow_download=false` |
+- `PUT /api/publications/{id}` acepta `allow_download` (422 si la edición no tiene `pdf_url`). La API pública devuelve `viewer.download_url` (o `null`). `stats/summary` añade `trashed_publications`.
+
+**Purga** (`backend/app/services/trash.py`): candidatos = PDF original + objetos bajo `tenant-*/publications/{id}/` + páginas de importación de OTRA edición que esta referenciaba (clones). Solo se borra un objeto si ningún `page_elements`, snapshot, `publications.pdf_url` ni `assets.storage_key` lo referencia ya. La biblioteca de la empresa (`assets`) nunca se toca. Automática: tarea `flipbook.purge_trash` en **Celery beat embebido en el pdf-worker** (`worker -B --schedule /tmp/celerybeat-schedule`, diaria 03:17 UTC). Un solo pdf-worker por entorno → no hay doble ejecución.
+
+**Frontend**: `pages/Trash.jsx` en `/papelera` (`?coleccion=<id>` filtra), enlace «Papelera (N)» en la cabecera de la colección y «Papelera» en Colecciones (admin+); «Eliminar» de la tarjeta = mover a la papelera con confirmación de 30 días; Ajustes → Visor: «Descarga en PDF» (deshabilitado con explicación si no hay PDF); PublicReader/embed: botón de descarga si `viewer.download_url`. Iconos nuevos `download`, `trash`, `restore`.
+
+**QA** — `backend/tests/qa_lote_l5.py` (50 PASS, re-ejecutable, limpia con atexit): ocultación en panel/kiosco/`/leer`/`/r`/páginas/stats, roles (editor 403, admin no purga 403), aislamiento entre empresas (404), slug reservado, restaurar privada, purga manual y automática (>30 días sí, <30 no), clon comparte imagen, descarga (off por defecto, 422 sin PDF, 200 adjunto, 404 privada/borrada/inexistente), colección con borradas → 409. Los QA anteriores ahora purgan lo que borran. Verificado además con el PDF real de 38 MB de «Destinos y Negocios 34» en DEV (200, `destinos-y-negocios-34.pdf`), dejando `allow_download=false` después.
+
+**Producción** (con aprobación de Carlos): backup → `git pull` → migración 0011 → `docker compose -f docker-compose.prod.yml up -d --build backend pdf-worker frontend` (el pdf-worker cambia de comando: `-B`). Rollback: tags `rollback-pre-l5` de backend/frontend + dump previo; la migración es aditiva (columnas nuevas ignoradas por el código anterior). OJO: con el código anterior, las ediciones que estén en la papelera volverían a verse → antes de un rollback, restaurarlas o purgarlas.
