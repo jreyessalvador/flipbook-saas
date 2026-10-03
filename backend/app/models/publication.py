@@ -38,6 +38,12 @@ class Publication(Base):
     seo_title = Column(String(70), nullable=True)
     seo_description = Column(String(160), nullable=True)
     seo_indexable = Column(Boolean, nullable=False, default=True)
+    # Lote L5 (migracion 0011): descarga del PDF original (solo importadas) y
+    # papelera. Las borradas se ocultan solas de toda consulta ORM (ver
+    # app/db/soft_delete.py); se purgan a los 30 dias.
+    allow_download = Column(Boolean, nullable=False, default=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     # Publicacion inmutable actualmente vigente para el Reader (seccion 5)
     published_version_id = Column(UUID(as_uuid=True), ForeignKey("publication_versions.id"), nullable=True)
@@ -57,7 +63,7 @@ class Publication(Base):
 
     # Relaciones ORM
     tenant = relationship("Tenant", back_populates="publications")
-    creator = relationship("User", back_populates="publications")
+    creator = relationship("User", back_populates="publications", foreign_keys=[created_by])
     pages = relationship("Page", back_populates="publication", cascade="all, delete-orphan")
     collection = relationship("Collection", lazy="selectin", viewonly=True)
     page_turn_sound = relationship("Asset", foreign_keys=[page_turn_sound_asset_id], lazy="selectin", viewonly=True)

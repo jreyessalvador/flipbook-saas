@@ -186,5 +186,10 @@ def delete_collection(collection_id: str, db: Session = Depends(get_db), current
     editions = db.query(func.count(Publication.id)).filter(Publication.collection_id == col.id).scalar() or 0
     if editions:
         raise HTTPException(status_code=409, detail=f"La colección tiene {editions} edición(es). Muévelas o elimínalas antes.")
+    # Lote L5: las ediciones en la papelera siguen perteneciendo a la coleccion
+    trashed = db.query(func.count(Publication.id)).execution_options(include_deleted=True)\
+        .filter(Publication.collection_id == col.id, Publication.deleted_at.isnot(None)).scalar() or 0
+    if trashed:
+        raise HTTPException(status_code=409, detail=f"La colección tiene {trashed} edición(es) en la papelera. Restáuralas y muévelas, o elimínalas definitivamente antes.")
     db.delete(col)
     db.commit()

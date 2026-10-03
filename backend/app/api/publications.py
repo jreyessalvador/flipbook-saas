@@ -80,13 +80,111 @@ def get_publications_stats(
         .filter(Publication.tenant_id == tenant_id, Publication.status == "published")\
         .scalar() or 0
 
+    # Lote L5: ediciones en la papelera (no cuentan en el total ni en la cuota)
+    trashed = db.query(func.count(Publication.id)).execution_options(include_deleted=True)\
+        .filter(Publication.tenant_id == tenant_id, Publication.deleted_at.isnot(None))\
+        .scalar() or 0
+
     return {
+        "trashed_publications": int(trashed),
         "total_publications": int(total_publications),
         "published_publications": int(published),
         "total_views": int(total_views),
         "storage_bytes": int(storage_bytes),
         "plan": plan_info,
     }
+
+# ---------------------------------------------------------------------------
+# Lote L5: papelera. Rutas fijas declaradas ANTES de /{publication_id}.
+# ---------------------------------------------------------------------------
+def _get_trashed(db: Session, publication_id: str, tenant_id) -> Publication:
+    try:
+        pid = uuid.UUID(str(publication_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Edición no encontrada en la papelera")
+    pub = db.query(Publication).execution_options(include_deleted=True)\
+        .filter(Publication.id == pid, Publication.tenant_id == tenant_id, Publication.deleted_at.isnot(None))\
+        .first()
+    if not pub:
+        raise HTTPException(status_code=404, detail="Edición no encontrada en la papelera")
+    return pub
+
+
+@router.get("/trash")
+def list_trash(
+    collection_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Ediciones de la empresa en la papelera, con los dias que faltan para su purga."""
+    from app.models.collection import Collection
+    from app.services.trash import days_left, TRASH_RETENTION_DAYS
+    tenant_id = current_user.effective_tenant_id
+    q = db.query(Publication).execution_options(include_deleted=True)\
+        .filter(Publication.tenant_id == tenant_id, Publication.deleted_at.isnot(None))
+    if collection_id:
+        try:
+            q = q.filter(Publication.collection_id == uuid.UUID(collection_id))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="collection_id no válido")
+    pubs = q.order_by(Publication.deleted_at.desc()).all()
+    _attach_cover_thumbnails(db, pubs)
+    col_names = dict(db.query(Collection.id, Collection.name).filter(Collection.tenant_id == tenant_id).all())
+    user_ids = {p.deleted_by for p in pubs if p.deleted_by}
+    users = {u.id: (u.full_name or u.email) for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+    return {
+        "retention_days": TRASH_RETENTION_DAYS,
+        "items": [
+            {
+                "id": str(p.id),
+                "title": p.title,
+                "edition_label": p.edition_label,
+                "status": p.status,
+                "total_pages": p.total_pages,
+                "creation_type": p.creation_type,
+                "cover_image_url": p.cover_image_url,
+                "collection_id": str(p.collection_id),
+                "collection_name": col_names.get(p.collection_id),
+                "deleted_at": p.deleted_at.isoformat() if p.deleted_at else None,
+                "deleted_by_name": users.get(p.deleted_by),
+                "days_left": days_left(p.deleted_at),
+            }
+            for p in pubs
+        ],
+    }
+
+
+@router.post("/{publication_id}/restore", response_model=PublicationResponse)
+def restore_publication(
+    publication_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Saca una edicion de la papelera. Vuelve PRIVADA (el admin decide si
+    mostrarla otra vez en el catalogo), con su coleccion y URL intactas."""
+    tenant_id = current_user.effective_tenant_id
+    pub = _get_trashed(db, publication_id, tenant_id)
+    require_publication_quota(db, tenant_id)
+    pub.deleted_at = None
+    pub.deleted_by = None
+    pub.is_public = False
+    db.commit()
+    db.refresh(pub)
+    return pub
+
+
+@router.delete("/{publication_id}/purge")
+def purge_publication_endpoint(
+    publication_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("owner")),
+):
+    """Elimina DEFINITIVAMENTE una edicion de la papelera (solo propietario).
+    Borra sus paginas, versiones y los archivos que solo usaba ella."""
+    from app.services.trash import purge_publication
+    pub = _get_trashed(db, publication_id, current_user.effective_tenant_id)
+    return purge_publication(db, pub)
+
 
 @router.post("/", response_model=PublicationResponse, status_code=status.HTTP_201_CREATED)
 def create_publication(
@@ -336,9 +434,12 @@ def update_publication(
     for key in ("seo_title", "seo_description"):
         if key in changes:
             changes[key] = (changes[key] or "").strip() or None
-    for key in ("sound_enabled", "seo_indexable"):
+    for key in ("sound_enabled", "seo_indexable", "allow_download"):
         if key in changes and changes[key] is None:
             changes.pop(key)  # booleanos NOT NULL: null no significa nada
+    # Lote L5: descarga solo para ediciones con PDF original (importadas)
+    if changes.get("allow_download") and not publication.pdf_url:
+        raise HTTPException(status_code=422, detail="Esta edición no tiene PDF original: solo las importadas desde PDF se pueden descargar")
     if changes.get("page_turn_sound_asset_id") is not None:
         asset = db.query(Asset).filter(
             Asset.id == changes["page_turn_sound_asset_id"],
@@ -475,7 +576,9 @@ def delete_publication(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin"))
 ):
-    """Eliminar publicación"""
+    """Mover la edicion a la papelera (Lote L5). Sale del kiosco al instante;
+    se puede restaurar durante 30 dias y luego se purga sola."""
+    from app.services.trash import utcnow
     publication = db.query(Publication)\
         .filter(Publication.id == publication_id)\
         .filter(Publication.tenant_id == current_user.effective_tenant_id)\
@@ -484,7 +587,11 @@ def delete_publication(
     if not publication:
         raise HTTPException(status_code=404, detail="Publication not found")
 
-    db.delete(publication)
+    publication.deleted_at = utcnow()
+    publication.deleted_by = current_user.id
+    publication.is_public = False
+    # Si alguien la tenia abierta en el editor, su bloqueo deja de tener sentido
+    db.query(EditLock).filter(EditLock.publication_id == publication.id).delete(synchronize_session=False)
     db.commit()
 
     return None

@@ -15,7 +15,9 @@ def unique_publication_slug(db, collection_id, base: str, exclude_id=None) -> st
     root = slugify(base, 76)
     candidate, n = root, 2
     while True:
-        q = db.query(Publication.id).filter(Publication.collection_id == collection_id, Publication.slug == candidate)
+        # include_deleted: las ediciones en la papelera conservan su slug (el
+        # indice unico de BD las cubre) para que restaurar nunca choque.
+        q = db.query(Publication.id).execution_options(include_deleted=True).filter(Publication.collection_id == collection_id, Publication.slug == candidate)
         if exclude_id is not None:
             q = q.filter(Publication.id != exclude_id)
         if not q.first():

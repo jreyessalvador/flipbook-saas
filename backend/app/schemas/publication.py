@@ -37,6 +37,8 @@ class PublicationUpdate(PublicationBase):
     seo_title: Optional[str] = Field(None, max_length=70)
     seo_description: Optional[str] = Field(None, max_length=160)
     seo_indexable: Optional[bool] = None
+    # Lote L5: permitir descargar el PDF original en el lector publico
+    allow_download: Optional[bool] = None
 
 
 class PublicationClone(BaseModel):
@@ -81,6 +83,7 @@ class PublicationResponse(PublicationBase):
     seo_title: Optional[str] = None
     seo_description: Optional[str] = None
     seo_indexable: bool = True
+    allow_download: bool = False
 
     class Config:
         from_attributes = True

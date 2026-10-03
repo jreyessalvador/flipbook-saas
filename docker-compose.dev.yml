@@ -137,7 +137,7 @@ services:
       - minio
     volumes:
       - ./backend:/app
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=1
+    command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
     # El Dockerfile del backend define un HEALTHCHECK contra :8000 que el
     # worker no sirve (falso "unhealthy" en ia-lavatur desde el 14-sep).
     healthcheck:

@@ -9,3 +9,10 @@ celery_app.conf.update(task_serializer="json", accept_content=["json"], result_s
 # Registro explícito: al arrancar con `celery -A ...celery_app` debe conocer
 # la tarea antes de recibir el primer mensaje de la cola.
 import app.workers.pdf_import  # noqa: E402,F401
+import app.workers.maintenance  # noqa: E402,F401
+
+# Lote L5: purga diaria de la papelera (beat corre dentro del pdf-worker, -B).
+from celery.schedules import crontab  # noqa: E402
+celery_app.conf.beat_schedule = {
+    "purge-trash-daily": {"task": "flipbook.purge_trash", "schedule": crontab(hour=3, minute=17)},
+}

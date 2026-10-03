@@ -113,7 +113,7 @@ services:
     environment: *backend-env
     depends_on:
       - backend
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=1
+    command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
       interval: 60s

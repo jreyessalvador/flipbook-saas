@@ -11,6 +11,9 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Lote L5: oculta las ediciones de la papelera en toda consulta ORM
+import app.db.soft_delete  # noqa: E402,F401
+
 def get_db():
     db = SessionLocal()
     try:

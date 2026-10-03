@@ -20,4 +20,4 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relaciones
-    publications = relationship("Publication", back_populates="creator")
+    publications = relationship("Publication", back_populates="creator", foreign_keys="Publication.created_by")

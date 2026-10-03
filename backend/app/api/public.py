@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 import html
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, func
 
@@ -79,10 +79,18 @@ def _public_catalog_stmt():
             and_(
                 Publication.is_public == True,
                 Publication.published_version_id.isnot(None),
+                Publication.deleted_at.is_(None),  # Lote L5 (defensa en profundidad)
                 func.coalesce(Tenant.status, "active") == "active",
             )
         )
     )
+
+
+def _download_path(pub) -> Optional[str]:
+    """Lote L5: URL de descarga del PDF original, solo si la empresa lo permite."""
+    if pub.allow_download and pub.pdf_url:
+        return f"/api/public/publications/{pub.id}/download"
+    return None
 
 
 def _url_path(tenant: Tenant, collection: Collection, pub: Publication) -> str:
@@ -117,6 +125,7 @@ def _catalog_item(pub, snapshot, collection, tenant, category) -> dict:
         "viewer": {
             "sound_enabled": bool(pub.sound_enabled) if pub.sound_enabled is not None else True,
             "sound_url": pub.page_turn_sound_url,
+            "download_url": _download_path(pub),
         },
         "seo": {
             "title": pub.seo_title,
@@ -235,7 +244,8 @@ def get_public_publication_pages(id: uuid.UUID, db: Session = Depends(get_db)):
             and_(
                 Publication.id == id,
                 Publication.is_public == True,
-                Publication.published_version_id.isnot(None)
+                Publication.published_version_id.isnot(None),
+                Publication.deleted_at.is_(None),
             )
         )
     )
@@ -247,6 +257,46 @@ def get_public_publication_pages(id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     return _get_snapshot_pages(snapshot)
+
+
+@router.get("/publications/{id}/download", include_in_schema=False)
+def download_public_pdf(id: uuid.UUID, db: Session = Depends(get_db)):
+    """
+    Lote L5: descarga del PDF original de una edicion publica. 404 (sin dar
+    pistas) si la edicion no es publica, no esta publicada, esta en la
+    papelera, su empresa no esta activa, no permite descarga o no tiene PDF.
+    """
+    from app.api.assets import minio_client, BUCKET_NAME
+    from app.services.trash import storage_key_from_url
+    from app.core.slugs import slugify
+    row = db.execute(_public_catalog_stmt().where(Publication.id == id)).first()
+    pub = row[0] if row else None
+    key = storage_key_from_url(pub.pdf_url) if pub is not None and pub.allow_download else None
+    if not key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Descarga no disponible")
+    try:
+        obj = minio_client.get_object(BUCKET_NAME, key)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Descarga no disponible")
+
+    def stream():
+        try:
+            for chunk in obj.stream(64 * 1024):
+                yield chunk
+        finally:
+            obj.close()
+            obj.release_conn()
+
+    name = slugify(pub.slug or pub.title or "revista", 80) + ".pdf"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{name}"',
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+    }
+    size = obj.headers.get("Content-Length")
+    if size:
+        headers["Content-Length"] = size
+    return StreamingResponse(stream(), media_type="application/pdf", headers=headers)
 
 
 def _open_graph_html(request: Request, row) -> HTMLResponse:
