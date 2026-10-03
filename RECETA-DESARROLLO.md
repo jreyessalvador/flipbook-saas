@@ -2072,3 +2072,9 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - No se implementó «Me gusta»: requeriría persistencia y control antiabuso. Tampoco se generan todavía miniaturas WebP derivadas: se muestra la portada pública actual bajo demanda; esa optimización se mantiene como fase L7a separada para no duplicar objetos ni alterar el pipeline de publicaciones sin diseño específico.
 
 **DEV:** commit `b0fef53`; `docker exec flipbook-dev-frontend npm run build` correcto (Vite, 291 módulos). Pendiente: validación visual y táctil de Carlos en DEV antes de proponer producción.
+
+### 22.1 Lector público responsive EN PRODUCCIÓN (04-oct-2026, 00:07 WEST)
+
+- Carlos validó el lote en DEV y se desplegó `redesign/editor-v2` @ `4f4bddc` con `docker compose -f docker-compose.prod.yml up -d --build frontend`. Es solo frontend: no hubo migraciones ni reinicios de backend, worker, Redis, MinIO o PostgreSQL.
+- Validación: build Vite correcto (291 módulos), `flipbook-prod-frontend` recreado y activo, `/health` devuelve `{\"status\":\"ok\"}` y `https://revistas.cetrix.com.mx/` respondió HTTP 200.
+- Rollback: `flipbook-prod-frontend:rollback-pre-reader-20261004-0006` (ID `sha256:01133d882d0f04ebc13dea12617a8de1fcf6ce7cbb4bf082d7809c9373a5297b`), dump `/home/administracion/backups/flipbook-prod-pre-reader-20261004-0006.dump` y `.env` protegido `/home/administracion/backups/flipbook-prod-env-pre-reader-20261004-0006`. Para volver atrás: etiquetar esa imagen como `flipbook-prod-frontend:latest` y ejecutar `docker compose -f docker-compose.prod.yml up -d --no-build frontend` desde `/srv/apps/flipbook`.
