@@ -33,6 +33,7 @@ const Publications = () => {
   const [importNotice, setImportNotice] = useState(null);
   // Compartir / QR del Reader publico
   const [shareFor, setShareFor] = useState(null);
+  const [trashCount, setTrashCount] = useState(0); // Lote L5
   const [qrFor, setQrFor] = useState(null);
   const importPollRef = useRef(null);
   
@@ -73,6 +74,9 @@ const Publications = () => {
       ]);
       setCollection(col);
       setPublications(data);
+      if (isAdmin) {
+        publicationAPI.trash(collectionId).then((t) => setTrashCount(t.items.length)).catch(() => setTrashCount(0));
+      }
       setError(null);
     } catch (err) {
       console.error('Error loading publications:', err);
@@ -192,15 +196,17 @@ const Publications = () => {
     } finally { setMovingBusy(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta publicación?')) return;
-    
+  // Lote L5: eliminar = mover a la papelera (recuperable 30 días)
+  const handleDelete = async (pub) => {
+    if (!window.confirm(`¿Mover “${pub.title}” a la papelera?\n\nDejará de verse en el panel, el catálogo y el lector público al instante. Podrás restaurarla durante 30 días; después se eliminará definitivamente.`)) return;
+
     try {
-      await publicationAPI.delete(id);
+      await publicationAPI.delete(pub.id);
+      setImportNotice({ type: 'info', text: `“${pub.title}” se movió a la papelera. Puedes restaurarla durante 30 días.` });
       loadPublications();
     } catch (err) {
       console.error('Error deleting publication:', err);
-      alert('Error al eliminar la publicación');
+      alert(err?.response?.data?.detail || 'No se pudo mover la edición a la papelera');
     }
   };
 
@@ -290,14 +296,21 @@ const Publications = () => {
           <h2>{collection?.name || 'Colección'}</h2>
           {collection?.description && <p className="collections-subtitle">{collection.description}</p>}
         </div>
-        {canEdit && (
-        <button 
-          className="btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          + Nueva edición
-        </button>
-        )}
+        <div className="publications-header-actions">
+          {isAdmin && (
+            <button type="button" className="btn-secondary btn-trash-link" onClick={() => navigate(`/papelera?coleccion=${collectionId}`)} title="Ediciones borradas de esta colección (se recuperan durante 30 días)">
+              <Icon name="trash" size={15} style={{ marginRight: 6 }} />Papelera{trashCount > 0 ? ` (${trashCount})` : ''}
+            </button>
+          )}
+          {canEdit && (
+          <button 
+            className="btn-primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            + Nueva edición
+          </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -416,9 +429,10 @@ const Publications = () => {
                     </button>}
                     {isAdmin && <button 
                       className="btn-danger"
-                      onClick={() => handleDelete(pub.id)}
+                      onClick={() => handleDelete(pub)}
+                      title="Mover a la papelera (recuperable 30 días)"
                     >
-                      Eliminar
+                      <Icon name="trash" size={15} style={{ marginRight: 6 }} />Eliminar
                     </button>}
                   </div>
                 </div>

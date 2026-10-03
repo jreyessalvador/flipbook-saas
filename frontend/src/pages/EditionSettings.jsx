@@ -38,6 +38,7 @@ const pickForm = (p) => ({
   seo_title: p.seo_title || '',
   seo_description: p.seo_description || '',
   seo_indexable: p.seo_indexable !== false,
+  allow_download: p.allow_download === true, // Lote L5
 });
 
 export default function EditionSettings() {
@@ -105,6 +106,7 @@ export default function EditionSettings() {
         seo_title: form.seo_title.trim(),
         seo_description: form.seo_description.trim(),
         seo_indexable: form.seo_indexable,
+        allow_download: pub?.pdf_url ? form.allow_download : false, // Lote L5
       });
       setPub(updated);
       setForm(pickForm(updated));
@@ -156,7 +158,7 @@ export default function EditionSettings() {
 
       <div className="es-card">
         {tab === 'info' && <InfoTab pub={pub} form={form} set={set} canEdit={canEdit} navigate={navigate} setNotice={setNotice} />}
-        {tab === 'visor' && <ViewerTab form={form} set={set} canEdit={canEdit} setNotice={setNotice} />}
+        {tab === 'visor' && <ViewerTab pub={pub} form={form} set={set} canEdit={canEdit} setNotice={setNotice} />}
         {tab === 'seo' && <SeoTab pub={pub} form={form} set={set} canEdit={canEdit} />}
         {tab === 'insertar' && <EmbedTab pub={pub} />}
       </div>
@@ -266,7 +268,8 @@ function InfoTab({ pub, form, set, canEdit, navigate, setNotice }) {
 }
 
 // --- Visor -------------------------------------------------------------------
-function ViewerTab({ form, set, canEdit, setNotice }) {
+function ViewerTab({ pub, form, set, canEdit, setNotice }) {
+  const hasPdf = Boolean(pub?.pdf_url);
   const [sounds, setSounds] = useState(null);
   const [uploading, setUploading] = useState(false);
   const audioRef = useRef(null);
@@ -341,6 +344,25 @@ function ViewerTab({ form, set, canEdit, setNotice }) {
           <span className="es-muted es-small">MP3/OGG/WAV, máx. 2 MB. Se guarda en la biblioteca de tu empresa.</span>
         </div>
       </fieldset>
+
+      {/* Lote L5: descarga del PDF original (solo ediciones importadas desde PDF) */}
+      <h2 className="es-section-gap">Descarga en PDF</h2>
+      <label className="es-switch">
+        <input type="checkbox" checked={hasPdf && form.allow_download} disabled={!canEdit || !hasPdf} onChange={(e) => set('allow_download', e.target.checked)} />
+        <span className="es-switch-ui" aria-hidden="true" />
+        <span>{hasPdf && form.allow_download ? 'Los lectores pueden descargar el PDF' : 'Descarga desactivada'}</span>
+      </label>
+      {hasPdf ? (
+        <p className="es-muted es-small">
+          Muestra un botón <Icon name="download" size={14} /> en el lector público (y en el insertado) para bajar el PDF original que importaste.
+          Solo funciona mientras la edición esté publicada y visible en el catálogo.
+          {form.allow_download ? '' : ' Desactivado por defecto para proteger tu contenido.'}
+        </p>
+      ) : (
+        <p className="es-muted es-small">
+          Esta edición se creó en el editor y no tiene un PDF original. La descarga solo está disponible en las ediciones importadas desde PDF.
+        </p>
+      )}
     </div>
   );
 }

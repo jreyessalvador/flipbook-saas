@@ -344,6 +344,18 @@ const PublicReader = ({ embed = false }) => {
               Vista {currentSpreadIndex + 1} de {spreadViews.length}
             </span>
           )}
+          {publication.viewer?.download_url && (
+            <a
+              href={`${import.meta.env.VITE_API_URL || ''}${publication.viewer.download_url}`}
+              download
+              rel="nofollow"
+              style={{ ...iconBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Descargar en PDF"
+              aria-label="Descargar en PDF"
+            >
+              <Icon name="download" size={20} />
+            </a>
+          )}
           <button type="button" onClick={toggleSound} style={iconBtn} title={soundOn ? 'Silenciar sonido de página' : 'Activar sonido de página'} aria-label={soundOn ? 'Silenciar sonido' : 'Activar sonido'} aria-pressed={soundOn}>
             <Icon name={soundOn ? 'volume' : 'mute'} size={20} />
           </button>

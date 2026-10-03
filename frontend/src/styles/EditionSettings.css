@@ -216,3 +216,6 @@
   margin: 0;
 }
 .es-copyrow input { flex: 1 1 auto; }
+
+/* Lote L5 */
+.es-section-gap { margin-top: 2rem; }

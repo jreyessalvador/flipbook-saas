@@ -89,7 +89,14 @@ const Collections = () => {
           <h2>Colecciones</h2>
           <p className="collections-subtitle">Cada colección agrupa las ediciones de una revista o catálogo.</p>
         </div>
-        {isAdmin && <button className="btn-primary" onClick={openCreate}>+ Nueva colección</button>}
+        {isAdmin && (
+          <div className="publications-header-actions">
+            <button type="button" className="btn-secondary btn-trash-link" onClick={() => navigate('/papelera')} title="Ediciones borradas (se recuperan durante 30 días)">
+              <Icon name="trash" size={15} style={{ marginRight: 6 }} />Papelera
+            </button>
+            <button className="btn-primary" onClick={openCreate}>+ Nueva colección</button>
+          </div>
+        )}
       </div>
 
       {error && <div className="error-message">{error}</div>}

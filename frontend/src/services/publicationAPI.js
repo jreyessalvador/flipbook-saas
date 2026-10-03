@@ -65,8 +65,26 @@ export const publicationAPI = {
     return response.data;
   },
 
-  // Eliminar publicación
+  // Lote L5: "eliminar" = mover a la papelera (30 días recuperable)
   delete: async (id) => {
     await api.delete(`/api/publications/${id}`);
+  },
+
+  // Lote L5: papelera (admin+) -> { retention_days, items: [...] }
+  trash: async (collectionId = null) => {
+    const response = await api.get('/api/publications/trash', { params: collectionId ? { collection_id: collectionId } : {} });
+    return response.data;
+  },
+
+  // Restaurar desde la papelera (admin+): vuelve privada a su colección
+  restore: async (id) => {
+    const response = await api.post(`/api/publications/${id}/restore`);
+    return response.data;
+  },
+
+  // Eliminar definitivamente (solo propietario)
+  purge: async (id) => {
+    const response = await api.delete(`/api/publications/${id}/purge`);
+    return response.data;
   },
 };

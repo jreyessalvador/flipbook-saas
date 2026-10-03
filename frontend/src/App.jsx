@@ -10,6 +10,7 @@ import Collections from './pages/Collections';
 const Team = lazy(() => import('./pages/Team'));
 const PageViewer = lazy(() => import('./components/editor/PageViewer'));
 const EditionSettings = lazy(() => import('./pages/EditionSettings'));
+const Trash = lazy(() => import('./pages/Trash'));
 const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
 const PublicReader = lazy(() => import('./pages/PublicReader'));
@@ -75,6 +76,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Lote L5: papelera de ediciones (?coleccion=<id> filtra) */}
+          <Route path="/papelera" element={<ProtectedRoute><><Navbar /><Trash /></></ProtectedRoute>} />
 
           {/* Lote L4: ajustes de edición (Info · Visor · SEO · Compartir e insertar) */}
           <Route
