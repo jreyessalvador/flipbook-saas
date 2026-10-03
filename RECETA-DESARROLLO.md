@@ -2060,3 +2060,15 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - Producción actualizada a `redesign/editor-v2` @ `50dda51` con `docker compose -f docker-compose.prod.yml up -d --build frontend`. Es un despliegue **solo de frontend**: no se ejecutaron migraciones ni se reinició backend, worker, Redis, MinIO o PostgreSQL.
 - Validación: build Vite correcto (290 módulos), contenedor `flipbook-prod-frontend` recreado y activo, `https://revistas.cetrix.com.mx/` respondió HTTP 200 y `/health` devolvió `{\"status\":\"ok\"}`. Los logs recientes de nginx solo muestran su arranque normal y la comprobación HTTP.
 - Rollback disponible: imagen `flipbook-prod-frontend:rollback-pre-editorial-20261003-2339` (ID `sha256:2307396ccf18085eeaf17e19080d49c0f04b9985edafb8cdcacdfccf2780b46f`), dump `/home/administracion/backups/flipbook-prod-pre-editorial-20261003-2339.dump` y copia protegida de `.env` `/home/administracion/backups/flipbook-prod-env-pre-editorial-20261003-2339`. Para revertir el frontend: etiquetar esa imagen como `flipbook-prod-frontend:latest` y ejecutar `docker compose -f docker-compose.prod.yml up -d --no-build frontend` desde `/srv/apps/flipbook`.
+
+## 22. Lector público responsive — barra y colecciones (03-oct-2026, DEV)
+
+**Alcance:** solo frontend; no hay migración, endpoint, cookie, cuenta de visitante ni métrica nueva. Se reutiliza `GET /api/public/r/{tenant}/{collection}`, que ya devuelve exclusivamente ediciones con versión publicada, `is_public=true`, empresa activa y sin papelera. Por tanto la barra jamás mezcla datos entre tenants ni revela borradores/ediciones ocultas.
+
+- En el lector público se añadió una barra lateral compacta: páginas, publicaciones de la colección, compartir, correo y QR. Los diálogos de compartir y QR reutilizan los componentes existentes; «Correo» abre el cliente configurado por el visitante con enlace público, sin usar el SMTP de la plataforma.
+- «Publicaciones» aparece solo si hay más de una edición pública. Abre un panel con portada, título, etiqueta y año de las ediciones hermanas; marca la actual y navega a la URL pública de la elegida. Las portadas usan `loading=lazy` y solo se solicitan al abrir el panel.
+- «Páginas» ofrece navegación directa por número. `Esc` cierra el panel. Se conservan teclado, zoom, audio, pantalla completa, enlaces/hotspots y navegación existente del lector.
+- Responsive: en escritorio el panel nace tras la barra de 48 px; en móvil/tablet se convierte en cajón superpuesto con fondo de cierre, barra de 44 px y áreas táctiles de al menos 42 px. No depende de hover.
+- No se implementó «Me gusta»: requeriría persistencia y control antiabuso. Tampoco se generan todavía miniaturas WebP derivadas: se muestra la portada pública actual bajo demanda; esa optimización se mantiene como fase L7a separada para no duplicar objetos ni alterar el pipeline de publicaciones sin diseño específico.
+
+**DEV:** commit `b0fef53`; `docker exec flipbook-dev-frontend npm run build` correcto (Vite, 291 módulos). Pendiente: validación visual y táctil de Carlos en DEV antes de proponer producción.
