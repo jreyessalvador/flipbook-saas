@@ -231,7 +231,6 @@
 
 .card-actions .publication-action-primary {
   background: var(--color-navy);
-  grid-column: 1 / -1;
 }
 
 .card-actions .publication-action-visibility {
