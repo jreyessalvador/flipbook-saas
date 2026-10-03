@@ -208,6 +208,33 @@
   justify-content: flex-start;
 }
 
+/* Acciones de una edición: consistentes y reconocibles como controles.
+   El color distingue el tipo de acción; el tamaño no compite por atención. */
+.card-actions .publication-action {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.card-actions .publication-action-primary {
+  background: var(--color-navy);
+}
+
+.card-actions .publication-action-visibility {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.card-actions .publication-action-visibility:hover {
+  background: #dbeafe;
+}
+
 /* Botones */
 .btn-primary {
   background: var(--color-navy);

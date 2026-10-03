@@ -695,9 +695,11 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   // galería" en el panel derecho). Mismo criterio que Audio/Video/Embed
   // (Lote UX-7/UX-9): Konva no puede animar una transicion CSS entre
   // imagenes ni un setInterval de forma practica dentro del canvas -- en
-  // modo LECTURA (visor publico) se reemplaza el grid/mosaico ESTATICO
-  // (que sigue siendo la vista de EDICION, sin cambios) por un slideshow
-  // real en HTML puro via <Html> de react-konva-utils.
+  // modo LECTURA conserva el mismo árbol de Konva que el editor. No se usa
+  // <Html> aquí: un overlay DOM siempre queda por encima del canvas entero y
+  // rompería el z_index frente a cualquier imagen, texto o logo de Konva.
+  // Así, una galería y el resto de elementos comparten exactamente el orden
+  // de capas persistido en el snapshot publicado.
   const [slideIndex, setSlideIndex] = useState(0);
   const autoplay = el.props?.autoplay !== false;
   const duration = Math.max(0.5, Number(el.props?.transition_duration) || 3);
@@ -708,16 +710,12 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 
   // Lote UX-11 (13-sep-2026, pedido explicito de Carlos tras observar en
   // vivo la plataforma de referencia -- el elemento de galeria/slideshow
-  // ahi ya rota solo DENTRO del propio lienzo de edicion, sin necesidad de
-  // publicar ni entrar a un visor aparte): el autoplay corre en AMBOS
-  // modos ahora (antes `canEdit ||` lo desactivaba por completo en el
-  // editor). El modo LECTURA (mas abajo) sigue usando <Html>/CSS para el
-  // crossfade -- aqui, para el modo EDICION, el crossfade se hace con
-  // Konva puro (dos <GallerySlideLayer> con opacity animada via
+  // rota dentro del lienzo tanto al editar como al leer): el autoplay corre
+  // en AMBOS modos. El crossfade se hace con Konva puro (dos
+  // <GallerySlideLayer> con opacity animada via
   // requestAnimationFrame) para poder seguir siendo un nodo Konva real
-  // -- arrastrable/seleccionable/transformable -- cosa que un <Html> de
-  // react-konva-utils no ofrece con la misma fiabilidad que ya usan
-  // Audio/Video/Embed en modo edicion (placeholder 100% Konva, nunca DOM).
+  // -- arrastrable/seleccionable/transformable -- y respeta el orden de
+  // capas de los demás elementos en ambos modos.
   const [prevIndex, setPrevIndex] = useState(null);
   const [transitionAlpha, setTransitionAlpha] = useState(1); // 0=recien entrando, 1=transicion terminada
 
@@ -746,9 +744,7 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
     if (slideIndex >= images.length) setSlideIndex(0);
   }, [images.length, slideIndex]);
 
-  // Anima transitionAlpha de 0 -> 1 en ~500ms cada vez que cambia el slide
-  // -- SOLO relevante para el render Konva-nativo del modo edicion (el
-  // modo lectura sigue animando con `transition` de CSS, no con esto).
+  // Anima transitionAlpha de 0 -> 1 en ~500ms cada vez que cambia el slide.
   useEffect(() => {
     if (transitionAlpha >= 1) return undefined;
     let raf;
@@ -763,84 +759,8 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
     return () => cancelAnimationFrame(raf);
   }, [prevIndex, transitionAlpha < 1]);
 
-  if (!canEdit) {
-    if (images.length === 0) return null;
-    const safeIndex = slideIndex < images.length ? slideIndex : 0;
-    const current = images[safeIndex];
-    return (
-      <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>
-        <div style={{ position: 'relative', width: el.width, height: el.height, overflow: 'hidden', background: '#000', borderRadius: 4 }}>
-          {images.map((img, i) => {
-            const src = img.src?.startsWith('http') ? img.src : `${API_URL}${img.src}`;
-            const isActive = i === safeIndex;
-            const style = {
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: imageMode === 'fit' ? 'contain' : 'cover',
-              opacity: isActive ? 1 : 0,
-              zIndex: isActive ? 2 : 1,
-              transition:
-                transitionEffect === 'none'
-                  ? 'none'
-                  : transitionEffect === 'slide'
-                  ? 'transform 0.6s ease, opacity 0.6s ease'
-                  : 'opacity 0.6s ease',
-              transform: transitionEffect === 'slide' ? `translateX(${(i - safeIndex) * 100}%)` : 'none',
-            };
-            return <img key={`${img.src}-${i}`} src={src} alt={img.title || ''} style={style} />;
-          })}
-          {captionsEnabled && (current.title || current.description) && (
-            <div
-              className="editor-v2-gallery-caption"
-              style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '6px 10px', fontSize: 12 }}
-            >
-              {current.title && <strong style={{ display: 'block' }}>{current.title}</strong>}
-              {current.description && <span>{current.description}</span>}
-            </div>
-          )}
-          {controlsEnabled && images.length > 1 && (
-            <>
-              <button
-                type="button"
-                className="editor-v2-gallery-nav editor-v2-gallery-nav-prev"
-                aria-label="Imagen anterior"
-                onClick={() => setSlideIndex((i) => (i - 1 + images.length) % images.length)}
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                className="editor-v2-gallery-nav editor-v2-gallery-nav-next"
-                aria-label="Imagen siguiente"
-                onClick={() => setSlideIndex((i) => (i + 1) % images.length)}
-              >
-                ›
-              </button>
-              <div className="editor-v2-gallery-dots">
-                {images.map((_, i) => (
-                  <span
-                    key={i}
-                    className={`editor-v2-gallery-dot ${i === safeIndex ? 'active' : ''}`}
-                    onClick={() => setSlideIndex(i)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </Html>
-    );
-  }
-
-  // Modo EDICION -- Lote UX-11: slideshow en vivo con Konva puro (nunca
-  // el grid/mosaico estatico de antes), para que se vea rotar dentro del
-  // propio lienzo tal como pidio Carlos. `tiles`/`layout`/`computeGalleryTiles`
-  // ya no se usan aqui para el render (quedan arriba solo por si algun dia
-  // se reintroduce una vista de cuadricula explicita) -- el modo LECTURA
-  // (mas arriba) tampoco los usa desde el Lote UX-10, mismo criterio.
+  // Slideshow en vivo con Konva puro (nunca el grid/mosaico estático): el
+  // mismo render se usa en editor y lector para conservar el z_index.
   if (images.length === 0) {
     return (
       <Group

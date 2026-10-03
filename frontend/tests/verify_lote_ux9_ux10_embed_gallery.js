@@ -121,32 +121,25 @@ function writePng(name) {
   if (!iframeSrc.includes('dQw4w9WgXcQ')) throw new Error('El iframe de YouTube no apunta al video_id correcto: ' + iframeSrc);
   console.log('   OK: iframe real de YouTube presente en el visor ->', iframeSrc);
 
-  console.log('10) verificar el slideshow real de la galería (imagenes + controles + leyenda)');
+  console.log('10) verificar el slideshow de la galería dentro del canvas (sin overlay DOM que rompa z_index)');
   const galleryCheck = await viewerPage.evaluate(() => {
-    const imgs = Array.from(document.querySelectorAll('img')).filter((img) => (img.getAttribute('style') || '').includes('object-fit'));
-    const nav = document.querySelector('.editor-v2-gallery-nav-next');
-    const dots = document.querySelectorAll('.editor-v2-gallery-dot');
-    const caption = document.querySelector('.editor-v2-gallery-caption');
-    return { slideImgCount: imgs.length, hasNav: !!nav, dotCount: dots.length, captionText: caption ? caption.textContent : null };
+    const overlayImages = Array.from(document.querySelectorAll('img')).filter((img) => (img.getAttribute('style') || '').includes('object-fit'));
+    const canvasCount = document.querySelectorAll('.editor-v2-stage canvas').length;
+    const galleryDebug = window.__gallerySlideDebug || {};
+    return { overlayImageCount: overlayImages.length, canvasCount, galleryDebug };
   });
   console.log('   galleryCheck:', JSON.stringify(galleryCheck));
-  if (galleryCheck.slideImgCount !== 3) throw new Error('Se esperaban 3 <img> del slideshow, se encontraron: ' + galleryCheck.slideImgCount);
-  if (!galleryCheck.hasNav) throw new Error('No se encontraron los controles prev/next del slideshow');
-  if (galleryCheck.dotCount !== 3) throw new Error('Se esperaban 3 dots de navegación, se encontraron: ' + galleryCheck.dotCount);
-  if (!galleryCheck.captionText || !galleryCheck.captionText.includes('Playa al atardecer')) throw new Error('La leyenda de la imagen activa no se muestra: ' + galleryCheck.captionText);
-  console.log('   OK: slideshow real presente con controles, dots y leyenda');
+  if (galleryCheck.overlayImageCount !== 0) throw new Error('La galería sigue creando un overlay DOM sobre el canvas: ' + galleryCheck.overlayImageCount);
+  if (galleryCheck.canvasCount < 1) throw new Error('No se encontró el canvas que renderiza la galería');
+  const debugEntries = Object.values(galleryCheck.galleryDebug);
+  if (!debugEntries.some((entry) => entry && entry.canEdit === false)) throw new Error('La galería no se montó en modo lector dentro de Konva');
+  console.log('   OK: slideshow presente en Konva, sin overlay DOM; conserva el z_index de los elementos publicados');
 
   console.log('11) verificar que la imagen activa rota tras esperar el autoplay (duracion=1s)');
-  const firstActiveSrc = await viewerPage.evaluate(() => {
-    const active = Array.from(document.querySelectorAll('img')).find((img) => img.style.opacity === '1');
-    return active ? active.src : null;
-  });
+  const firstSlideIndex = await viewerPage.evaluate(() => Object.values(window.__gallerySlideDebug || {}).find((entry) => entry && entry.canEdit === false)?.slideIndex);
   await viewerPage.waitForTimeout(1800);
-  const secondActiveSrc = await viewerPage.evaluate(() => {
-    const active = Array.from(document.querySelectorAll('img')).find((img) => img.style.opacity === '1');
-    return active ? active.src : null;
-  });
-  if (firstActiveSrc === secondActiveSrc) throw new Error('La imagen activa del slideshow no rotó tras el intervalo de autoplay (1s)');
+  const secondSlideIndex = await viewerPage.evaluate(() => Object.values(window.__gallerySlideDebug || {}).find((entry) => entry && entry.canEdit === false)?.slideIndex);
+  if (firstSlideIndex === undefined || secondSlideIndex === undefined || firstSlideIndex === secondSlideIndex) throw new Error('La imagen activa del slideshow no rotó tras el intervalo de autoplay (1s)');
   console.log('   OK: autoplay rota la imagen activa');
 
   const allErrors = consoleErrors;
