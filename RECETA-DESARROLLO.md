@@ -2042,3 +2042,15 @@ genérico: cambiar a Resend u otro = cambiar `SMTP_*`/`MAIL_FROM` en `.env`.
 - Comprobaciones tras desplegar (solo lectura): home 200, kiosco 2 ediciones con `viewer.download_url=null`, `/api/publications/trash` sin token 401, descarga con `allow_download=false` 404, páginas públicas 200, BD 7 ediciones / 0 con descarga / 0 en papelera, sin errores en el log del backend.
 - Para que los lectores descarguen «Destinos y Negocios 34» (el PDF original existe): Ajustes → Visor → «Descarga en PDF» (decisión del cliente).
 - Truco operativo: un `docker compose ... up -d --build` por SSH tarda >60 s y el conector puede cortar la sesión; lanzarlo redirigiendo a log (`> /tmp/x.log 2>&1`) y consultar el log después — el proceso sigue en el servidor.
+
+## 21. Lote editorial — capas, acciones y texto (03-oct-2026)
+
+Mejoras transversales del editor aplicadas a todas las empresas, colecciones y publicaciones: no añaden migraciones, endpoints ni dependencias. Los datos se mantienen en los mismos `page_elements`/props y se respetan permisos, aislamiento por tenant y contenido existente.
+
+- **Capas del lector público:** las galerías se renderizan en Konva también en lectura. Antes se montaban como HTML sobre el canvas y ese overlay ignoraba el `z_index`; por eso una galería podía tapar el logo aunque en el editor estuviera al frente. Ahora «Traer al frente» y «Enviar al fondo» persisten y se ven igual en editor, vista de páginas y lector público.
+- **Acciones de edición en colecciones:** los botones de tarjeta tienen una retícula uniforme de dos columnas; «Actualizar publicación» comparte tamaño y queda junto a QR. Las acciones tienen jerarquía editorial consistente: azul marino para navegación/publicación, verde petróleo para visibilidad, azul acero para lector, gris pizarra para utilidades, ocre para volver a borrador y burdeos para eliminar.
+- **Salida segura del editor:** «Volver a la colección» se identifica como acción principal con fondo azul acero, contraste, estados hover/focus y separación visual de «Eliminar seleccionado».
+- **Precisión con teclado:** con un elemento seleccionado, flechas lo desplazan 1 px y `Mayús` + flecha 10 px; no actúan dentro de inputs, selects, áreas editables ni sobre elementos bloqueados. El movimiento se limita al área de la página y actualiza el estado normal del editor.
+- **Párrafos de texto:** se reemplazó el selector de alineación por accesos directos para izquierda, centro, derecha y justificado, más viñetas, numeración y aumentar/reducir sangría. Las listas y sangrías se aplican a todas las líneas de la caja mediante texto compatible con el modelo actual; en composiciones multicolumna se conserva la sangría inicial.
+
+**Trazabilidad:** `651e0a7`, `f5f4580`, `cceb767`, `0aa229a`, `9511651`, `1a0bd79`, `49d9f6b` y el ajuste de preservación de sangría posterior. DEV compilado con Vite y validado funcionalmente por Carlos. Producción: ver §21.1 al cerrar el despliegue.

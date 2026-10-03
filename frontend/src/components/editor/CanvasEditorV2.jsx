@@ -1347,7 +1347,9 @@ function flowTextColumns(text, width, height, props = {}) {
     if (chunks[index] && measureTextHeight(candidate, columnWidth, props) > height && index < columns - 1) index += 1;
     chunks[index] += token;
   }
-  return chunks.map((columnText, i) => ({ text: columnText.trim(), x: i * (columnWidth + gap), width: columnWidth }));
+  // Conserva la sangría inicial introducida desde las herramientas de párrafo.
+  // Solo quitamos el espacio sobrante del final que añade el particionado en columnas.
+  return chunks.map((columnText, i) => ({ text: columnText.trimEnd(), x: i * (columnWidth + gap), width: columnWidth }));
 }
 
 // Formato editorial compatible con las cajas existentes: se conserva como
