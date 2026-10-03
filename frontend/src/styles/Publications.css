@@ -233,33 +233,72 @@
   background: var(--color-navy);
 }
 
+.card-actions .btn-secondary.publication-action-navy,
+.card-actions .publication-action-primary {
+  background: #183b5b;
+  border-color: #183b5b;
+  color: #ffffff;
+}
+
+.card-actions .btn-secondary.publication-action-navy:hover:not(:disabled),
+.card-actions .publication-action-primary:hover:not(:disabled) {
+  background: #102b44;
+  border-color: #102b44;
+}
+
 .card-actions .publication-action-visibility {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: #2f625d;
+  color: #ffffff;
+  border-color: #2f625d;
 }
 
 .card-actions .publication-action-visibility:hover {
-  background: #dbeafe;
+  background: #244c48;
+  border-color: #244c48;
 }
 
-.card-actions .btn-secondary.publication-action {
-  background: #ffffff;
-  color: var(--color-navy);
-  border-color: #cbd5e1;
+.card-actions .btn-secondary.publication-action-reader {
+  background: #35607d;
+  color: #ffffff;
+  border-color: #35607d;
 }
 
-.card-actions .btn-secondary.publication-action:hover:not(:disabled) {
-  background: #eff6ff;
-  border-color: #93c5fd;
+.card-actions .btn-secondary.publication-action-reader:hover:not(:disabled) {
+  background: #294b63;
+  border-color: #294b63;
+}
+
+.card-actions .btn-secondary.publication-action-slate {
+  background: #586675;
+  color: #ffffff;
+  border-color: #586675;
+}
+
+.card-actions .btn-secondary.publication-action-slate:hover:not(:disabled) {
+  background: #424e5a;
+  border-color: #424e5a;
 }
 
 .card-actions .btn-warning.publication-action {
-  border-color: #fed7aa;
+  background: #a96a2a;
+  color: #ffffff;
+  border-color: #a96a2a;
+}
+
+.card-actions .btn-warning.publication-action:hover:not(:disabled) {
+  background: #875321;
+  border-color: #875321;
 }
 
 .card-actions .btn-danger.publication-action {
-  border-color: #fecaca;
+  background: #9b3d3d;
+  color: #ffffff;
+  border-color: #9b3d3d;
+}
+
+.card-actions .btn-danger.publication-action:hover:not(:disabled) {
+  background: #7a3030;
+  border-color: #7a3030;
 }
 
 .card-actions .publication-action:disabled {

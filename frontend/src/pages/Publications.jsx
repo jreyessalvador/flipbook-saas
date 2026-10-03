@@ -377,7 +377,7 @@ const Publications = () => {
                     )}
                   </div>
                   <div className="card-actions">
-                    <button className="btn-secondary publication-action" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver páginas</button>
+                    <button className="btn-secondary publication-action publication-action-navy" onClick={() => window.location.href = `/publications/${pub.id}/view`}>Ver páginas</button>
                     {(() => {
                       const ok = isShareable(pub);
                       const why = pub.status !== 'published'
@@ -385,10 +385,10 @@ const Publications = () => {
                         : 'Muéstrala en el catálogo público para poder compartirla';
                       return (
                         <>
-                          <button className="btn-secondary publication-action" onClick={() => setShareFor(pub)} disabled={!ok} title={ok ? 'Compartir enlace público' : why}>
+                          <button className="btn-secondary publication-action publication-action-navy" onClick={() => setShareFor(pub)} disabled={!ok} title={ok ? 'Compartir enlace público' : why}>
                             <Icon name="link" size={15} style={{ marginRight: 6 }} />Compartir
                           </button>
-                          <button className="btn-secondary publication-action" onClick={() => setQrFor(pub)} disabled={!ok} title={ok ? 'Ver y descargar código QR' : why}>
+                          <button className="btn-secondary publication-action publication-action-navy" onClick={() => setQrFor(pub)} disabled={!ok} title={ok ? 'Ver y descargar código QR' : why}>
                             ▦ QR
                           </button>
                         </>
@@ -403,7 +403,7 @@ const Publications = () => {
                           {pub.is_public ? 'Ocultar del catálogo' : 'Mostrar en catálogo'}
                         </button>
                         {pub.is_public && (
-                          <button className="btn-secondary publication-action" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
+                          <button className="btn-secondary publication-action publication-action-reader" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
                             Abrir lector público
                           </button>
                         )}
@@ -417,14 +417,14 @@ const Publications = () => {
                       </button>
                     ))}
                     {!isAdmin && pub.status === 'published' && pub.is_public && (
-                      <button className="btn-secondary publication-action" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
+                      <button className="btn-secondary publication-action publication-action-reader" onClick={() => window.location.href = pub.public_path || `/leer/${pub.id}`}>
                         Abrir lector público
                       </button>
                     )}
-                    {canEdit && <button className="btn-secondary publication-action" onClick={() => navigate(`/publications/${pub.id}/ajustes`)} title="Info, visor, SEO, clonar e insertar">
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => navigate(`/publications/${pub.id}/ajustes`)} title="Info, visor, SEO, clonar e insertar">
                       <Icon name="settings" size={15} style={{ marginRight: 6 }} />Ajustes
                     </button>}
-                    {canEdit && <button className="btn-secondary publication-action" onClick={() => openMove(pub)} title="Mover a otra colección">
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
                     </button>}
                     {isAdmin && <button 
