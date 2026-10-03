@@ -2054,3 +2054,9 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - **Párrafos de texto:** se reemplazó el selector de alineación por accesos directos para izquierda, centro, derecha y justificado, más viñetas, numeración y aumentar/reducir sangría. Las listas y sangrías se aplican a todas las líneas de la caja mediante texto compatible con el modelo actual; en composiciones multicolumna se conserva la sangría inicial.
 
 **Trazabilidad:** `651e0a7`, `f5f4580`, `cceb767`, `0aa229a`, `9511651`, `1a0bd79`, `49d9f6b` y el ajuste de preservación de sangría posterior. DEV compilado con Vite y validado funcionalmente por Carlos. Producción: ver §21.1 al cerrar el despliegue.
+
+### 21.1 Lote editorial EN PRODUCCIÓN (03-oct-2026, 23:40 WEST)
+
+- Producción actualizada a `redesign/editor-v2` @ `50dda51` con `docker compose -f docker-compose.prod.yml up -d --build frontend`. Es un despliegue **solo de frontend**: no se ejecutaron migraciones ni se reinició backend, worker, Redis, MinIO o PostgreSQL.
+- Validación: build Vite correcto (290 módulos), contenedor `flipbook-prod-frontend` recreado y activo, `https://revistas.cetrix.com.mx/` respondió HTTP 200 y `/health` devolvió `{\"status\":\"ok\"}`. Los logs recientes de nginx solo muestran su arranque normal y la comprobación HTTP.
+- Rollback disponible: imagen `flipbook-prod-frontend:rollback-pre-editorial-20261003-2339` (ID `sha256:2307396ccf18085eeaf17e19080d49c0f04b9985edafb8cdcacdfccf2780b46f`), dump `/home/administracion/backups/flipbook-prod-pre-editorial-20261003-2339.dump` y copia protegida de `.env` `/home/administracion/backups/flipbook-prod-env-pre-editorial-20261003-2339`. Para revertir el frontend: etiquetar esa imagen como `flipbook-prod-frontend:latest` y ejecutar `docker compose -f docker-compose.prod.yml up -d --no-build frontend` desde `/srv/apps/flipbook`.
