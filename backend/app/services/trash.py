@@ -66,11 +66,36 @@ def _is_referenced(db, key: str) -> bool:
     return row is not None
 
 
-def _candidate_keys(pub, minio_client, bucket):
+def _referenced_import_keys(db, pub):
+    """Objetos de importacion (carpeta ``publications/`` de CUALQUIER edicion
+    de la empresa) que usan los elementos o snapshots de esta edicion: un clon
+    apunta a las paginas rasterizadas de su original. Nunca incluye la
+    biblioteca de la empresa (assets), que no vive en esa carpeta."""
+    import re
+    folder = f"tenant-{pub.tenant_id}/publications/"
+    pattern = re.compile(re.escape(SERVE_PREFIX + folder) + r'([^"?#\s]+)')
+    rows = db.execute(text("""
+        SELECT pe.props::text FROM page_elements pe JOIN pages p ON p.id = pe.page_id WHERE p.publication_id = :id
+        UNION ALL
+        SELECT snapshot::text FROM publication_versions WHERE publication_id = :id
+    """), {"id": pub.id}).all()
+    keys = set()
+    for (blob,) in rows:
+        for rest in pattern.findall(blob or ""):
+            keys.add(folder + rest)
+    return keys
+
+
+def _candidate_keys(db, pub, minio_client, bucket):
     keys = set()
     pdf_key = storage_key_from_url(pub.pdf_url)
     if pdf_key:
         keys.add(pdf_key)
+    try:
+        keys |= _referenced_import_keys(db, pub)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("No se pudieron extraer las referencias de %s: %s", pub.id, exc)
     prefix = f"tenant-{pub.tenant_id}/publications/{pub.id}/"
     try:
         for obj in minio_client.list_objects(bucket, prefix=prefix, recursive=True):
@@ -84,7 +109,7 @@ def purge_publication(db, pub) -> dict:
     """Borrado fisico de una edicion YA en la papelera. Hace commit."""
     from app.api.assets import minio_client, BUCKET_NAME
 
-    candidates = _candidate_keys(pub, minio_client, BUCKET_NAME)
+    candidates = _candidate_keys(db, pub, minio_client, BUCKET_NAME)
     pub_id = str(pub.id)
     db.delete(pub)
     db.commit()

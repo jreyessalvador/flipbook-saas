@@ -191,7 +191,7 @@ ok(st == 200 and obj_exists(shared_key), f"purgar original NO borra la imagen qu
 ok(not obj_exists(own_key), "purgar original SI borra la imagen que solo usaba el")
 call("DELETE", f"/api/publications/{cl['id']}", OW)
 st, res = call("DELETE", f"/api/publications/{cl['id']}/purge", OW)
-ok(st == 200 and obj_exists(shared_key), "la imagen vive bajo la carpeta del original y no la lista el clon (queda huerfana, inofensiva)")
+ok(st == 200 and not obj_exists(shared_key), f"purgar el clon (ultimo que la usaba) SI borra la imagen compartida ({res})")
 
 # --- 6. Descarga del PDF -----------------------------------------------------
 blank = new_pub(OW, general["id"], f"QA L5 sin pdf {RUN}")
