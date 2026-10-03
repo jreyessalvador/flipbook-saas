@@ -175,7 +175,7 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | Guía | Alta y operación de clientes (Super Admin, correo, kiosco) | ver `docs/OPERACION-CLIENTES.md` |
 | ED-1 Hotspots visibles en editor + copiar/cortar/pegar/duplicar elementos | **En PRODUCCIÓN** 29-sep-2026 (`6840d31`, `42389e5`, solo frontend) — ver RECETA §18 |
 | L9 Correo SMTP (IONOS) + recuperar contraseña + fixes Super Admin | **En PRODUCCIÓN** 29-sep-2026 (`e659af6`…`bc28e82`) — ver RECETA §19 |
-| L5 Descarga PDF por edición + papelera 30 días | DEV 03-oct-2026 (RECETA §20), pendiente validación de Carlos |
+| L5 Descarga PDF por edición + papelera 30 días | ✅ PRODUCCIÓN 03-oct-2026 (RECETA §20 y §20.1) |
 | L6 Estadísticas sin cookies + `views_count` | Pendiente |
 | L7 Imagen OG 1200x630 · L8 UI categorías Super Admin | Pendiente |
 | L9 Resend (invitaciones/reset) | Pendiente: Carlos verifica dominio y da la clave por .env |
