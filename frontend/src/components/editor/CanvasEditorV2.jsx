@@ -1350,6 +1350,33 @@ function flowTextColumns(text, width, height, props = {}) {
   return chunks.map((columnText, i) => ({ text: columnText.trim(), x: i * (columnWidth + gap), width: columnWidth }));
 }
 
+// Formato editorial compatible con las cajas existentes: se conserva como
+// texto plano, por lo que funciona igual en editor, snapshots y Reader sin
+// migraciones. Las acciones se aplican al bloque completo de la caja.
+const LIST_MARKER_RE = /^(?:•\s+|\d+\.\s+)/;
+function toggleTextList(text, type) {
+  const lines = String(text || '').split('\n');
+  const nonEmpty = lines.filter((line) => line.trim());
+  if (nonEmpty.length === 0) return text;
+  const active = type === 'bullet'
+    ? nonEmpty.every((line) => /^•\s+/.test(line))
+    : nonEmpty.every((line) => /^\d+\.\s+/.test(line));
+  if (active) return lines.map((line) => line.replace(LIST_MARKER_RE, '')).join('\n');
+  let number = 1;
+  return lines.map((line) => {
+    if (!line.trim()) return line;
+    const content = line.replace(LIST_MARKER_RE, '');
+    return type === 'bullet' ? `• ${content}` : `${number++}. ${content}`;
+  }).join('\n');
+}
+
+function indentTextBlock(text, direction) {
+  return String(text || '').split('\n').map((line) => {
+    if (!line.trim()) return line;
+    return direction === 'increase' ? `    ${line}` : line.replace(/^(?: {1,4}|\t)/, '');
+  }).join('\n');
+}
+
 function TextElement({ el, canEdit, onSelect, onChange, onEditStart, onEditEnd, shapeRef, shortcodeCtx }) {
   const nodeRef = useRef(null);
   const props = el.props || {};
@@ -1550,7 +1577,21 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
             {kind === 'text' && (
               <>
                 <NumberField label="Tamaño de fuente" value={selectedElement?.props?.fontSize || 24} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, fontSize: Math.max(1, n) } })} />
-                <label className="editor-v2-field"><span>Alineación de párrafo</span><select disabled={disabled} value={selectedElement?.props?.textAlign || 'left'} onChange={(e) => onUpdate({ props: { ...selectedElement.props, textAlign: e.target.value } })}><option value="left">Izquierda</option><option value="center">Centro</option><option value="right">Derecha</option><option value="justify">Justificado</option></select></label>
+                <div className="editor-v2-paragraph-tools" role="group" aria-label="Formato de párrafo">
+                  <span>Formato de párrafo</span>
+                  <div className="editor-v2-paragraph-row" role="group" aria-label="Alineación">
+                    {[['left', 'align-left', 'Alinear a la izquierda'], ['center', 'align-center', 'Centrar texto'], ['right', 'align-right', 'Alinear a la derecha'], ['justify', 'align-justify', 'Justificar texto']].map(([value, icon, label]) => (
+                      <button key={value} type="button" className={`editor-v2-paragraph-button ${(selectedElement?.props?.textAlign || 'left') === value ? 'active' : ''}`} disabled={disabled} aria-pressed={(selectedElement?.props?.textAlign || 'left') === value} title={label} onClick={() => onUpdate({ props: { ...selectedElement.props, textAlign: value } })}><UiIcon name={icon} size={16} /></button>
+                    ))}
+                  </div>
+                  <div className="editor-v2-paragraph-row" role="group" aria-label="Listas y sangría">
+                    <button type="button" className="editor-v2-paragraph-button" disabled={disabled} title="Aplicar o quitar viñetas a todas las líneas" onClick={() => onUpdate({ props: { ...selectedElement.props, text: toggleTextList(selectedElement?.props?.text || '', 'bullet') } })}><UiIcon name="list-bullets" size={16} /></button>
+                    <button type="button" className="editor-v2-paragraph-button" disabled={disabled} title="Aplicar o quitar lista numerada a todas las líneas" onClick={() => onUpdate({ props: { ...selectedElement.props, text: toggleTextList(selectedElement?.props?.text || '', 'ordered') } })}><UiIcon name="list-numbered" size={16} /></button>
+                    <button type="button" className="editor-v2-paragraph-button" disabled={disabled} title="Reducir sangría de todas las líneas" onClick={() => onUpdate({ props: { ...selectedElement.props, text: indentTextBlock(selectedElement?.props?.text || '', 'decrease') } })}><UiIcon name="indent-decrease" size={16} /></button>
+                    <button type="button" className="editor-v2-paragraph-button" disabled={disabled} title="Aumentar sangría de todas las líneas" onClick={() => onUpdate({ props: { ...selectedElement.props, text: indentTextBlock(selectedElement?.props?.text || '', 'increase') } })}><UiIcon name="indent-increase" size={16} /></button>
+                  </div>
+                  <small>Listas y sangría se aplican a todas las líneas de esta caja.</small>
+                </div>
                 <NumberField label="Interlineado" value={selectedElement?.props?.lineHeight || 1.25} step={0.05} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, lineHeight: Math.max(0.8, Math.min(3, n)) } })} />
                 <label className="editor-v2-field"><span>Columnas</span><select disabled={disabled} value={selectedElement?.props?.columns || 1} onChange={(e) => onUpdate({ props: { ...selectedElement.props, columns: Number(e.target.value) } })}><option value={1}>1 columna</option><option value={2}>2 columnas</option><option value={3}>3 columnas</option><option value={4}>4 columnas</option></select></label>
                 <NumberField label="Separación columnas" value={selectedElement?.props?.columnGap || 15} disabled={disabled} onCommit={(n) => onUpdate({ props: { ...selectedElement.props, columnGap: Math.max(0, n) } })} />
