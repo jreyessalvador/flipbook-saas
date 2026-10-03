@@ -69,7 +69,7 @@ _cleanup = {"ed": ed.get("id") if isinstance(ed, dict) else None, "c2": None}
 def _limpieza():
     # Garantiza que no queden ediciones/colecciones de prueba aunque el script falle a mitad (idempotente).
     if _cleanup["ed"]:
-        call("POST", f"/api/publications/{_cleanup['ed']}/unpublish", OW); call("DELETE", f"/api/publications/{_cleanup['ed']}", OW)
+        call("POST", f"/api/publications/{_cleanup['ed']}/unpublish", OW); call("DELETE", f"/api/publications/{_cleanup['ed']}", OW); call("DELETE", f"/api/publications/{_cleanup['ed']}/purge", OW)  # L5: papelera
     if _cleanup["c2"]:
         call("DELETE", f"/api/collections/{_cleanup['c2']}", OW)
 atexit.register(_limpieza)
@@ -124,7 +124,7 @@ call("DELETE", f"/api/team/members/{rv['membership_id']}", OW)
 st, _ = call("GET", "/api/collections", TT); ok(st == 403, f"miembro revocado pierde acceso -> {st}")
 st, _ = call("POST", "/api/superadmin/invitations/accept", None, {"token": rv["invite_token"], "password": "otraclave12345"}); ok(st == 400, f"token de invitacion usado/revocado no sirve -> {st}")
 # limpieza de la edicion de prueba
-call("POST", f"/api/publications/{ed['id']}/unpublish", AD); st, _ = call("DELETE", f"/api/publications/{ed['id']}", AD); ok(st == 204, f"admin borra edicion de prueba ({st})")
+call("POST", f"/api/publications/{ed['id']}/unpublish", AD); st, _ = call("DELETE", f"/api/publications/{ed['id']}", AD); ok(st == 204, f"admin borra edicion de prueba ({st})"); call("DELETE", f"/api/publications/{ed['id']}/purge", OW)  # L5: vaciar de la papelera
 call("DELETE", f"/api/collections/{c2['id']}", AD)
 if creds:
     open("/tmp/demo_users.txt", "a").write("".join(f"{e} {p}\n" for e, p in creds.items()))

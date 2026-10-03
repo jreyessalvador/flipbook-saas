@@ -120,7 +120,7 @@ st, _ = call("PUT", f"/api/publications/{ed['id']}", OW, {"seo_title": "hack"});
 
 # --- Limpieza ----------------------------------------------------------------
 for pid in created:
-    if pid: call("DELETE", f"/api/publications/{pid}", SA)
+    if pid: call("DELETE", f"/api/publications/{pid}", SA); call("DELETE", f"/api/publications/{pid}/purge", SA)  # L5: papelera
 st, _ = call("GET", f"/api/publications/{ed['id']}", SA); ok(st == 404, "limpieza de ediciones QA")
 db.query(Asset).filter(Asset.id.in_([a_audio.id, a_img.id, a_other.id])).delete(synchronize_session=False); db.commit(); db.close()
 

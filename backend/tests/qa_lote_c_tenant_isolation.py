@@ -80,4 +80,4 @@ st, _ = call("GET", "/api/superadmin/categories", OW); ok(st == 403, f"owner no 
 st, _ = call("PUT", f"/api/collections/{newcol['id']}", OW, {"category_id": cats[0]["id"]}); ok(st == 200, "asignar categoria a coleccion")
 
 # limpieza: el script es re-ejecutable (borra su edicion temporal)
-st, _ = call("DELETE", f"/api/publications/{ed['id']}", OW); ok(st == 204, f"limpieza edicion temporal ({st})")
+st, _ = call("DELETE", f"/api/publications/{ed['id']}", OW); ok(st == 204, f"limpieza edicion temporal ({st})"); call("DELETE", f"/api/publications/{ed['id']}/purge", OW)  # L5
