@@ -9,7 +9,10 @@
   flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #d6d9e0; border-radius: 6px;
   font-size: 13px; color: #333; background: #f7f8fa;
 }
-.share-url-row .btn-primary { white-space: nowrap; }
+/* global.css da a .btn-primary width:100%: aqui el boton debe medir lo que su
+   texto, si no aplasta el campo del enlace hasta hacerlo invisible (fix S1). */
+.share-url-row input { flex: 1 1 auto; min-width: 12rem; font-size: 15px; font-weight: 600; color: var(--color-navy, #14213d); }
+.share-url-row .btn-primary { width: auto; flex: 0 0 auto; white-space: nowrap; padding: 10px 18px; font-size: 14px; }
 .share-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 8px; }
 .share-channel {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e3e6ec;
@@ -26,6 +29,8 @@
 .share-hint { font-size: 12px; color: #8a6d1f; margin-top: 6px; }
 @media (max-width: 480px) {
   .share-url-row { flex-direction: column; }
+  .share-url-row input { min-width: 0; }
+  .share-url-row .btn-primary { width: 100%; }
 }
 
 /* Lote S1: enlace completo como alternativa al corto */
