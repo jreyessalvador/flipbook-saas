@@ -1,0 +1,13 @@
+[Unit]
+Description=Cortafuegos del worker de render de flipbook-saas (br-flipbook)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sh -c 'docker network inspect flipbook-worker-net >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.250.0/24 -o com.docker.network.bridge.name=br-flipbook -o com.docker.network.bridge.enable_icc=false flipbook-worker-net'
+ExecStart=/usr/local/sbin/flipbook-worker-fw.sh
+
+[Install]
+WantedBy=multi-user.target
