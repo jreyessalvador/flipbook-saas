@@ -12,7 +12,7 @@ identica, anti-abuso 5 min, invalidacion de tokens previos).
 import sys, json, secrets, threading, time, urllib.request, urllib.error, asyncore, smtpd, hashlib
 sys.path.insert(0, "/app")
 from datetime import timedelta
-from app.core.security import create_access_token
+from app.core.security import token_with_current_version as create_access_token  # EQ-1: incluye "tv"
 from app.config import settings
 from app.services import mailer
 B = "http://localhost:8000"

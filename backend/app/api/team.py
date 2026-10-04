@@ -202,5 +202,7 @@ def revoke_member(membership_id: str, db: Session = Depends(get_db), current_use
     if not _can_manage(current_user, r.code):
         raise HTTPException(status_code=403, detail="No puedes revocar a este miembro")
     m.status, m.revoked_at, m.invite_token_hash = "revoked", datetime.now(timezone.utc), None
+    from app.core.security import revoke_sessions
+    revoke_sessions(u)  # Lote EQ-1: fuera de todas sus sesiones al instante
     _audit(db, current_user, "team.revoked", m.tenant_id, m.id, {"email": u.email, "role": r.code})
     db.commit()

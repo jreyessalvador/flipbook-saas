@@ -179,3 +179,17 @@ def send_password_reset(to: str, token: str, minutes_valid: int = 120) -> bool:
             f"Elige una nueva aquí:\n{url}\n\nEl enlace sirve una sola vez y caduca en {hours} horas.\n"
             "Si no has sido tú, ignora este correo.\n\n-- Cetrix Revistas")
     return send_mail(to, subject, _render("Restablecer contraseña", intro, "Elegir nueva contraseña", url, outro), text)
+
+
+
+def send_password_changed(to: str) -> bool:
+    """Lote EQ-1: aviso de que la contrasena se cambio desde «Mi cuenta»."""
+    url = public_url("/recuperar-contrasena")
+    subject = "Tu contraseña de Cetrix Revistas se ha cambiado"
+    intro = ("<p>Hola,</p><p>La contraseña de tu cuenta de Cetrix Revistas "
+             f"(<strong>{html.escape(to)}</strong>) se acaba de cambiar y se han cerrado tus otras sesiones abiertas.</p>")
+    outro = ("<p>Si has sido tú, no tienes que hacer nada.</p>"
+             "<p><strong>Si no has sido tú</strong>, restablécela ahora con el botón y avisa al administrador de tu empresa.</p>")
+    text = (f"Hola,\n\nLa contraseña de tu cuenta de Cetrix Revistas ({to}) se acaba de cambiar y se han cerrado tus otras sesiones.\n\n"
+            f"Si no has sido tú, restablécela aquí y avisa al administrador de tu empresa:\n{url}\n\n-- Cetrix Revistas")
+    return send_mail(to, subject, _render("Contraseña cambiada", intro, "No he sido yo: restablecer", url, outro), text)

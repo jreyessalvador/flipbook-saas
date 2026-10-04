@@ -10,7 +10,7 @@ Crea (si no existen) admin/editor/lector demo y deja sus contrasenas en
 import sys, json, secrets, urllib.request, urllib.error
 sys.path.insert(0, "/app")
 from datetime import timedelta
-from app.core.security import create_access_token
+from app.core.security import token_with_current_version as create_access_token  # EQ-1: incluye "tv"
 B = "http://localhost:8000"
 
 def call(method, path, token=None, body=None, headers=None):

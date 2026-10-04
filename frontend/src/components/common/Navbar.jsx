@@ -82,9 +82,11 @@ const Navbar = () => {
         )}
         {user && (
           <>
-            <span style={{ fontSize: '0.9rem', opacity: 0.8, marginRight: '1rem' }}>
+            {/* Lote EQ-1: el correo abre «Mi cuenta» (cambiar contraseña) */}
+            <button type="button" onClick={() => navigate('/mi-cuenta')} title="Mi cuenta: cambiar contraseña"
+              style={{ fontSize: '0.9rem', opacity: 0.85, marginRight: '1rem', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
               {user.email}{user.tenant_role ? ` · ${ROLE_LABEL[user.tenant_role] || user.tenant_role}` : ''}
-            </span>
+            </button>
             <button onClick={handleLogout} className="btn-logout">
               Cerrar Sesión
             </button>

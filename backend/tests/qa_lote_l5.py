@@ -11,7 +11,7 @@ import sys, json, uuid, atexit, urllib.request, urllib.error
 from io import BytesIO
 sys.path.insert(0, "/app")
 from datetime import timedelta
-from app.core.security import create_access_token
+from app.core.security import token_with_current_version as create_access_token  # EQ-1: incluye "tv"
 from app.db.session import SessionLocal
 from app.models.publication import Publication
 from app.models.collection import Collection

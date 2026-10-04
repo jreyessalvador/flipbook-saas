@@ -12,7 +12,7 @@ import uuid
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate
-from app.core.security import verify_password, get_password_hash, create_access_token
+from app.core.security import verify_password, get_password_hash, create_access_token, issue_token, revoke_sessions
 from app.config import settings
 from app.services import mailer
 from app.models.password_reset_token import PasswordResetToken
@@ -26,6 +26,11 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     password: str
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -63,11 +68,16 @@ def get_current_user(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError:
+        token_version = int(payload.get("tv", 0) or 0)
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
 
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:
+        raise credentials_exception
+    # Lote EQ-1: un token emitido antes del ultimo cambio de contrasena (o de
+    # un cierre de sesiones) ya no vale, aunque no haya caducado.
+    if token_version != int(user.token_version or 0):
         raise credentials_exception
 
     from app.models.tenant import Tenant
@@ -142,8 +152,8 @@ def login(
     user.last_login = datetime.utcnow()
     db.commit()
     
-    access_token = create_access_token(data={"sub": user.email})
-    
+    access_token = issue_token(user)  # Lote EQ-1: incluye la version de sesion
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserResponse)
@@ -203,6 +213,8 @@ def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Enlace inválido o caducado")
     user = db.query(User).filter(User.id == token.user_id).first()
     user.password_hash, user.is_active = get_password_hash(data.password), True
+    user.password_changed_at = datetime.now(timezone.utc)
+    revoke_sessions(user)  # Lote EQ-1: quien estuviera dentro con la anterior queda fuera
     token.used_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "password_updated"}
@@ -251,3 +263,54 @@ def register(
     db.refresh(new_user)
     
     return new_user
+
+
+# ---------------------------------------------------------------------------
+# Lote EQ-1 (2026-10-04): «Mi cuenta» -- cambiar la propia contrasena.
+# ---------------------------------------------------------------------------
+PW_MIN_LEN = 12            # mismo minimo que el restablecimiento por correo
+PW_MAX_FAILURES = 5        # intentos fallidos con la contrasena actual...
+PW_LOCK_MINUTES = 15       # ...bloquean el cambio durante 15 minutos
+
+
+@router.post("/change-password")
+def change_password(data: PasswordChange, request: Request, db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user)):
+    """Cambia la contrasena del usuario autenticado. Cierra TODAS sus otras
+    sesiones (sube token_version) y devuelve un token nuevo para esta."""
+    from app.api.superadmin import audit
+    now = datetime.now(timezone.utc)
+    user = db.query(User).filter(User.id == current_user.id).first()
+    locked = user.pw_change_locked_until
+    if locked is not None and locked.tzinfo is None:
+        locked = locked.replace(tzinfo=timezone.utc)
+    if locked and locked > now:
+        mins = max(1, int((locked - now).total_seconds() // 60) + 1)
+        raise HTTPException(status_code=429, detail=f"Demasiados intentos. Vuelve a probar en {mins} min.")
+    if not verify_password(data.current_password or "", user.password_hash):
+        user.pw_change_failures = int(user.pw_change_failures or 0) + 1
+        if user.pw_change_failures >= PW_MAX_FAILURES:
+            user.pw_change_failures = 0
+            user.pw_change_locked_until = now + timedelta(minutes=PW_LOCK_MINUTES)
+        audit(db, user, "password.change_failed", tenant_id=user.tenant_id, entity_type="user", entity_id=user.id,
+              details={"ip": request.headers.get("x-real-ip") or (request.client.host if request.client else None)})
+        db.commit()
+        raise HTTPException(status_code=400, detail="La contraseña actual no es correcta")
+    new = data.new_password or ""
+    if len(new) < PW_MIN_LEN:
+        raise HTTPException(status_code=422, detail=f"La nueva contraseña debe tener al menos {PW_MIN_LEN} caracteres")
+    if len(new) > 128:
+        raise HTTPException(status_code=422, detail="La nueva contraseña es demasiado larga (máximo 128)")
+    if verify_password(new, user.password_hash):
+        raise HTTPException(status_code=422, detail="La nueva contraseña debe ser distinta de la actual")
+    user.password_hash = get_password_hash(new)
+    user.password_changed_at = now
+    user.pw_change_failures, user.pw_change_locked_until = 0, None
+    revoke_sessions(user)
+    audit(db, user, "password.changed", tenant_id=user.tenant_id, entity_type="user", entity_id=user.id,
+          details={"ip": request.headers.get("x-real-ip") or (request.client.host if request.client else None)})
+    db.commit()
+    db.refresh(user)
+    email_sent = mailer.delivered(mailer.send_password_changed(user.email))
+    return {"status": "password_changed", "access_token": issue_token(user), "token_type": "bearer",
+            "other_sessions_closed": True, "email_sent": email_sent}

@@ -12,6 +12,7 @@ const PageViewer = lazy(() => import('./components/editor/PageViewer'));
 const EditionSettings = lazy(() => import('./pages/EditionSettings'));
 const Trash = lazy(() => import('./pages/Trash'));
 const RenderBook = lazy(() => import('./pages/RenderBook'));
+const MiCuenta = lazy(() => import('./pages/MiCuenta'));
 const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
 const PublicReader = lazy(() => import('./pages/PublicReader'));
@@ -40,6 +41,8 @@ function App() {
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />
           <Route path="/recuperar-contrasena" element={<ForgotPassword />} />
+          {/* Lote EQ-1: Mi cuenta (cambiar contraseña) */}
+          <Route path="/mi-cuenta" element={<ProtectedRoute><><Navbar /><MiCuenta /></></ProtectedRoute>} />
           <Route path="/team" element={<ProtectedRoute><><Navbar /><Team /></></ProtectedRoute>} />
           <Route path="/superadmin" element={<ProtectedRoute><><Navbar /><SuperAdmin /></></ProtectedRoute>} />
 
