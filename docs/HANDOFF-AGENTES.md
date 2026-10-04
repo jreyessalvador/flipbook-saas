@@ -178,8 +178,17 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | L5 Descarga PDF por edición + papelera 30 días | ✅ PRODUCCIÓN 03-oct-2026 (RECETA §20 y §20.1) |
 | L6 Estadísticas sin cookies + `views_count` | Pendiente |
 | L7 Imagen OG 1200x630 · L8 UI categorías Super Admin | Pendiente |
-| L9 Resend (invitaciones/reset) | Pendiente: Carlos verifica dominio y da la clave por .env |
+| L9 Resend (invitaciones/reset) | Descartado: se usa SMTP IONOS (L9) |
+| Editorial (capas, acciones, párrafos) — Codex | ✅ PRODUCCIÓN 03-oct-2026 (RECETA §21) |
+| Lector público responsive (barra lateral) — Codex | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §22) |
+| S1 Enlace corto `/s/{código}` | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §23) |
+| F1 Motor de render aislado en Contabo 2 (`wg-flipbook`) | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §24) |
+| F Exportar PDF desde el panel (enlaces clicables) | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §25) |
 | L10 Producción revistas.cetrix.com.mx | **En marcha desde 27-sep-2026** con L1–L3 (`3fa9e37`), copia completa de DEV. Los lotes siguientes se suben con el procedimiento de RECETA §14 |
 
 ## Siguiente sesión (desde 28-sep-2026)
 Plan detallado y listo para implementar de L5, L7a (miniaturas + OG), estantería pública, PDF→hotspots, L6, L8, L9 y la web comercial: **`docs/PLAN-SIGUIENTES-LOTES.md`** (orden recomendado, decisiones pendientes de Carlos, migraciones 0011-0013 propuestas, API, frontend, QA y criterios de aceptación).
+
+
+## Estado para el equipo (04-oct-2026)
+Resumen no técnico y actualizado del proyecto (funcionalidades, lotes, arquitectura, seguridad, operación, clientes, backlog): Claude Doc **«Cetrix Revistas — Estado del proyecto»** https://claude.ai/code/artifact/95dda6b1-4f56-40e6-8bb2-ef006901d664 — actualizarlo al cerrar cada lote.
