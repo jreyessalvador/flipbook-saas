@@ -15,4 +15,5 @@ import app.workers.maintenance  # noqa: E402,F401
 from celery.schedules import crontab  # noqa: E402
 celery_app.conf.beat_schedule = {
     "purge-trash-daily": {"task": "flipbook.purge_trash", "schedule": crontab(hour=3, minute=17)},
+    "cleanup-exports-daily": {"task": "flipbook.cleanup_exports", "schedule": crontab(hour=3, minute=41)},
 }

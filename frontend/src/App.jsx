@@ -11,6 +11,7 @@ const Team = lazy(() => import('./pages/Team'));
 const PageViewer = lazy(() => import('./components/editor/PageViewer'));
 const EditionSettings = lazy(() => import('./pages/EditionSettings'));
 const Trash = lazy(() => import('./pages/Trash'));
+const RenderBook = lazy(() => import('./pages/RenderBook'));
 const CanvasEditorV2 = lazy(() => import('./components/editor/CanvasEditorV2'));
 import LandingPage from './pages/LandingPage';
 const PublicReader = lazy(() => import('./pages/PublicReader'));
@@ -33,6 +34,8 @@ function App() {
           {/* Lote L4: versión insertable (iframe) del lector, sin cabecera del panel */}
           <Route path="/embed/leer/:id" element={<PublicReader embed />} />
           <Route path="/embed/r/:tenant/:collection/:edition" element={<PublicReader embed />} />
+          {/* Lote F: render interno para exportar PDF (solo lo abre el worker de Contabo 2) */}
+          <Route path="/render/:jobId" element={<RenderBook />} />
           <Route path="/login" element={<Login />} />
           <Route path="/aceptar-invitacion" element={<AcceptInvitation />} />
           <Route path="/restablecer-contrasena" element={<ResetPassword />} />

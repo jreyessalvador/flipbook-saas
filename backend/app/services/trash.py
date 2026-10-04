@@ -110,6 +110,11 @@ def purge_publication(db, pub) -> dict:
     from app.api.assets import minio_client, BUCKET_NAME
 
     candidates = _candidate_keys(db, pub, minio_client, BUCKET_NAME)
+    # Lote F: PDFs exportados de la edicion (sus filas caen por cascade)
+    try:
+        candidates |= {r[0] for r in db.execute(text("SELECT result_key FROM render_jobs WHERE publication_id = :id AND result_key IS NOT NULL"), {"id": pub.id}).all()}
+    except Exception:
+        db.rollback()
     pub_id = str(pub.id)
     db.delete(pub)
     db.commit()

@@ -18,3 +18,16 @@ def purge_trash_task():
         return {"purged": len(results)}
     finally:
         db.close()
+
+
+@celery_app.task(name="flipbook.cleanup_exports")
+def cleanup_exports_task():
+    """Lote F: borra PDFs exportados con mas de 30 dias (y el exceso por edicion)."""
+    from app.services.render_jobs import cleanup_exports
+    db = SessionLocal()
+    try:
+        n = cleanup_exports(db)
+        logger.info("Limpieza de PDFs exportados: %d eliminados", n)
+        return {"removed": n}
+    finally:
+        db.close()

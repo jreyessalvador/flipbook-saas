@@ -9,6 +9,7 @@ import { API_URL } from '../services/api';
 import '../styles/Publications.css';
 import ShareModal from '../components/share/ShareModal';
 import QrModal from '../components/share/QrModal';
+import PdfExportPanel from '../components/share/PdfExportPanel';
 import { isShareable } from '../components/share/shareLinks';
 
 import Icon from '../components/common/Icon';
@@ -34,6 +35,7 @@ const Publications = () => {
   // Compartir / QR del Reader publico
   const [shareFor, setShareFor] = useState(null);
   const [trashCount, setTrashCount] = useState(0); // Lote L5
+  const [pdfFor, setPdfFor] = useState(null); // Lote F
   const [qrFor, setQrFor] = useState(null);
   const importPollRef = useRef(null);
   
@@ -424,6 +426,9 @@ const Publications = () => {
                     {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => navigate(`/publications/${pub.id}/ajustes`)} title="Info, visor, SEO, clonar e insertar">
                       <Icon name="settings" size={15} style={{ marginRight: 6 }} />Ajustes
                     </button>}
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => setPdfFor(pub)} title="Descargar la edición en PDF (tal cual se ve, con enlaces clicables)">
+                      <Icon name="download" size={15} style={{ marginRight: 6 }} />PDF
+                    </button>}
                     {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
                     </button>}
@@ -444,6 +449,16 @@ const Publications = () => {
 
       {shareFor && <ShareModal pub={shareFor} onClose={() => setShareFor(null)} />}
       {qrFor && <QrModal pub={qrFor} onClose={() => setQrFor(null)} />}
+      {pdfFor && (
+        <div className="modal-overlay" onClick={() => setPdfFor(null)}>
+          <div className="modal-content share-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`PDF de ${pdfFor.title}`}>
+            <h3>Descargar en PDF</h3>
+            <p className="share-subtitle">{pdfFor.title}</p>
+            <PdfExportPanel pub={pdfFor} compact />
+            <div className="modal-actions"><button type="button" className="btn-secondary" onClick={() => setPdfFor(null)}>Cerrar</button></div>
+          </div>
+        </div>
+      )}
 
       {moving && (
         <div className="modal-overlay" onClick={() => !movingBusy && setMoving(null)}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import Konva from 'konva';
@@ -60,6 +60,83 @@ import UiIcon from '../common/Icon';
 // (createPageEditorStore()): este componente crea dos instancias estables
 // (storeLeftHook/storeRightHook) y el bloque de render de una página se
 // extrajo a <PageCanvas> para no duplicar código entre ambos lados.
+
+// Lote F (2026-10-04): modo RENDER para exportar a PDF (pagina /render/:jobId que
+// abre el worker aislado de Contabo 2). En este modo no hay nada interactivo:
+// audio y hotspots no se pintan (los hotspots pasan a ser enlaces del PDF),
+// las galerias quedan fijas en su primera imagen y video/embeds se dibujan en
+// Konva (miniatura + boton play) para respetar el orden de capas. Cada medio
+// que tarda en cargar se registra en window.__renderPending hasta estar listo.
+export const RenderModeContext = createContext(false);
+function trackRenderPending(id, promise) {
+  if (typeof window === 'undefined') return;
+  window.__renderPending = window.__renderPending || new Set();
+  window.__renderPending.add(id);
+  promise.finally(() => window.__renderPending.delete(id));
+}
+
+// Miniatura de video/embed para el PDF: imagen "cover" + velo + boton play.
+function RenderMediaPoster({ el, kind, label, accent = '#14213d' }) {
+  const [img, setImg] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const src = el.props?.src ? (el.props.src.startsWith('http') ? el.props.src : `${API_URL}${el.props.src}`) : null;
+    const thumb = el.props?.poster
+      ? (el.props.poster.startsWith('http') ? el.props.poster : `${API_URL}${el.props.poster}`)
+      : (kind === 'embed' && (el.props?.provider || 'youtube') === 'youtube' && el.props?.video_id
+        ? `${API_URL}/api/internal/render/yt/${encodeURIComponent(el.props.video_id)}` : null);
+    const p = new Promise((resolve) => {
+      let timer = null;
+      const done = (x) => { window.clearTimeout(timer); if (!cancelled && x) setImg(x); resolve(); };
+      timer = window.setTimeout(() => done(null), 12000);
+      if (thumb) {
+        const i = new window.Image();
+        i.onload = () => done(i);
+        i.onerror = () => done(null);
+        i.src = thumb;
+      } else if (kind === 'video' && src) {
+        const v = document.createElement('video');
+        v.muted = true; v.preload = 'auto'; v.playsInline = true;
+        v.addEventListener('loadeddata', () => {
+          try {
+            const c = document.createElement('canvas');
+            c.width = v.videoWidth || 640; c.height = v.videoHeight || 360;
+            c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+            done(c);
+          } catch { done(null); }
+        }, { once: true });
+        v.addEventListener('error', () => done(null), { once: true });
+        v.src = src;
+      } else {
+        done(null);
+      }
+    });
+    trackRenderPending(`media-${el.id}`, p);
+    return () => { cancelled = true; };
+  }, [el.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const w = el.width; const h = el.height;
+  let crop;
+  if (img) {
+    const iw = img.naturalWidth || img.width; const ih = img.naturalHeight || img.height;
+    const s2 = Math.max(w / iw, h / ih);
+    const cw = w / s2; const ch = h / s2;
+    crop = { x: (iw - cw) / 2, y: (ih - ch) / 2, width: cw, height: ch };
+  }
+  const r = Math.max(14, Math.min(w, h) * 0.13);
+  return (
+    <Group x={el.x} y={el.y} width={w} height={h} rotation={el.rotation_deg} listening={false}>
+      <Rect width={w} height={h} fill="#0b1220" cornerRadius={6} />
+      {img && <KonvaImage image={img} width={w} height={h} crop={crop} cornerRadius={6} />}
+      <Rect width={w} height={h} fill="rgba(0,0,0,0.22)" cornerRadius={6} />
+      <Group x={w / 2} y={h / 2}>
+        <Ellipse radiusX={r} radiusY={r} fill="rgba(255,255,255,0.92)" shadowColor="#000" shadowBlur={8} shadowOpacity={0.35} />
+        <Line points={[-r * 0.32, -r * 0.48, -r * 0.32, r * 0.48, r * 0.52, 0]} closed fill={accent} />
+      </Group>
+      {!img && <KonvaText text={label} x={0} y={h / 2 + r + 8} width={w} align="center" fontSize={Math.max(11, Math.min(18, h / 10))} fill="#e5e7eb" />}
+    </Group>
+  );
+}
 
 const PX_PER_MM = 3; // escala fija de visualización, no afecta a los datos guardados (siempre en "unidades de página")
 const HEARTBEAT_MS = 20000; // el lock expira a los 60s sin heartbeat (backend/app/api/locks.py)
@@ -480,7 +557,9 @@ function ImageElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // (como en el Reader final, Fase E) queda fuera de alcance de este lote --
 // ver docs/arquitectura-editor-2026-09-12.md seccion 6.
 function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const renderMode = useContext(RenderModeContext);
   const accent = '#14213d';
+  if (renderMode) return null; // Lote F: el sonido no existe en un PDF
   const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
   // Lote UX-7 (13-sep-2026, pedido explicito de Carlos): en modo LECTURA
   // (visor publico -- todavia no existe un Reader separado de Fase E, asi
@@ -541,7 +620,9 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 // Audio/Embed. La reproduccion real de PRUEBA vive en el panel de
 // propiedades via un <video controls> nativo (ver PropertiesPanel).
 function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const renderMode = useContext(RenderModeContext);
   const accent = '#7c3aed';
+  if (renderMode) return <RenderMediaPoster el={el} kind="video" label="Video" accent={accent} />;
   const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
   // Lote UX-7: mismo criterio que AudioElement de arriba -- en modo
   // LECTURA se reemplaza el placeholder por un <video> nativo real (Html
@@ -686,6 +767,7 @@ function GallerySlideLayer({ src, width, height, opacity, offsetX, imageMode }) 
 }
 
 function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const renderMode = useContext(RenderModeContext); // Lote F: fija en la 1a imagen, sin controles
   const images = el.props?.images || [];
 
   // Lote UX-10 (13-sep-2026, pedido explicito de Carlos: la galeria debe
@@ -701,10 +783,10 @@ function GalleryElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   // Así, una galería y el resto de elementos comparten exactamente el orden
   // de capas persistido en el snapshot publicado.
   const [slideIndex, setSlideIndex] = useState(0);
-  const autoplay = el.props?.autoplay !== false;
+  const autoplay = !renderMode && el.props?.autoplay !== false;
   const duration = Math.max(0.5, Number(el.props?.transition_duration) || 3);
   const transitionEffect = el.props?.transition_effect || 'fade';
-  const controlsEnabled = el.props?.controls_enabled !== false;
+  const controlsEnabled = !renderMode && el.props?.controls_enabled !== false;
   const captionsEnabled = !!el.props?.captions_enabled;
   const imageMode = el.props?.image_mode || 'crop';
 
@@ -994,8 +1076,10 @@ const EMBED_IFRAME_SRC = {
 };
 
 function EmbedElement({ el, canEdit, onSelect, onChange, shapeRef }) {
+  const renderMode = useContext(RenderModeContext);
   const provider = EMBED_PROVIDER_META[el.props?.provider] ? el.props.provider : 'youtube';
   const { accent, label } = EMBED_PROVIDER_META[provider];
+  if (renderMode) return <RenderMediaPoster el={el} kind="embed" label={label} accent={accent} />;
 
   if (!canEdit && el.props?.video_id) {
     const iframeSrc = EMBED_IFRAME_SRC[provider]?.(el.props.video_id);
@@ -1110,7 +1194,9 @@ const HOTSPOT_ACTION_LABELS = {
 };
 
 function HotspotElement({ el, canEdit, onSelect, onChange, shapeRef, onActivate }) {
+  const renderMode = useContext(RenderModeContext);
   const label = el.props?.tooltip || 'Abrir enlace interactivo';
+  if (renderMode) return null; // Lote F: en el PDF el hotspot es un enlace clicable (lo pone el worker)
   if (!canEdit) {
     return (
       <Html groupProps={{ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation_deg }}>

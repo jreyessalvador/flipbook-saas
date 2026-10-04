@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # URL publica base para los enlaces de los correos (sin barra final).
     APP_PUBLIC_URL: str = os.getenv("APP_PUBLIC_URL", "")
 
+    # Lote F: worker de render (Contabo 2) via tunel wg-flipbook + gateway nginx.
+    # Sin token configurado los endpoints internos responden 404 (desactivados).
+    RENDER_WORKER_TOKEN: str = os.getenv("RENDER_WORKER_TOKEN", "")
+    # IP que el gateway escribe en X-Real-IP (el nginx publico la sobrescribe con
+    # la IP real del cliente, asi que no se puede falsificar desde internet).
+    RENDER_GATEWAY_CLIENT_IP: str = os.getenv("RENDER_GATEWAY_CLIENT_IP", "10.253.43.2")
+    RENDER_MAX_ACTIVE_PER_TENANT: int = int(os.getenv("RENDER_MAX_ACTIVE_PER_TENANT", "3") or 3)
+    RENDER_MAX_PDF_BYTES: int = int(os.getenv("RENDER_MAX_PDF_BYTES", str(400 * 1024 * 1024)))
+
     class Config:
         env_file = ".env"
         case_sensitive = True

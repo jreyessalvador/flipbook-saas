@@ -8,6 +8,8 @@ import { useAuth } from '../services/AuthContext';
 import { can } from '../services/permissions';
 import { publicReaderUrl, shortReaderUrl, isShareable } from '../components/share/shareLinks';
 import Icon from '../components/common/Icon';
+import PdfExportPanel from '../components/share/PdfExportPanel';
+import '../components/share/share.css';
 import '../styles/EditionSettings.css';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +26,7 @@ const TABS = [
   { key: 'visor', label: 'Visor' },
   { key: 'seo', label: 'SEO' },
   { key: 'insertar', label: 'Compartir e insertar' },
+  { key: 'exportar', label: 'Exportar PDF' }, // Lote F
 ];
 const DEFAULT_SOUND = '/sounds/page-turn.mp3';
 const absUrl = (u) => (!u ? null : u.startsWith('http') ? u : `${API_URL}${u}`);
@@ -161,6 +164,7 @@ export default function EditionSettings() {
         {tab === 'visor' && <ViewerTab pub={pub} form={form} set={set} canEdit={canEdit} setNotice={setNotice} />}
         {tab === 'seo' && <SeoTab pub={pub} form={form} set={set} canEdit={canEdit} />}
         {tab === 'insertar' && <EmbedTab pub={pub} />}
+        {tab === 'exportar' && (canEdit ? <div className="es-narrow"><PdfExportPanel pub={pub} /></div> : <p className="es-muted">Exportar a PDF requiere rol de editor o superior.</p>)}
       </div>
 
       {canEdit && tab !== 'insertar' && (

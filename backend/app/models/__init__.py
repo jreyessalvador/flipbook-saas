@@ -12,8 +12,9 @@ from app.models.audit_log import AuditLog
 from app.models.password_reset_token import PasswordResetToken
 from app.models.collection import Category, Collection
 from app.models.short_link import ShortLink
+from app.models.render_job import RenderJob
 
 __all__ = [
     "Base", "Tenant", "User", "Publication", "Page",
-    "PageElement", "EditLock", "Asset", "PublicationVersion", "Plan", "TenantSubscription", "TenantUsage", "TenantDomain", "Role", "UserPlatformRole", "TenantMembership", "AuditLog", "Category", "Collection", "ShortLink",
+    "PageElement", "EditLock", "Asset", "PublicationVersion", "Plan", "TenantSubscription", "TenantUsage", "TenantDomain", "Role", "UserPlatformRole", "TenantMembership", "AuditLog", "Category", "Collection", "ShortLink", "RenderJob",
 ]

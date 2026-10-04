@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from app.api import auth, publications, pages, assets, locks, public, superadmin, collections, team
+from app.api import auth, publications, pages, assets, locks, public, superadmin, collections, team, exports, internal_render
 from app.config import settings
 
 app = FastAPI(
@@ -39,6 +39,9 @@ app.include_router(public.router, prefix="/api/public", tags=["Public"])
 app.include_router(superadmin.router, prefix="/api/superadmin", tags=["Super Admin"])
 app.include_router(collections.router, prefix="/api", tags=["Collections"])
 app.include_router(team.router, prefix="/api/team", tags=["Team"])
+# Lote F: exportar PDF (panel) + API interna del worker de render (tunel)
+app.include_router(exports.router, prefix="/api/publications", tags=["Exports"])
+app.include_router(internal_render.router, prefix="/api/internal/render", include_in_schema=False)
 
 
 @app.on_event("startup")
