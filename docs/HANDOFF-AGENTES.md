@@ -159,6 +159,7 @@ Servicios: `services/api.js` (axios + token + `X-Tenant-Id`), `services/tenantCo
 | **UI Super Admin** | pantalla de categorías (API lista) |
 | **SMTP** | envío real de invitaciones/restablecimientos (Resend ya usado por manten.io) |
 | **F** | PDF generado desde el editor (worker en Contabo 2), IA de metadatos con Ollama local |
+| **M — Mesa de trabajo** | Solo exploración (04-oct-2026): material fuera de la hoja y arrastre entre hojas, estilo InDesign. Fases M1–M3, 5–7 días. `docs/exploracion-mesa-de-trabajo.md` |
 
 Decisiones de Carlos vigentes: Colección → Ediciones; categorías = lista común; paleta navy + dorado; orientación/tamaño no editables tras crear; curl realista de página pendiente de elegir opción (RECETA 9p).
 

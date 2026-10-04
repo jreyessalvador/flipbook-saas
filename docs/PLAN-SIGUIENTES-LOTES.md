@@ -217,3 +217,6 @@ Soft delete oculta en panel, kiosco, `/r/...`, `/leer/`, stats y cuota; restaura
   con Destinos y Negocios como primer cliente real. Nada construido.
 - Aviso en la tarjeta de la edición cuando está publicada pero no visible en el kiosco.
 - Nombres de colección por defecto más descriptivos / invitar a renombrar «General».
+- **Mesa de trabajo (pasteboard) — exploración 04-oct-2026, no se implementa aún**: el personal que
+  viene de InDesign/Joomag la pedirá. Fases M1 (mesa visible + deshacer), M2 (cruzar entre páginas),
+  M3 (mesa compartida por edición); 5–7 días. Detalle: `docs/exploracion-mesa-de-trabajo.md`.
