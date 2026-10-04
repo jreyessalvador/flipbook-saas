@@ -49,7 +49,7 @@ export default function MiCuenta() {
       </div>
       <div className="es-card" style={{ maxWidth: 520 }}>
         <h2 style={{ marginTop: 0 }}>Cambiar contraseña</h2>
-        <p className="es-muted es-small">Al cambiarla se cerrarán tus sesiones abiertas en otros navegadores y dispositivos. Esta sesión sigue abierta.</p>
+        <p className="es-muted es-small" style={{ marginBottom: 16 }}>Al cambiarla se cerrarán tus sesiones abiertas en otros navegadores y dispositivos. Esta sesión sigue abierta.</p>
         <form onSubmit={submit} autoComplete="on">
           <input type="email" name="username" autoComplete="username" value={user?.email || ''} readOnly hidden />
           <label className="es-field">
@@ -64,16 +64,20 @@ export default function MiCuenta() {
             <span>Repite la nueva contraseña</span>
             <input type={show ? 'text' : 'password'} autoComplete="new-password" value={form.repeat} onChange={(e) => set('repeat', e.target.value)} required />
           </label>
-          <label className="es-switch" style={{ marginBottom: 12 }}>
-            <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
-            <span className="es-switch-ui" aria-hidden="true" />
-            <span>Mostrar contraseñas</span>
-          </label>
+          <div style={{ margin: '4px 0 16px' }}>
+            <label className="es-switch">
+              <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+              <span className="es-switch-ui" aria-hidden="true" />
+              <span>Mostrar contraseñas</span>
+            </label>
+          </div>
           {problems.length > 0 && <ul className="es-small" style={{ color: '#b45309', margin: '0 0 12px', paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul>}
           {msg && <div className={`import-notice import-notice-${msg.type}`} style={{ marginBottom: 12 }}>{msg.text}</div>}
-          <button type="submit" className="btn-primary" disabled={!ready || busy} style={{ width: 'auto', padding: '10px 18px' }}>
-            {busy ? 'Guardando…' : 'Cambiar contraseña'}
-          </button>
+          <div>
+            <button type="submit" className="btn-primary" disabled={!ready || busy} style={{ width: 'auto', padding: '10px 18px' }}>
+              {busy ? 'Guardando…' : 'Cambiar contraseña'}
+            </button>
+          </div>
         </form>
         <p className="es-muted es-small" style={{ marginTop: 16 }}>¿No recuerdas la actual? Cierra sesión y usa «¿Olvidaste tu contraseña?» en la pantalla de acceso.</p>
       </div>
