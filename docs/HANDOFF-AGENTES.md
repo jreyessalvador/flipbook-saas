@@ -192,3 +192,6 @@ Plan detallado y listo para implementar de L5, L7a (miniaturas + OG), estanterí
 
 ## Estado para el equipo (04-oct-2026)
 Resumen no técnico y actualizado del proyecto (funcionalidades, lotes, arquitectura, seguridad, operación, clientes, backlog): Claude Doc **«Cetrix Revistas — Estado del proyecto»** https://claude.ai/code/artifact/95dda6b1-4f56-40e6-8bb2-ef006901d664 — actualizarlo al cerrar cada lote.
+
+## Mantenimiento automático
+Temporizadores semanales `flipbook-housekeeping` (Contabo 1) y `flipbook-worker-housekeeping` (Contabo 2): rollbacks antiguos, caché Docker, copias viejas de BD/.env, logs temporales. RECETA §26 y `ops/housekeeping/`.

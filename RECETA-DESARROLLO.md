@@ -2147,3 +2147,21 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 **Producción (04-oct-2026 ~19:15 Canarias)**: `redesign/editor-v2` @ `a9e7e3f`, migración 0013, `up -d --build backend pdf-worker frontend`, gateway 8461 + UFW, `render-prod` en Contabo 2; prueba real DyN 34 OK. Rollback: `flipbook-prod-{backend,frontend}:rollback-pre-f`, dump `~/backups/flipbook-prod-pre-f-2026-10-04-1912.dump`; parar `render-prod` en C2 (`docker compose -p flipbook-worker stop render-prod`) y vaciar `RENDER_WORKER_TOKEN` desactiva la función sin tocar código.
 
 **Pendientes / mejoras posibles**: primer fotograma de vídeos subidos (el servidor de assets no admite peticiones Range, por eso a veces sale solo el rótulo; opción: generar póster al subir el vídeo); capa de texto buscable en el PDF; modo «imprenta» con QR (decisión de Carlos: evaluar más adelante); descarga en el kiosco público para ediciones del editor (opcional, futuro); usar el mismo motor para L7a (miniaturas WebP + imagen OG).
+
+## 26. Mantenimiento periódico (housekeeping) — 04-oct-2026
+
+**Decisión de Carlos:** limpiar los restos de los despliegues y dejarlo como tarea periódica para que no se acumulen. Copia de los scripts en `ops/housekeeping/`.
+
+**Contabo 1 — `flipbook-housekeeping.timer` (domingos 04:20, `Persistent=true`)** → `/usr/local/sbin/flipbook-housekeeping.sh` (root, `--dry-run` disponible). Solo toca cosas de flipbook por nombre:
+- imágenes `flipbook-prod-{backend,frontend}:rollback-*`: deja las **2 más recientes** de cada una (nunca `:latest` ni una en uso) + capas huérfanas;
+- caché de compilación de Docker sin usar en 7 días (global, pero rehacerla solo cuesta tiempo de build);
+- `~/backups`: deja las **3** copias de BD más recientes de prod y de dev y **1** copia de `.env` por entorno (contienen secretos);
+- `/root/*.bak-*` de los sites `revistas`, `dev-revistas` y `flipbook-render-gateway`: deja **2** de cada uno;
+- `/tmp`: logs de despliegue/QA de flipbook (`flipbook-*.log`, `*-prod-build.log`, `qa_*`) de más de 7 días.
+- Log `/var/log/flipbook-housekeeping.log` (logrotate mensual, 6). Para cambiar cuántos se guardan: variables `KEEP_*` al principio del script.
+
+**Contabo 2 — `flipbook-worker-housekeeping.timer` (domingos 04:40)** → capturas de prueba de `/srv/flipbook-worker/out` (>7 días), imágenes huérfanas y caché de compilación (>7 días); informa del estado de `render-prod`/`render-dev`.
+
+**Limpiezas que ya hacía la aplicación** (sin cambios): purga de papelera 30 días (03:17 UTC), PDF exportados 30 días / 5 por edición (03:41 UTC), reintento de trabajos de render colgados, QA que borra lo que crea, ramas borradas tras fusionar. Los logs de los workers de C2 los rota Docker (3 × 10 MB).
+
+**Primera limpieza (04-oct)**: 12 imágenes `rollback-*` antiguas eliminadas (quedan `pre-f` y `pre-s1`), 15 copias de BD y 5 de `.env` antiguas, 3 copias de nginx DEV obsoletas, logs y scripts de QA en `/tmp`, capturas de prueba en C2, ramas fusionadas `feat/flip-2-hoja-real`, `feat/hotspot-hint`, `feat/l4-ajustes-edicion`. DEV: purgadas las 6 copias de prueba de «Presentación Corporativa Daniel de Faveri» (queda la publicada). El disco apenas cambia (las imágenes compartían capas; la caché tenía menos de 7 días): lo que hace el temporizador es **evitar la acumulación** semana a semana. Ramas `desarrollo`, `staging`, `main`, `feature/docker-migration` se conservan (históricas).

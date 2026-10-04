@@ -1,0 +1,10 @@
+[Unit]
+Description=Limpieza periodica de restos de despliegues de Cetrix Revistas (flipbook)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/flipbook-housekeeping.sh
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,10 @@
+[Unit]
+Description=Limpieza periodica del worker de render de Cetrix Revistas
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/flipbook-worker-housekeeping.sh
+Nice=10
+IOSchedulingClass=idle

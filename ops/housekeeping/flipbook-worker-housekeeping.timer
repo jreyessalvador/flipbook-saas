@@ -1,0 +1,10 @@
+[Unit]
+Description=Limpieza semanal del worker de flipbook (domingo de madrugada)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:40:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
