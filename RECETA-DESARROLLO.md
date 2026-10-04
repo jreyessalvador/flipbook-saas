@@ -2100,3 +2100,23 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - nginx PROD: `location ~ "^/s/(?<short_code>[A-Za-z0-9]{1,32})/?$" { proxy_pass http://127.0.0.1:4400/api/public/s/$short_code$is_args$args; }` antes de `/api/`; respaldo `/root/revistas.cetrix.com.mx.bak-pre-s1-2026-10-04-1740`.
 - Verificado: `/s/7K749M` → Destinos y Negocios 34, `/s/XRNPZx` → Presentación Corporativa Daniel de Faveri, código inexistente → `/?aviso=no-disponible`, home 200, catálogo con `short_path`, sin errores en logs. Clics de las pruebas = 0 (UA de bot, no cuentan).
 - Rollback: `flipbook-prod-{backend,frontend}:rollback-pre-s1`, dump `~/backups/flipbook-prod-pre-s1-2026-10-04-1740.dump`, `.env` `~/backups/flipbook-prod-env-pre-s1-2026-10-04-1740`; quitar la location `/s/` (restaurar el respaldo de nginx). La tabla `short_links` puede quedarse.
+
+## 24. Lote F1 — Motor de render aislado en Contabo 2 (04-oct-2026)
+
+**Decisión de Carlos (04-oct):** los workers pesados de flipbook viven en **Contabo 2** a largo plazo (si los proyectos crecen, se escalan ahí sin tocar Contabo 1). Se aplican los requisitos de aislamiento fijados el 12-sep (Contabo 2 guarda las llaves SSH de los agentes).
+
+**Red**
+- Túnel WireGuard PROPIO `wg-flipbook` (no `wg-pdf`, que es de nexus-cmms): C1 `10.253.43.1/30` escucha UDP **51821** (UFW: solo desde 169.58.102.22) ↔ C2 `10.253.43.2/30` (inicia con keepalive 25 s, sin puerto de entrada). `wg-quick@wg-flipbook` habilitado en ambos. Claves en `/etc/wireguard/wg-flipbook.{key,pub}` (600, root).
+- UFW C1: `insert 1 deny in on wg-flipbook` + `route deny` en ambos sentidos; ÚNICA excepción encima: `allow in on wg-flipbook from 10.253.43.2 to 10.253.43.1 port 8462 proto tcp`. **Ojo**: la regla deny DEBE ir en posición 1 (si va al final, `22/tcp ALLOW Anywhere` la adelanta y el SSH quedaba accesible por el túnel; detectado y corregido en la verificación). UFW C2: `insert 1 deny in on wg-flipbook` (C1 no puede iniciar nada hacia C2). Verificado: C2→C1 22/80/443/3400/4400/8010 bloqueados; C1→C2 22/80/443 bloqueados.
+- **Gateway en C1**: nginx host `/etc/nginx/sites-available/flipbook-render-gateway`, `listen 8462` (DEV) con `allow 10.253.43.2; deny all;` (desde IP pública: sin respuesta). Expone SOLO frontend + `/api/public/` + `/api/assets/serve/` + `/api/internal/render/` (para F3); el resto de `/api/` → 403. 8461 reservado para PROD (F3). Registrado en `/srv/apps/PORTS.md`.
+
+**Contabo 2**
+- Usuario de sistema `flipbook-worker` (uid 997, gid 986), sin shell, sin sudo, sin grupos de agentes; home `/srv/flipbook-worker` (750). Verificado que no puede leer `/home/claude`, `agents-memory` ni `~/.ssh` de los agentes.
+- Red Docker `flipbook-worker-net` (172.31.250.0/24, bridge `br-flipbook`, sin ICC). Cortafuegos `/usr/local/sbin/flipbook-worker-fw.sh` (servicio `flipbook-worker-fw.service`, tras docker): cadena `FLIPBOOK-WORKER` en `DOCKER-USER` → solo `10.253.43.1:8461,8462` TCP; `INPUT -i br-flipbook DROP` (nada hacia el propio host). Verificado desde el contenedor: internet, host C2 (SSH), IP pública de C2 y C1:4400 bloqueados; solo el gateway abierto.
+- Imagen `flipbook-render-worker:f1` (`/srv/flipbook-worker/Dockerfile`): base `mcr.microsoft.com/playwright/python:v1.48.0-noble` + `playwright==1.48.0 pikepdf Pillow requests` (se construye en el host con internet; el contenedor corre sin internet).
+- Contenedor: `--user 997:986 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --memory 2g --cpus 2 --pids-limit 512 --shm-size 512m`, código montado `:ro`. Chromium con `--no-sandbox` (el contenedor sin capabilities es la caja de arena; el sandbox de Chrome necesitaría SYS_ADMIN/userns).
+- **Truco clave**: el frontend llama a la API por su origen público (`VITE_API_URL=https://dev-revistas…`), inaccesible sin internet → el worker intercepta con `page.route(PUBLIC + "/**")` y reescribe al gateway (`route.fetch(url=gateway)`).
+
+**Prueba F1**: `/srv/flipbook-worker/app/smoke_test.py` pintó `/r/default/general/destinos-y-negocios-34` de DEV a 2800×2000 en **6,7 s** (portada, logos y textos correctos). Pendiente para F2: fuentes web externas (si alguna edición usa Google Fonts no cargarán sin internet → servirlas desde el gateway o empaquetarlas), y la vista de render sin barras.
+
+**Siguiente**: F2 vista interna `/render/...` (hojas a tamaño real sin interfaz, señal "listo" para el worker) → F3 cola de trabajos (`/api/internal/render/*` con token), PDF con enlaces clicables, botón «Descargar PDF» en ficha y Ajustes; PROD por 8461.
