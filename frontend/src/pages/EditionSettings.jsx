@@ -6,7 +6,7 @@ import { collectionAPI } from '../services/collectionAPI';
 import { assetAPI } from '../services/assetAPI';
 import { useAuth } from '../services/AuthContext';
 import { can } from '../services/permissions';
-import { publicReaderUrl, isShareable } from '../components/share/shareLinks';
+import { publicReaderUrl, shortReaderUrl, isShareable } from '../components/share/shareLinks';
 import Icon from '../components/common/Icon';
 import '../styles/EditionSettings.css';
 
@@ -413,6 +413,7 @@ function SeoTab({ pub, form, set, canEdit }) {
 function EmbedTab({ pub }) {
   const shareable = isShareable(pub);
   const readerUrl = publicReaderUrl(pub);
+  const shortUrl = shortReaderUrl(pub); // Lote S1
   const embedUrl = `${window.location.origin}/embed${pub.public_path || `/leer/${pub.id}`}`;
   const [mode, setMode] = useState('responsive');
   const [w, setW] = useState(900);
@@ -445,6 +446,19 @@ function EmbedTab({ pub }) {
   return (
     <div className="es-embed">
       <section>
+        {pub.short_path && (
+          <>
+            <h2>Enlace corto</h2>
+            <div className="es-copyrow">
+              <input type="text" readOnly value={shortUrl} onFocus={(e) => e.target.select()} aria-label="Enlace corto" />
+              <button type="button" className="btn-primary" onClick={() => copy(shortUrl, 'short')}>{copied === 'short' ? '¡Copiado!' : 'Copiar'}</button>
+            </div>
+            <p className="es-muted es-small">
+              No cambia aunque renombres la edición o la muevas de colección: úsalo en QR impresos, redes y WhatsApp.
+              {' '}Visitas por este enlace: <strong>{pub.short_clicks || 0}</strong>.
+            </p>
+          </>
+        )}
         <h2>Enlace público</h2>
         <div className="es-copyrow">
           <input type="text" readOnly value={readerUrl} onFocus={(e) => e.target.select()} aria-label="Enlace público" />

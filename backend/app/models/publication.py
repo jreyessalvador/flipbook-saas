@@ -67,6 +67,9 @@ class Publication(Base):
     pages = relationship("Page", back_populates="publication", cascade="all, delete-orphan")
     collection = relationship("Collection", lazy="selectin", viewonly=True)
     page_turn_sound = relationship("Asset", foreign_keys=[page_turn_sound_asset_id], lazy="selectin", viewonly=True)
+    # Lote S1: enlace corto fijo /s/{code} (tabla short_links, migracion 0012)
+    short_link = relationship("ShortLink", uselist=False, lazy="selectin", viewonly=True,
+                              primaryjoin="Publication.id == foreign(ShortLink.publication_id)")
 
     @property
     def page_turn_sound_url(self):
@@ -75,6 +78,17 @@ class Publication(Base):
         if asset is None or not asset.storage_key:
             return None
         return f"/api/assets/serve/{asset.storage_key}"
+
+    @property
+    def short_path(self):
+        """Lote S1: /s/{code} (None si aun no tiene; se crea al publicar)."""
+        link = self.short_link
+        return f"/s/{link.code}" if link is not None else None
+
+    @property
+    def short_clicks(self):
+        link = self.short_link
+        return int(link.clicks or 0) if link is not None else 0
 
     @property
     def public_path(self):

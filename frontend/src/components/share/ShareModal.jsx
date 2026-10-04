@@ -1,26 +1,29 @@
 import React, { useState } from 'react';
-import { publicReaderUrl, shareChannels } from './shareLinks';
+import { publicReaderUrl, shortReaderUrl, shareChannels } from './shareLinks';
 import './share.css';
 
 import Icon from '../common/Icon';
 // Modal "Compartir": canales habituales + copiar enlace + menu nativo del
 // sistema (movil) cuando el navegador lo soporta.
 const ShareModal = ({ pub, onClose }) => {
-  const [copied, setCopied] = useState(false);
-  const url = publicReaderUrl(pub);
+  const [copied, setCopied] = useState(null);
+  // Lote S1: se comparte el enlace corto; el completo queda como alternativa
+  const url = shortReaderUrl(pub);
+  const longUrl = publicReaderUrl(pub);
+  const hasShort = Boolean(pub?.short_path);
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
-  const copy = async () => {
+  const copy = async (value = url, which = 'short') => {
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(value);
     } catch {
       // Fallback para contextos sin Clipboard API
       const ta = document.createElement('textarea');
-      ta.value = url; document.body.appendChild(ta); ta.select();
+      ta.value = value; document.body.appendChild(ta); ta.select();
       document.execCommand('copy'); document.body.removeChild(ta);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopied(which);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   const nativeShare = async () => {
@@ -34,9 +37,14 @@ const ShareModal = ({ pub, onClose }) => {
         <p className="share-subtitle">{pub.title}</p>
 
         <div className="share-url-row">
-          <input type="text" readOnly value={url} onFocus={(e) => e.target.select()} aria-label="Enlace público" />
-          <button type="button" className="btn-primary" onClick={copy}>{copied ? '¡Copiado!' : 'Copiar enlace'}</button>
+          <input type="text" readOnly value={url} onFocus={(e) => e.target.select()} aria-label={hasShort ? 'Enlace corto' : 'Enlace público'} />
+          <button type="button" className="btn-primary" onClick={() => copy(url, 'short')}>{copied === 'short' ? '¡Copiado!' : 'Copiar enlace'}</button>
         </div>
+        {hasShort && (
+          <p className="share-long">
+            Enlace completo: <button type="button" className="share-long-copy" onClick={() => copy(longUrl, 'long')} title="Copiar enlace completo">{copied === 'long' ? '¡Copiado!' : longUrl.replace(/^https?:\/\//, '')}</button>
+          </p>
+        )}
 
         <div className="share-grid">
           {shareChannels(pub).map((c) => (

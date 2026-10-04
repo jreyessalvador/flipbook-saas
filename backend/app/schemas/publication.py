@@ -84,6 +84,9 @@ class PublicationResponse(PublicationBase):
     seo_description: Optional[str] = None
     seo_indexable: bool = True
     allow_download: bool = False
+    # Lote S1: enlace corto propio y sus visitas
+    short_path: Optional[str] = None
+    short_clicks: int = 0
 
     class Config:
         from_attributes = True

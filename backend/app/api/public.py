@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 import html
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, func
 
@@ -121,6 +121,7 @@ def _catalog_item(pub, snapshot, collection, tenant, category) -> dict:
         },
         "tenant": {"name": tenant.name, "slug": tenant.subdomain},
         "url_path": _url_path(tenant, collection, pub),
+        "short_path": pub.short_path,  # Lote S1
         # Lote L4: ajustes del visor y SEO, leidos en vivo (no del snapshot)
         "viewer": {
             "sound_enabled": bool(pub.sound_enabled) if pub.sound_enabled is not None else True,
@@ -365,3 +366,35 @@ def public_open_graph_friendly(tenant_slug: str, collection_slug: str, edition_s
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Edición no encontrada o no es pública")
     return _open_graph_html(request, row)
+
+
+@router.get("/s/{code}", include_in_schema=False)
+def resolve_short_link(code: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Lote S1: enlace corto propio. nginx enruta /s/{code} aqui (RECETA §23).
+    - Edicion visible en el kiosco -> 302 a su URL canonica /r/... (los bots de
+      vista previa la siguen y reciben alli las meta Open Graph).
+    - Codigo inexistente, edicion privada, sin publicar, en la papelera o de una
+      empresa inactiva -> 302 al inicio con ?aviso=no-disponible, sin revelar
+      empresa/coleccion/slug.
+    Cuenta el clic (UPDATE atomico) solo si no es un bot/previsualizador.
+    """
+    from sqlalchemy import update
+    from app.models.short_link import ShortLink
+    from app.services.short_links import CODE_RE, is_bot
+    from app.services.trash import utcnow
+    if not CODE_RE.match(code or ""):
+        return RedirectResponse("/?aviso=no-disponible", status_code=302)
+    link = db.query(ShortLink).filter(ShortLink.code == code).first()
+    row = db.execute(_public_catalog_stmt().where(Publication.id == link.publication_id)).first() if link else None
+    if not row:
+        return RedirectResponse("/?aviso=no-disponible", status_code=302, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+    pub, _snap, collection, tenant, _cat = row
+    if not is_bot(request.headers.get("user-agent", "")):
+        db.execute(update(ShortLink).where(ShortLink.code == code).values(clicks=ShortLink.clicks + 1, last_click_at=utcnow()))
+        db.commit()
+    target = _url_path(tenant, collection, pub)
+    # Conserva ?p=, utm_*, etc. si vienen en el enlace corto
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(target, status_code=302, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})

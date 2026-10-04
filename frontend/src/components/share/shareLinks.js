@@ -10,11 +10,16 @@ export const publicReaderUrl = (pubOrId) => {
   return `${window.location.origin}${path}`;
 };
 
+// Lote S1: enlace corto propio /s/{code} (fijo por edicion; no cambia aunque
+// se renombre o se mueva). Si la edicion aun no tiene, se usa el largo.
+export const shortReaderUrl = (pub) =>
+  (pub && pub.short_path ? `${window.location.origin}${pub.short_path}` : publicReaderUrl(pub));
+
 export const isShareable = (pub) =>
   pub?.status === 'published' && pub?.is_public === true;
 
 export const shareChannels = (pub) => {
-  const url = publicReaderUrl(pub);
+  const url = shortReaderUrl(pub);
   const title = pub.title || 'Revista digital';
   const text = `${title} — léela aquí: ${url}`;
   const e = encodeURIComponent;

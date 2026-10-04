@@ -18,6 +18,8 @@ const LandingPage = () => {
   // ?acceso=1 abre directamente el modal de acceso (enlaces de vuelta desde
   // recuperar/restablecer contraseña).
   const [showLoginModal, setShowLoginModal] = useState(() => searchParams.get('acceso') === '1');
+  // Lote S1: un enlace corto /s/... de una edicion que ya no es publica llega aqui
+  const [unavailable, setUnavailable] = useState(() => searchParams.get('aviso') === 'no-disponible');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -147,6 +149,12 @@ const LandingPage = () => {
           )}
         </nav>
       </header>
+      {unavailable && (
+        <div role="status" style={{ background: 'var(--color-gold-tint, #f6efdc)', color: 'var(--color-navy, #14213d)', padding: '0.75rem 2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', fontSize: '0.95rem' }}>
+          <span>La revista de ese enlace ya no está disponible. Explora las publicaciones del kiosco.</span>
+          <button type="button" onClick={() => { setUnavailable(false); const next = new URLSearchParams(searchParams); next.delete('aviso'); setSearchParams(next, { replace: true }); }} aria-label="Cerrar aviso" style={{ background: 'none', border: 'none', color: 'inherit', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section style={{

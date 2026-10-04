@@ -22,6 +22,7 @@ from app.schemas.collection import MoveEditionRequest
 from app.api.assets import minio_client, ensure_bucket, BUCKET_NAME, build_asset_url
 from app.config import settings
 from app.services.quota import require_publication_quota, require_storage_quota
+from app.services.short_links import ensure_short_link
 from io import BytesIO
 import uuid
 import copy
@@ -232,7 +233,8 @@ def create_publication(
             content={}
         )
         db.add(page)
-    
+
+    ensure_short_link(db, new_publication)  # Lote S1
     db.commit()
     db.refresh(new_publication)
 
@@ -282,6 +284,8 @@ async def import_pdf_publication(
     from app.core.slugs import unique_publication_slug
     publication.slug = unique_publication_slug(db, collection.id, publication.title)
     db.add(publication)
+    db.flush()
+    ensure_short_link(db, publication)  # Lote S1
     db.commit()
     db.refresh(publication)
 
@@ -565,6 +569,7 @@ def clone_publication(
                 props=copy.deepcopy(el.props or {}),
             ))
 
+    ensure_short_link(db, clone)  # Lote S1: el clon tiene SU propio enlace corto
     db.commit()
     db.refresh(clone)
     return clone
@@ -671,9 +676,10 @@ def publish_publication(
 
     publication.published_version_id = version.id
     publication.status = "published"
+    link = ensure_short_link(db, publication)  # Lote S1 (por si es anterior a 0012)
     db.commit()
 
-    return {"version_id": str(version.id), "created_at": version.created_at.isoformat()}
+    return {"version_id": str(version.id), "created_at": version.created_at.isoformat(), "short_path": f"/s/{link.code}"}
 
 
 @router.post("/{publication_id}/unpublish")
