@@ -184,6 +184,7 @@ Decisiones de Carlos: nombre único **Cetrix Revistas**; trabajo **por lotes en 
 | S1 Enlace corto `/s/{código}` | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §23) |
 | F1 Motor de render aislado en Contabo 2 (`wg-flipbook`) | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §24) |
 | F Exportar PDF desde el panel (enlaces clicables) | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §25) |
+| EQ-1 «Mi cuenta» (cambiar contraseña) + versión de sesión (cierre inmediato de sesiones) | ✅ PRODUCCIÓN 04-oct-2026 (RECETA §27) — QA firma tokens con `token_with_current_version` |
 | L10 Producción revistas.cetrix.com.mx | **En marcha desde 27-sep-2026** con L1–L3 (`3fa9e37`), copia completa de DEV. Los lotes siguientes se suben con el procedimiento de RECETA §14 |
 
 ## Siguiente sesión (desde 28-sep-2026)

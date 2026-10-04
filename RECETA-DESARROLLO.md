@@ -2178,3 +2178,8 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - **Frontend**: `/mi-cuenta` (`pages/MiCuenta.jsx`); el correo de la barra superior abre la página. Validación en vivo, mostrar contraseñas, campos con `autocomplete` correcto para gestores de contraseñas.
 - **QA**: `qa_lote_eq1_cuenta.py` 23 PASS (usuario temporal en Empresa Demo, se borra al final) + regresión S1 23, L5 50, aislamiento 26, RBAC 37 (actualizado: revocado → 401), L4 32, L9 18, F 26. Los QA firman tokens con `token_with_current_version` (incluye la `tv` real).
 - **Producción** (tras validación de Carlos): backup → pull → migración 0014 → `up -d --build backend frontend` (+ pdf-worker, misma imagen). Rollback: tags `rollback-pre-eq1`; la migración es aditiva (el código anterior ignora las columnas y acepta tokens con `tv`).
+
+### 27.1 EQ-1 EN PRODUCCIÓN (04-oct-2026 ~20:40, validado por Carlos en DEV)
+- `redesign/editor-v2` @ `5f85a8e` (incluye ajuste visual: el botón «Cambiar contraseña» en su propia línea). Migración 0014 aplicada; `up -d --build backend pdf-worker frontend`.
+- Verificado: home, `/health` y `/mi-cuenta` 200; `/s/…` 302; `/api/internal/render/claim` 404 público; `change-password` sin sesión 401; 13 usuarios con `token_version = 0`; un token antiguo sin `tv` sigue valiendo (nadie fue expulsado por el despliegue); sin errores en el log.
+- Rollback: `flipbook-prod-{backend,frontend}:rollback-pre-eq1`, dump `~/backups/flipbook-prod-pre-eq1-2026-10-04-2040.dump`, `.env` `~/backups/flipbook-prod-env-pre-eq1-2026-10-04-2040` (600). El mantenimiento semanal conserva los 2 rollbacks más recientes (`pre-eq1`, `pre-f`).
