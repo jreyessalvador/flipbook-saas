@@ -2120,3 +2120,30 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 **Prueba F1**: `/srv/flipbook-worker/app/smoke_test.py` pintó `/r/default/general/destinos-y-negocios-34` de DEV a 2800×2000 en **6,7 s** (portada, logos y textos correctos). Pendiente para F2: fuentes web externas (si alguna edición usa Google Fonts no cargarán sin internet → servirlas desde el gateway o empaquetarlas), y la vista de render sin barras.
 
 **Siguiente**: F2 vista interna `/render/...` (hojas a tamaño real sin interfaz, señal "listo" para el worker) → F3 cola de trabajos (`/api/internal/render/*` con token), PDF con enlaces clicables, botón «Descargar PDF» en ficha y Ajustes; PROD por 8461.
+
+## 25. Lote F — «Descargar PDF» desde el panel (04-oct-2026) — EN PRODUCCIÓN
+
+**Decisiones de Carlos:** solo panel (editor+; el kiosco público queda para el futuro) · modo **digital** (hotspots = enlaces clicables reales; sin QR) · galerías → primera imagen · worker en Contabo 2 (§24).
+
+**Flujo**: botón **PDF** en la ficha (modal) o **Ajustes → Exportar PDF** → elige «Versión publicada» o «Borrador actual» → `POST /api/publications/{id}/pdf` congela el contenido en `render_jobs` (`snapshot` + `snapshot_hash`) → el worker de Contabo 2 lo reclama (`/api/internal/render/claim`, `FOR UPDATE SKIP LOCKED`), abre `/render/{job}` por el gateway, captura cada hoja (JPEG q88, escala 3 ≈ 229 ppp), monta el PDF con **pikepdf** (las imágenes van sin recomprimir, una página por hoja del tamaño real en mm) y lo sube (`/result`) → el panel hace polling y descarga (`/pdf/{job}/download`, nombre `<slug>.pdf` o `<slug>-borrador.pdf`).
+
+- **Enlaces en el PDF** (`/Link` sobre el rectángulo del elemento): hotspot URL → URI; correo → `mailto:`; teléfono → `tel:`; «Ir a página / siguiente / anterior / portada / contraportada» → salto interno (`/Dest … /Fit`); vídeo subido → URL pública del archivo; embed YouTube/Vimeo/SoundCloud → su URL pública.
+- **Modo render** (`RenderModeContext` en CanvasEditorV2): audio y hotspots no se pintan; galería fija en la 1.ª imagen y sin controles; vídeo/embed se dibujan EN KONVA (respetan el orden de capas): miniatura «cover» + velo + botón play (YouTube: miniatura vía `/api/internal/render/yt/{id}`, proxy de host fijo e id validado; vídeo subido: primer fotograma si el navegador lo decodifica, si no, rótulo «Video»). Medios pendientes en `window.__renderPending`; la página marca `window.__RENDER_READY__` tras precargar imágenes, medios y fuentes.
+- **Caché**: mismo contenido + mismo origen (publicada/borrador) = mismo PDF (respuesta inmediata `reused`). Máx. 3 trabajos activos por empresa (429). Trabajo `running` >15 min se reintenta (máx. 3 intentos) y luego `failed`.
+- **Retención**: tarea beat diaria `flipbook.cleanup_exports` (03:41 UTC): borra PDFs >30 días y deja como mucho 5 por edición. La purga de una edición (papelera) borra sus PDFs. Objetos en MinIO `tenant-{t}/exports/{publication}/{job}.pdf`.
+
+**Seguridad**
+- API interna `/api/internal/render/*`: (1) nginx público de revistas y dev-revistas → `location ^~ /api/internal/ { return 404; }` y `location ^~ /render/ { return 404; }`; (2) `X-Real-IP` debe ser `10.253.43.2` (lo fija el gateway; el nginx público lo sobrescribe); (3) `X-Render-Token` = `RENDER_WORKER_TOKEN` con `hmac.compare_digest`; si el token está vacío todo da 404. `/data` y `/result` solo para trabajos `running` (no se puede leer ni sobrescribir un trabajo terminado). El PDF subido se valida (`%PDF`, ≤400 MB).
+- Panel: `require_role("editor")` + aislamiento por empresa en crear/listar/descargar (otra empresa → 404, lector → 403).
+- Tokens: uno por entorno, generados en Contabo 2 (`openssl rand -hex 32`) y copiados a Contabo 1 por SSH sin pasar por el chat: `/srv/flipbook-worker/{dev,prod}.env` (root 600) ↔ `RENDER_WORKER_TOKEN` en `/srv/apps/flipbook{-dev,}/.env` (y en `x-backend-env` de los compose). Respaldos de `.env` en `~/backups/*env-pre-f-*` (600).
+- Gateway Contabo 1: `/etc/nginx/sites-available/flipbook-render-gateway` con `8462` (DEV → 5173/8010) y `8461` (PROD → 3400/4400), ambos `allow 10.253.43.2; deny all;` + UFW solo en `wg-flipbook`.
+
+**Contabo 2**: `/srv/flipbook-worker/docker-compose.yml` (proyecto `flipbook-worker`), servicios `render-dev` y `render-prod` (mismo aislamiento §24, healthcheck por latido en `/tmp/heartbeat`, logs rotados 3×10 MB). Copia de referencia en `workers/render/` del repo.
+
+**Medidas reales**: «Revista de prueba» 4 págs → 13 s, 1,1 MB; «Destinos y Negocios 34» 48 págs → ~35-40 s, 31 MB, 10 enlaces (DEV y PROD). Worker en reposo ~170 MB RAM.
+
+**QA**: `backend/tests/qa_lote_f_pdf.py` 26 PASS (barreras de la API interna, permisos, aislamiento, caché, extremo a extremo, enlace clicable en el PDF, purga) + S1 23 + L5 50 + aislamiento 26 + RBAC 37 + L4 32.
+
+**Producción (04-oct-2026 ~19:15 Canarias)**: `redesign/editor-v2` @ `a9e7e3f`, migración 0013, `up -d --build backend pdf-worker frontend`, gateway 8461 + UFW, `render-prod` en Contabo 2; prueba real DyN 34 OK. Rollback: `flipbook-prod-{backend,frontend}:rollback-pre-f`, dump `~/backups/flipbook-prod-pre-f-2026-10-04-1912.dump`; parar `render-prod` en C2 (`docker compose -p flipbook-worker stop render-prod`) y vaciar `RENDER_WORKER_TOKEN` desactiva la función sin tocar código.
+
+**Pendientes / mejoras posibles**: primer fotograma de vídeos subidos (el servidor de assets no admite peticiones Range, por eso a veces sale solo el rótulo; opción: generar póster al subir el vídeo); capa de texto buscable en el PDF; modo «imprenta» con QR (decisión de Carlos: evaluar más adelante); descarga en el kiosco público para ediciones del editor (opcional, futuro); usar el mismo motor para L7a (miniaturas WebP + imagen OG).
