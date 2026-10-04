@@ -121,7 +121,7 @@ s, rv = call("POST", "/api/team/invitations", OW, {"email": TEMP_EMAIL, "role": 
 pw = secrets.token_urlsafe(15); call("POST", "/api/superadmin/invitations/accept", None, {"token": rv["invite_token"], "password": pw})
 TT = tok(TEMP_EMAIL); st, _ = call("GET", "/api/collections", TT); ok(st == 200, "miembro temporal entra")
 call("DELETE", f"/api/team/members/{rv['membership_id']}", OW)
-st, _ = call("GET", "/api/collections", TT); ok(st == 403, f"miembro revocado pierde acceso -> {st}")
+st, _ = call("GET", "/api/collections", TT); ok(st == 401, f"miembro revocado pierde acceso: su sesion se invalida al instante (EQ-1) -> {st}")
 st, _ = call("POST", "/api/superadmin/invitations/accept", None, {"token": rv["invite_token"], "password": "otraclave12345"}); ok(st == 400, f"token de invitacion usado/revocado no sirve -> {st}")
 # limpieza de la edicion de prueba
 call("POST", f"/api/publications/{ed['id']}/unpublish", AD); st, _ = call("DELETE", f"/api/publications/{ed['id']}", AD); ok(st == 204, f"admin borra edicion de prueba ({st})"); call("DELETE", f"/api/publications/{ed['id']}/purge", OW)  # L5: vaciar de la papelera
