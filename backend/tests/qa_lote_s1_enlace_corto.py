@@ -107,7 +107,7 @@ st, loc = short(f"/s/{code}", WHATSAPP); ok(st == 302 and loc == meta["url_path"
 ok(clicks(code) == c0 + 1, "el previsualizador de WhatsApp NO cuenta como clic")
 ok(is_bot("") and is_bot("facebookexternalhit/1.1") and not is_bot(BROWSER), "deteccion de bots")
 st, loc = short(f"/s/{code}?utm_source=qr"); ok(loc == meta["url_path"] + "?utm_source=qr", f"conserva la query (utm) ({loc})")
-st, panel = call("GET", f"/api/publications/{p['id']}", OW); ok(panel.get("short_clicks") == c0 + 1, f"panel muestra visitas ({panel.get('short_clicks')})")
+st, panel = call("GET", f"/api/publications/{p['id']}", OW); ok(panel.get("short_clicks") == c0 + 2, f"panel muestra visitas (2 de navegador, 0 de WhatsApp) ({panel.get('short_clicks')})")
 
 # Renombrar y mover: el codigo no cambia y redirige a la nueva URL
 st, col2 = call("POST", "/api/collections", OW, {"name": f"QA S1 col {RUN}"}); created_cols.append(col2["id"])
