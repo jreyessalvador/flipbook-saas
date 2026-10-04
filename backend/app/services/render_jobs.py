@@ -56,7 +56,7 @@ def request_pdf(db, pub, source: str, user, draft_snapshot: dict = None, version
     # 1) Cache: mismo contenido ya exportado (o en curso)
     existing = (
         db.query(RenderJob)
-        .filter(RenderJob.publication_id == pub.id, RenderJob.snapshot_hash == h,
+        .filter(RenderJob.publication_id == pub.id, RenderJob.snapshot_hash == h, RenderJob.source == source,
                 RenderJob.status.in_(["done", "queued", "running"]))
         .order_by(RenderJob.created_at.desc())
         .first()
