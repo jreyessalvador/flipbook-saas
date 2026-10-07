@@ -2889,7 +2889,7 @@ export default function CanvasEditorV2() {
     try {
       const params = kindFilter && kindFilter !== 'all' ? `?kind=${kindFilter}` : '';
       const res = await fetch(`${API_URL}/api/assets${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+        credentials: 'include', // Lote SEC-2: cookie HttpOnly
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

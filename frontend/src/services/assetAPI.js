@@ -6,10 +6,6 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:' && ba
   baseApiUrl = baseApiUrl.replace('http://', 'https://');
 }
 const API_URL = baseApiUrl;
-const getAuthHeader = () => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
 
 export const assetAPI = {
   // Upload imagen
@@ -18,8 +14,8 @@ export const assetAPI = {
     formData.append('file', file);
 
     const response = await axios.post(`${API_URL}/api/assets/upload`, formData, {
+      withCredentials: true, // Lote SEC-2
       headers: {
-        ...getAuthHeader(),
         'Content-Type': 'multipart/form-data'
       }
     });
@@ -30,7 +26,7 @@ export const assetAPI = {
   // Listar imágenes del usuario
   list: async () => {
     const response = await axios.get(`${API_URL}/api/assets/list`, {
-      headers: getAuthHeader()
+      withCredentials: true // Lote SEC-2
     });
 
     return response.data;

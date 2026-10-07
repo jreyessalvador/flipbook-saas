@@ -15,6 +15,7 @@ export { API_URL };
 
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true, // Lote SEC-2: enviar/recibir la cookie HttpOnly de sesion
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,10 +24,8 @@ const api = axios.create({
 // Interceptor para agregar token a todas las requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    // Lote SEC-2: el JWT va en cookie HttpOnly (withCredentials). Ya no se lee
+    // de localStorage ni se pone la cabecera Authorization desde JS.
     return withTenantHeader(config);
   },
   (error) => {
@@ -42,6 +41,7 @@ export const authAPI = {
     formData.append('password', password);
 
     const response = await axios.post(`${API_URL}/api/auth/login`, formData, {
+      withCredentials: true, // Lote SEC-2: recibir la cookie HttpOnly
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
@@ -54,9 +54,10 @@ export const authAPI = {
     return response.data;
   },
 
-  logout: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  logout: async () => {
+    // Lote SEC-2: el backend borra la cookie HttpOnly.
+    try { await api.post('/api/auth/logout'); } catch { /* best-effort */ }
+    try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch { /* noop */ }
   },
 };
 

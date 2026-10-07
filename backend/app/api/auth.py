@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -33,7 +33,21 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+# Lote SEC-2 (2026-10-07): el JWT viaja en cookie HttpOnly (no accesible a JS),
+# para que un XSS no pueda robar la sesion. Se mantiene el header Authorization
+# como alternativa (clientes de API y scripts de QA). Mismo origen SPA<->API, por
+# eso SameSite=Lax basta para frenar CSRF en las peticiones que mutan estado.
+COOKIE_NAME = "access_token"
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(key=COOKIE_NAME, value=token, httponly=True, secure=True,
+                        samesite="lax", path="/",
+                        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(key=COOKIE_NAME, path="/")
 
 def _is_platform_superadmin(db: Session, user_id) -> bool:
     from app.models.commercial import Role, UserPlatformRole
@@ -46,7 +60,7 @@ def _is_platform_superadmin(db: Session, user_id) -> bool:
 
 def get_current_user(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """Usuario autenticado + CONTEXTO DE TENANT (Lote C, 2026-09-27).
@@ -64,6 +78,10 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    # Lote SEC-2: si no vino por header Authorization, probamos la cookie HttpOnly.
+    token = token or request.cookies.get(COOKIE_NAME)
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         email: str = payload.get("sub")
@@ -132,6 +150,7 @@ def get_current_user(
 @router.post("/login", response_model=Token)
 def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -178,8 +197,15 @@ def login(
     db.commit()
 
     access_token = issue_token(user)  # Lote EQ-1: incluye la version de sesion
+    _set_auth_cookie(response, access_token)  # Lote SEC-2
 
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/logout")
+def logout(response: Response):
+    """Lote SEC-2: borra la cookie de sesion de este navegador."""
+    _clear_auth_cookie(response)
+    return {"status": "logged_out"}
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -299,7 +325,7 @@ PW_LOCK_MINUTES = 15       # ...bloquean el cambio durante 15 minutos
 
 
 @router.post("/change-password")
-def change_password(data: PasswordChange, request: Request, db: Session = Depends(get_db),
+def change_password(data: PasswordChange, request: Request, response: Response, db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
     """Cambia la contrasena del usuario autenticado. Cierra TODAS sus otras
     sesiones (sube token_version) y devuelve un token nuevo para esta."""
@@ -337,5 +363,7 @@ def change_password(data: PasswordChange, request: Request, db: Session = Depend
     db.commit()
     db.refresh(user)
     email_sent = mailer.delivered(mailer.send_password_changed(user.email))
-    return {"status": "password_changed", "access_token": issue_token(user), "token_type": "bearer",
+    new_token = issue_token(user)
+    _set_auth_cookie(response, new_token)  # Lote SEC-2: refresca la cookie de ESTA sesion
+    return {"status": "password_changed", "access_token": new_token, "token_type": "bearer",
             "other_sessions_closed": True, "email_sent": email_sent}

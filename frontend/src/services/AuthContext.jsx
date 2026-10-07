@@ -9,38 +9,24 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Verificar si hay token guardado al cargar
-    const token = localStorage.getItem('token');
-    if (token) {
-      authAPI.getMe()
-        .then((userData) => {
-          setUser(userData);
-        })
-        .catch(() => {
-          localStorage.removeItem('token');
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
+    // Lote SEC-2: la sesion vive en una cookie HttpOnly; preguntamos al backend
+    // quien somos. 200 = sesion valida; 401 = sin sesion.
+    authAPI.getMe()
+      .then((userData) => { setUser(userData); })
+      .catch(() => { setUser(null); })
+      .finally(() => { setLoading(false); });
   }, []);
 
   const login = async (email, password) => {
-    const data = await authAPI.login(email, password);
-    localStorage.setItem('token', data.access_token);
-    
-    // Obtener datos del usuario
+    await authAPI.login(email, password); // Lote SEC-2: deja la cookie HttpOnly
     const userData = await authAPI.getMe();
     setUser(userData);
-    
     return userData;
   };
 
-  const logout = () => {
+  const logout = async () => {
     setTenantContext(null);
-    authAPI.logout();
+    await authAPI.logout();
     setUser(null);
   };
 

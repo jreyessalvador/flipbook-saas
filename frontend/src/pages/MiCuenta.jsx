@@ -30,7 +30,7 @@ export default function MiCuenta() {
     setBusy(true); setMsg(null);
     try {
       const r = await api.post('/api/auth/change-password', { current_password: form.current, new_password: form.next });
-      try { localStorage.setItem('token', r.data.access_token); } catch { /* sin storage */ }
+      // Lote SEC-2: el backend refresca la cookie HttpOnly; no guardamos token en JS.
       setForm({ current: '', next: '', repeat: '' });
       setMsg({ type: 'success', text: `Contraseña cambiada. Se han cerrado tus otras sesiones abiertas${r.data.email_sent ? ' y te hemos enviado un correo de aviso' : ''}.` });
     } catch (err) {
