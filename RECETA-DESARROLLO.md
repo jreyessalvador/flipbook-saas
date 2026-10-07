@@ -2192,3 +2192,11 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 - Rollback: imagen `flipbook-prod-backend:rollback-pre-sec1`; dump `~/backups/flipbook-prod-pre-sec1-*.dump`; nginx `*.pre-sec1-*` en `/etc/nginx/backups/`.
 - Despliegue PROD: usar siempre `docker-compose.prod.yml` (proyecto `flipbook-prod`, imagen horneada). Avisos de tarea: `/usr/local/bin/agent-notify` en vps-contabo2.
 - SEC-2 recomendado (no hecho): JWT a cookie HttpOnly/Secure/SameSite + `script-src` sin `unsafe-inline`.
+
+## §29 — SEC-2: JWT en cookie HttpOnly + CSP script-src 'self' (2026-10-07) — EN PRODUCCIÓN
+- **backend/app/api/auth.py**: cookie `access_token` HttpOnly/Secure/SameSite=Lax/Max-Age=60min emitida en login y change-password; `POST /api/auth/logout` la borra; `get_current_user` acepta cookie O header Authorization (Bearer = fallback para QA/API); `oauth2_scheme` con auto_error=False.
+- **frontend**: axios con withCredentials; fuera el token de localStorage (api.js, AuthContext.jsx, assetAPI.js, CanvasEditorV2.jsx fetch con credentials:'include', MiCuenta.jsx); sesión resuelta por /me; logout -> POST /logout.
+- **frontend/nginx.conf**: CSP completa con `script-src 'self'` (sin unsafe-inline en scripts), style-src mantiene unsafe-inline, frame-src 'self' https: para embeds. Solo aplica al build de prod (en DEV corre vite). Build de prod no tiene scripts inline -> seguro.
+- **Verificado en PROD**: cookie flow completo (login/me/logout) por el edge; CSP en cabecera; navegador real sin violaciones de CSP.
+- **Despliegue**: rebuild de backend Y frontend con docker-compose.prod.yml; backend primero. Rollback: imágenes rollback-pre-sec2 (backend+frontend) + dump pre-sec2.
+- Mismo origen SPA<->API -> SameSite=Lax frena CSRF. Al desplegar, las sesiones en localStorage caen (reentrada única), igual que EQ-1.
