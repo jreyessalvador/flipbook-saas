@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate
 from app.core.security import verify_password, get_password_hash, create_access_token, issue_token, revoke_sessions
+from app.core import login_guard
 from app.config import settings
 from app.services import mailer
 from app.models.password_reset_token import PasswordResetToken
@@ -130,28 +131,52 @@ def get_current_user(
 
 @router.post("/login", response_model=Token)
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    # Lote SEC-1: proteccion contra fuerza bruta. nginx limita por IP; aqui
+    # bloqueamos por cuenta tras demasiados fallos (contador en Redis) y, ademas,
+    # gastamos el mismo tiempo de bcrypt aunque la cuenta no exista, para no
+    # filtrar por tiempos que correos estan registrados.
+    ip = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+
+    if login_guard.is_locked(form_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Demasiados intentos. Vuelve a probar en unos minutos.",
+            headers={"Retry-After": str(login_guard.LOCK_SECONDS)},
+        )
+
     user = db.query(User).filter(User.email == form_data.username).first()
-    
-    if not user or not verify_password(form_data.password, user.password_hash):
+    usable = bool(user and user.password_hash and not user.password_hash.startswith("!"))
+    if usable:
+        password_ok = verify_password(form_data.password, user.password_hash)
+    else:
+        # Cuenta inexistente o sin contrasena: verificamos contra un hash dummy
+        # para que el tiempo de respuesta sea indistinguible (anti-enumeracion).
+        verify_password(form_data.password, login_guard.DUMMY_HASH)
+        password_ok = False
+
+    if not password_ok:
+        login_guard.register_failure(form_data.username, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-    
-    # Actualizar last_login
+
+    # Login correcto: limpiamos el contador de fallos de esa cuenta.
+    login_guard.clear(form_data.username)
     user.last_login = datetime.utcnow()
     db.commit()
-    
+
     access_token = issue_token(user)  # Lote EQ-1: incluye la version de sesion
 
     return {"access_token": access_token, "token_type": "bearer"}

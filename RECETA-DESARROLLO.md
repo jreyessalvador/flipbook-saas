@@ -2183,3 +2183,12 @@ Mejoras transversales del editor aplicadas a todas las empresas, colecciones y p
 - `redesign/editor-v2` @ `5f85a8e` (incluye ajuste visual: el botón «Cambiar contraseña» en su propia línea). Migración 0014 aplicada; `up -d --build backend pdf-worker frontend`.
 - Verificado: home, `/health` y `/mi-cuenta` 200; `/s/…` 302; `/api/internal/render/claim` 404 público; `change-password` sin sesión 401; 13 usuarios con `token_version = 0`; un token antiguo sin `tv` sigue valiendo (nadie fue expulsado por el despliegue); sin errores en el log.
 - Rollback: `flipbook-prod-{backend,frontend}:rollback-pre-eq1`, dump `~/backups/flipbook-prod-pre-eq1-2026-10-04-2040.dump`, `.env` `~/backups/flipbook-prod-env-pre-eq1-2026-10-04-2040` (600). El mantenimiento semanal conserva los 2 rollbacks más recientes (`pre-eq1`, `pre-f`).
+
+## §28 — SEC-1: endurecimiento del login (2026-10-07)
+Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
+- **nginx**: zona `revistas_login` (12r/m, 10m) en nginx.conf; `location = /api/auth/login` (burst 20) y `= /api/auth/password-reset/request` (burst 5) con `limit_req_status 429`, en prod y dev. Además `ssl_protocols TLSv1.2 TLSv1.3` global y CSP de borde `object-src 'none'; base-uri 'self'; form-action 'self'`.
+- **backend**: nuevo `app/core/login_guard.py` (bloqueo por cuenta en Redis: 10 fallos/15min → bloqueo 15min, 429 genérico, limpia al acertar, falla-abierto si Redis cae). En `login()`: chequeo de bloqueo, verificación contra `DUMMY_HASH` cuando la cuenta no existe (iguala tiempos, anti-enumeración) y `clear()` al acertar. Sin migración.
+- **Verificado en PROD**: rate-limit 21×401→429; bloqueo 10×401→429; timing existente≈inexistente (~0.31–0.33s).
+- Rollback: imagen `flipbook-prod-backend:rollback-pre-sec1`; dump `~/backups/flipbook-prod-pre-sec1-*.dump`; nginx `*.pre-sec1-*` en `/etc/nginx/backups/`.
+- Despliegue PROD: usar siempre `docker-compose.prod.yml` (proyecto `flipbook-prod`, imagen horneada). Avisos de tarea: `/usr/local/bin/agent-notify` en vps-contabo2.
+- SEC-2 recomendado (no hecho): JWT a cookie HttpOnly/Secure/SameSite + `script-src` sin `unsafe-inline`.
