@@ -199,3 +199,4 @@ Resumen no técnico y actualizado del proyecto (funcionalidades, lotes, arquitec
 Temporizadores semanales `flipbook-housekeeping` (Contabo 1) y `flipbook-worker-housekeeping` (Contabo 2): rollbacks antiguos, caché Docker, copias viejas de BD/.env, logs temporales. RECETA §26 y `ops/housekeeping/`.
 | SEC-1 | Endurecimiento login: rate-limit nginx + bloqueo por cuenta (Redis) + fix timing enumeración + TLS1.2/1.3 + CSP | PROD 07-oct | img rollback-pre-sec1 / nginx *.pre-sec1-* |
 | SEC-2 | JWT en cookie HttpOnly (fuera localStorage) + POST /logout + CSP script-src self | PROD 07-oct | img rollback-pre-sec2 (backend+frontend) / dump pre-sec2 |
+| VID-1 | Fotograma real del vídeo en el editor (contain sobre negro, igual que el lector) + aviso de proporción en el panel (RECETA §30) | PROD 09-oct | img flipbook-prod-frontend:rollback-pre-vid1 |

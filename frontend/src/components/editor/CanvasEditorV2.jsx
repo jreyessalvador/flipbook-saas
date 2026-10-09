@@ -610,6 +610,59 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   );
 }
 
+
+// Lote VID-1 (09-oct-2026, pedido de Carlos): el editor muestra el FOTOGRAMA
+// real del video con el mismo encuadre que el lector publico (<video> nativo
+// sin object-fit = "contain" sobre fondo negro), para poder ajustar la caja a
+// ojo y que no queden bordes negros. Se cachea por src: un <video> oculto
+// carga el primer fotograma y se copia a canvas.
+const videoFrameCache = new Map();
+function loadVideoFrame(src) {
+  if (!src) return Promise.resolve(null);
+  if (videoFrameCache.has(src)) return videoFrameCache.get(src);
+  const p = new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'auto'; v.playsInline = true;
+    let settled = false;
+    const finish = (x) => { if (settled) return; settled = true; window.clearTimeout(timer); v.removeAttribute('src'); v.load(); resolve(x); };
+    const timer = window.setTimeout(() => finish(null), 15000);
+    // Primer fotograma (lo mismo que ve el lector antes de reproducir). No se
+    // hace seek: /api/assets/serve no responde 206 a Range y el salto falla.
+    v.addEventListener('loadeddata', () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 640; c.height = v.videoHeight || 360;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        finish(c);
+      } catch { finish(null); }
+    }, { once: true });
+    v.addEventListener('error', () => finish(null), { once: true });
+    v.src = src;
+  });
+  p.then((x) => { if (!x) videoFrameCache.delete(src); });
+  videoFrameCache.set(src, p);
+  return p;
+}
+
+function useVideoFrame(src) {
+  const [frame, setFrame] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setFrame(null);
+    loadVideoFrame(src).then((x) => { if (!cancelled) setFrame(x); });
+    return () => { cancelled = true; };
+  }, [src]);
+  return frame;
+}
+
+// Equivalente a object-fit: contain (centrado), en unidades de la caja.
+function computeContainRect(iw, ih, boxW, boxH) {
+  if (!iw || !ih) return { x: 0, y: 0, width: boxW, height: boxH };
+  const s = Math.min(boxW / iw, boxH / ih);
+  const w = iw * s; const h = ih * s;
+  return { x: (boxW - w) / 2, y: (boxH - h) / 2, width: w, height: h };
+}
+
 // Elemento de video (Lote 7 -- subida de video real, pedido explicito de
 // Carlos: "Tambien permitir subir video real"). Mismo criterio que
 // AudioElement: Konva no puede reproducir un archivo de video dentro del
@@ -622,8 +675,9 @@ function AudioElement({ el, canEdit, onSelect, onChange, shapeRef }) {
 function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
   const renderMode = useContext(RenderModeContext);
   const accent = '#7c3aed';
-  if (renderMode) return <RenderMediaPoster el={el} kind="video" label="Video" accent={accent} />;
   const src = el.props?.src?.startsWith('http') ? el.props.src : `${API_URL}${el.props?.src || ''}`;
+  const frame = useVideoFrame(!renderMode && canEdit && el.props?.src ? src : null);
+  if (renderMode) return <RenderMediaPoster el={el} kind="video" label="Video" accent={accent} />;
   // Lote UX-7: mismo criterio que AudioElement de arriba -- en modo
   // LECTURA se reemplaza el placeholder por un <video> nativo real (Html
   // de react-konva-utils), honrando autoplay/loop/muted ya guardados. Con
@@ -660,9 +714,23 @@ function VideoElement({ el, canEdit, onSelect, onChange, shapeRef }) {
       onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
       onTransformEnd={(e) => handleTransformEnd(e.target, onChange)}
     >
-      <Rect width={el.width} height={el.height} fill="#f5f3ff" stroke={accent} strokeWidth={1.5} cornerRadius={8} />
-      <Path data={ICON_PATHS.video} x={el.width / 2 - 20} y={el.height / 2 - 20} scaleX={1.4} scaleY={1.4} stroke={accent} strokeWidth={1.6} />
-      <KonvaText text="Video" x={0} y={el.height / 2 + 16} width={el.width} align="center" fontSize={14} fill={accent} />
+      {/* Lote VID-1: mismo encuadre que el lector (contain sobre negro). */}
+      <Rect width={el.width} height={el.height} fill={frame ? '#000' : '#f5f3ff'} stroke={frame ? undefined : accent} strokeWidth={frame ? 0 : 1.5} cornerRadius={frame ? 0 : 8} />
+      {frame && (() => {
+        const r = computeContainRect(frame.width, frame.height, el.width, el.height);
+        return <KonvaImage image={frame} x={r.x} y={r.y} width={r.width} height={r.height} listening={false} />;
+      })()}
+      {frame ? (
+        <Group x={10} y={10} listening={false}>
+          <Rect width={30} height={22} fill="rgba(124,58,237,0.9)" cornerRadius={4} />
+          <Path data={ICON_PATHS.video} x={4} y={0} scaleX={0.92} scaleY={0.92} stroke="#fff" strokeWidth={1.6} />
+        </Group>
+      ) : (
+        <>
+          <Path data={ICON_PATHS.video} x={el.width / 2 - 20} y={el.height / 2 - 20} scaleX={1.4} scaleY={1.4} stroke={accent} strokeWidth={1.6} />
+          <KonvaText text="Video" x={0} y={el.height / 2 + 16} width={el.width} align="center" fontSize={14} fill={accent} />
+        </>
+      )}
     </Group>
   );
 }
@@ -1560,6 +1628,26 @@ const ANIMATION_OPTIONS = [
   { value: 'zoom', label: 'Zoom' },
 ];
 
+
+// Lote VID-1: proporcion real del video vs. la caja, para encajarlo sin bordes.
+function VideoFitInfo({ el }) {
+  const src = el.props?.src ? (el.props.src.startsWith('http') ? el.props.src : `${API_URL}${el.props.src}`) : null;
+  const frame = useVideoFrame(src);
+  if (!frame) return null;
+  const vr = frame.width / frame.height;
+  const br = el.width / el.height;
+  const fmt = (n) => n.toFixed(2).replace('.', ',');
+  let msg = 'Encaja sin bordes.';
+  if (Math.abs(vr - br) / vr > 0.01) {
+    msg = vr < br ? 'Quedarán bordes negros a los lados.' : 'Quedarán bordes negros arriba y abajo.';
+  }
+  return (
+    <p className="editor-v2-props-hint">
+      Video {frame.width}×{frame.height} (proporción {fmt(vr)}) · Caja {fmt(br)}. {msg}
+    </p>
+  );
+}
+
 function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppendImagesClick, onOpenGalleryModal, onReorder, pages = [] }) {
   const count = selectedElements.length;
   const selectedElement = count === 1 ? selectedElements[0] : null;
@@ -1763,6 +1851,7 @@ function PropertiesPanel({ selectedElements, canEdit, onUpdate, onAlign, onAppen
                 style={{ width: '100%', marginBottom: 8, background: '#000' }}
                 src={selectedElement.props?.src?.startsWith('http') ? selectedElement.props.src : `${API_URL}${selectedElement.props?.src || ''}`}
               />
+              <VideoFitInfo el={selectedElement} />
               <label className="editor-v2-field editor-v2-field-checkbox">
                 <input
                   type="checkbox"

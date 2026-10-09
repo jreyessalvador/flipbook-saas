@@ -2200,3 +2200,10 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 - **Verificado en PROD**: cookie flow completo (login/me/logout) por el edge; CSP en cabecera; navegador real sin violaciones de CSP.
 - **Despliegue**: rebuild de backend Y frontend con docker-compose.prod.yml; backend primero. Rollback: imágenes rollback-pre-sec2 (backend+frontend) + dump pre-sec2.
 - Mismo origen SPA<->API -> SameSite=Lax frena CSRF. Al desplegar, las sesiones en localStorage caen (reentrada única), igual que EQ-1.
+
+## §30 — VID-1: fotograma del vídeo en el editor (2026-10-09) — EN PRODUCCIÓN
+- Problema (PROD, Protagonistas de Portada 38): en el editor el vídeo era solo un icono; en el lector salía con bordes negros porque el `<video>` va sin `object-fit` (= contain) sobre `#000` y la caja no tenía la proporción del vídeo.
+- Decisión de Carlos: lo básico — ver en el editor cómo queda el vídeo para ajustar a mano la caja. El lector NO cambia.
+- **frontend/src/components/editor/CanvasEditorV2.jsx**: `loadVideoFrame`/`useVideoFrame` (primer fotograma vía `<video>` oculto → canvas, caché por src; sin seek porque `/api/assets/serve` no responde 206), `computeContainRect`; VideoElement en edición pinta fondo negro + fotograma en contain (idéntico al lector) + insignia de vídeo; `VideoFitInfo` en el panel: «Video W×H (proporción) · Caja X» + aviso de bordes a los lados / arriba y abajo / encaja.
+- Solo frontend. Rollback: imagen `flipbook-prod-frontend:rollback-pre-vid1`.
+- Pendiente propuesto (VID-2): soporte `Range`/206 en `/api/assets/serve` (hoy 200 completo en DEV y PROD → sin salto en la barra y Safari/iPhone suele no reproducir mp4).
