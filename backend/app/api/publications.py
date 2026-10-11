@@ -261,7 +261,7 @@ async def import_pdf_publication(
     if not raw_pdf.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="El archivo no contiene una cabecera PDF válida")
     if len(raw_pdf) > settings.MAX_PDF_SIZE:
-        raise HTTPException(status_code=400, detail="PDF demasiado grande (máximo 50 MB)")
+        raise HTTPException(status_code=400, detail=f"PDF demasiado grande (máximo {settings.MAX_PDF_SIZE // (1024 * 1024)} MB)")
     require_publication_quota(db, current_user.effective_tenant_id)
     require_storage_quota(db, current_user.effective_tenant_id, len(raw_pdf))
     if not title.strip():

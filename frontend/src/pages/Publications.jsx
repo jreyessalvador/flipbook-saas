@@ -567,7 +567,7 @@ const Publications = () => {
             ) : (
               // Paso 2: Configuración de revista
               <form onSubmit={handleCreate}>
-                {newPublication.creation_type === 'pdf' ? <div className="form-group"><label>Archivo PDF (máx. 50 MB)</label><input type="file" accept="application/pdf,.pdf" onChange={(e) => setPdfFile(e.target.files?.[0] || null)} /><small>Las páginas se crearán automáticamente al terminar la conversión.</small></div> : <div className="config-grid">
+                {newPublication.creation_type === 'pdf' ? <div className="form-group"><label>Archivo PDF (máx. 100 MB)</label><input type="file" accept="application/pdf,.pdf" onChange={(e) => setPdfFile(e.target.files?.[0] || null)} /><small>Las páginas se crearán automáticamente al terminar la conversión. El PDF se optimiza para web y solo se conserva la versión optimizada.</small></div> : <div className="config-grid">
                   <div className="form-group">
                     <label>Tamaño de Página</label>
                     <select

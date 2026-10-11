@@ -133,10 +133,17 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_SECURE: "False"
+      # DOC-1: servicio compartido cetrix-docproc (RECETA §31). Token solo en .env.
+      DOCPROC_URL: ${DOCPROC_URL:-}
+      DOCPROC_CLIENT: ${DOCPROC_CLIENT:-}
+      DOCPROC_TOKEN: ${DOCPROC_TOKEN:-}
     depends_on:
       - postgresql
       - redis
       - minio
+    networks:
+      - default
+      - docproc-c-flipbook-dev   # red propia: solo este contenedor + broker docproc
     volumes:
       - ./backend:/app
     command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
@@ -173,3 +180,8 @@ services:
     cpus: ${FRONTEND_CPUS:-1.0}
     mem_limit: ${FRONTEND_MEM:-1g}
     restart: unless-stopped
+
+networks:
+  # Creada por /srv/apps/docproc (broker cetrix-docproc). internal: sin salida.
+  docproc-c-flipbook-dev:
+    external: true

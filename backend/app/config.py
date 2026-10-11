@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     MAX_IMAGE_SIZE: int = 10 * 1024 * 1024  # 10MB
     MAX_VIDEO_SIZE: int = 100 * 1024 * 1024  # 100MB
     MAX_AUDIO_SIZE: int = 20 * 1024 * 1024  # 20MB
-    MAX_PDF_SIZE: int = 50 * 1024 * 1024  # 50MB
+    # DOC-1 (11-oct-2026): 100 MB. Se puede subir el limite porque ya no se
+    # guarda el PDF bruto: docproc lo sustituye por la version optimizada.
+    MAX_PDF_SIZE: int = int(os.getenv("MAX_PDF_SIZE", str(100 * 1024 * 1024)))
+    MAX_PDF_PAGES: int = int(os.getenv("MAX_PDF_PAGES", "500") or 500)
     
     # Celery
     # Cola dedicada: un procesamiento pesado nunca comparte el Redis operativo.
@@ -80,6 +83,16 @@ class Settings(BaseSettings):
     RENDER_GATEWAY_CLIENT_IP: str = os.getenv("RENDER_GATEWAY_CLIENT_IP", "10.253.43.2")
     RENDER_MAX_ACTIVE_PER_TENANT: int = int(os.getenv("RENDER_MAX_ACTIVE_PER_TENANT", "3") or 3)
     RENDER_MAX_PDF_BYTES: int = int(os.getenv("RENDER_MAX_PDF_BYTES", str(400 * 1024 * 1024)))
+
+    # DOC-1 (11-oct-2026): servicio compartido cetrix-docproc (RECETA §31).
+    # Broker en Contabo 1 (red docker docproc-c-flipbook-<entorno>), worker
+    # aislado en Contabo 2. El token va SOLO en el .env del servidor.
+    DOCPROC_URL: str = os.getenv("DOCPROC_URL", "")
+    DOCPROC_CLIENT: str = os.getenv("DOCPROC_CLIENT", "")
+    DOCPROC_TOKEN: str = os.getenv("DOCPROC_TOKEN", "")
+    DOCPROC_PDF_PROFILE: str = os.getenv("DOCPROC_PDF_PROFILE", "ebook")  # web | ebook | print
+    DOCPROC_PAGE_DPI: int = int(os.getenv("DOCPROC_PAGE_DPI", "144") or 144)
+    DOCPROC_PAGE_QUALITY: int = int(os.getenv("DOCPROC_PAGE_QUALITY", "82") or 82)
 
     class Config:
         env_file = ".env"

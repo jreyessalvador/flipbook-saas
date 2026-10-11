@@ -112,9 +112,17 @@ services:
   pdf-worker:
     image: flipbook-prod-backend:latest
     container_name: flipbook-prod-pdf-worker
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      # DOC-1: servicio compartido cetrix-docproc (RECETA §31). Token solo en .env.
+      DOCPROC_URL: ${DOCPROC_URL:-}
+      DOCPROC_CLIENT: ${DOCPROC_CLIENT:-}
+      DOCPROC_TOKEN: ${DOCPROC_TOKEN:-}
     depends_on:
       - backend
+    networks:
+      - default
+      - docproc-c-flipbook-prod   # red propia: solo este contenedor + broker docproc
     command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
@@ -140,3 +148,8 @@ services:
       - backend
     mem_limit: 128m
     restart: unless-stopped
+
+networks:
+  # Creada por /srv/apps/docproc (broker cetrix-docproc). internal: sin salida.
+  docproc-c-flipbook-prod:
+    external: true
