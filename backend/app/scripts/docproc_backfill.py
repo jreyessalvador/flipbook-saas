@@ -70,14 +70,30 @@ def old_backgrounds(db, pub_id):
 LOCK_ID = 7_311_001  # pg_advisory_lock: una sola ejecucion del backfill a la vez
 
 
+def referenced_keys(db):
+    """Todas las claves de MinIO que referencia la BD (elementos, snapshots,
+    paginas, portadas, PDFs, trabajos de render y biblioteca)."""
+    rx = re.compile(r'/api/assets/serve/([^"?#\s\\]+)')
+    keys = set()
+    for (blob,) in db.execute(text("""
+        SELECT props::text FROM page_elements
+        UNION ALL SELECT snapshot::text FROM publication_versions
+        UNION ALL SELECT snapshot::text FROM render_jobs
+        UNION ALL SELECT coalesce(content::text, '') || ' ' || coalesce(thumbnail_url, '') FROM pages
+        UNION ALL SELECT coalesce(pdf_url, '') || ' ' || coalesce(cover_image_url, '') FROM publications
+    """)).all():
+        keys.update(rx.findall(blob or ""))
+    keys.update(k for (k,) in db.execute(text("SELECT storage_key FROM assets")).all())
+    return keys
+
+
 def orphans(db, dry_run):
     rx = re.compile(r"^tenant-[^/]+/publications/[^/]+/pages/[^/]+\.(webp|jpg)$")
     limit = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+    used = referenced_keys(db)
     n = size = 0
     for obj in minio_client.list_objects(BUCKET_NAME, recursive=True):
-        if not rx.match(obj.object_name) or obj.last_modified > limit:
-            continue
-        if _is_referenced(db, obj.object_name):
+        if not rx.match(obj.object_name) or obj.last_modified > limit or obj.object_name in used:
             continue
         n += 1
         size += obj.size
