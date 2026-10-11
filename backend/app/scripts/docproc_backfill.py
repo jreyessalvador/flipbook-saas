@@ -13,8 +13,13 @@ fondos .jpg y con ese metadato se salta.
 Uso (dentro del contenedor pdf-worker del entorno):
   python -m app.scripts.docproc_backfill --dry-run
   python -m app.scripts.docproc_backfill [--only <publication_id>]
+  python -m app.scripts.docproc_backfill --orphans [--dry-run]
+      borra paginas WebP/JPEG de importacion que ya no referencia nadie
+      (solo objetos con mas de 1 hora, para no tocar importaciones en curso).
+Solo una ejecucion a la vez (bloqueo consultivo de PostgreSQL).
 """
 import argparse
+import datetime
 import re
 import sys
 import uuid
@@ -62,11 +67,37 @@ def old_backgrounds(db, pub_id):
     return out
 
 
+LOCK_ID = 7_311_001  # pg_advisory_lock: una sola ejecucion del backfill a la vez
+
+
+def orphans(db, dry_run):
+    rx = re.compile(r"^tenant-[^/]+/publications/[^/]+/pages/[^/]+\.(webp|jpg)$")
+    limit = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+    n = size = 0
+    for obj in minio_client.list_objects(BUCKET_NAME, recursive=True):
+        if not rx.match(obj.object_name) or obj.last_modified > limit:
+            continue
+        if _is_referenced(db, obj.object_name):
+            continue
+        n += 1
+        size += obj.size
+        print(("  [dry-run] " if dry_run else "  borrado ") + obj.object_name)
+        if not dry_run:
+            minio_client.remove_object(BUCKET_NAME, obj.object_name)
+    print(f"huerfanos: {n} objetos, {size/1e6:.1f} MB")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--only")
+    ap.add_argument("--orphans", action="store_true")
     args = ap.parse_args()
+    db = SessionLocal()
+    if not db.execute(text("SELECT pg_try_advisory_lock(:id)"), {"id": LOCK_ID}).scalar():
+        sys.exit("Ya hay otra ejecucion del backfill en curso")
+    if args.orphans:
+        return orphans(db, args.dry_run)
     if not docproc.enabled():
         sys.exit("DOCPROC_URL/DOCPROC_TOKEN no configurados")
     h = docproc.health()
@@ -74,7 +105,6 @@ def main():
     if not h.get("worker_online") and not args.dry_run:
         sys.exit("worker docproc sin conexion")
 
-    db = SessionLocal()
     q = "SELECT id, tenant_id, pdf_url, status, title FROM publications WHERE creation_type='pdf' AND pdf_url IS NOT NULL"
     params = {}
     if args.only:
