@@ -2207,3 +2207,39 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 - **frontend/src/components/editor/CanvasEditorV2.jsx**: `loadVideoFrame`/`useVideoFrame` (primer fotograma vía `<video>` oculto → canvas, caché por src; sin seek porque `/api/assets/serve` no responde 206), `computeContainRect`; VideoElement en edición pinta fondo negro + fotograma en contain (idéntico al lector) + insignia de vídeo; `VideoFitInfo` en el panel: «Video W×H (proporción) · Caja X» + aviso de bordes a los lados / arriba y abajo / encaja.
 - Solo frontend. Rollback: imagen `flipbook-prod-frontend:rollback-pre-vid1`.
 - Pendiente propuesto (VID-2): soporte `Range`/206 en `/api/assets/serve` (hoy 200 completo en DEV y PROD → sin salto en la barra y Safari/iPhone suele no reproducir mp4).
+
+## §31 — DOC-1: importación PDF vía servicio compartido cetrix-docproc (2026-10-11) — EN DEV
+
+**Por qué.** Con el límite de 50 MB y el PDF guardado tal cual, el disco se llenaría pronto. Carlos pidió un servicio en Contabo 2, reutilizable por todos los proyectos (Revistas, y más adelante MANT y Finkora para escaneos), accesible **solo desde Contabo 1**. Decisión suya: **solo se guarda el PDF optimizado**; el pesado se elimina y las páginas pasan a WebP.
+
+**Arquitectura.** Documentación completa del servicio en `agents-memory/projects/cetrix-docproc/README.md`.
+- Broker en C1 (`/srv/apps/docproc`, contenedor `docproc-broker`). El pdf-worker de cada entorno se une a su red Docker `docproc-c-flipbook-<dev|prod>` (internal, aislada del resto de proyectos) y llama a `http://docproc-broker:8000` con `X-Docproc-Client` y `X-Docproc-Token`. El token va solo en el `.env`; en el broker se guarda únicamente su sha256.
+- Worker aislado en C2 (`docproc-worker-1`). Túnel propio **`wg-docproc`** (10.253.44.0/30). El worker reclama los trabajos y C1 nunca conecta a C2. No tiene internet ni acceso al host.
+- **El PDF de usuario ya no se abre en Contabo 1.** Antes `pdf2image` corría en el pdf-worker, con acceso a la BD.
+
+**Código.**
+- `backend/app/services/docproc.py`: cliente urllib3, sin dependencias nuevas.
+- `backend/app/workers/pdf_import.py`:
+  1. Comprueba `health()`. Si el worker no está conectado, `retry` cada 5 min (12 veces) y la edición sigue «procesando».
+  2. `optimize` con perfil `ebook` y `render_pages` a 144 ppp, WebP q82.
+  3. Sube las páginas `.webp`.
+  4. El optimizado **sustituye al original en la misma clave** (`pdf_url` no cambia) con el metadato `x-amz-meta-docproc`.
+  5. Si algo falla, borra los WebP ya subidos y deja la edición `failed`.
+- Configuración: `MAX_PDF_SIZE` = 100 MB (antes 50), `MAX_PDF_PAGES` = 500, variables `DOCPROC_*`. nginx con `client_max_body_size 110m`.
+- `backend/app/scripts/docproc_backfill.py` (se ejecuta dentro del pdf-worker):
+  - `python -u -m app.scripts.docproc_backfill --dry-run`, luego sin `--dry-run`.
+  - Migra las ediciones antiguas: PDF optimizado, JPEG → WebP. Sustituye la URL en `page_elements`, `publication_versions`, `render_jobs`, `pages` y `publications.cover_image_url`; esto incluye los clones.
+  - Borra un JPEG solo si ya no lo referencia nadie.
+  - Idempotente y con `pg_try_advisory_lock`, así que solo puede correr una ejecución a la vez.
+  - `--orphans [--dry-run]` borra páginas WebP/JPEG sin ninguna referencia y con más de 1 h.
+
+**Medido (DyN).** PDF de 38,8 MB → 9,2 MB (48 págs); 23,9 → 8,4 MB (40 págs); 11,5 → 1,9 MB (16 págs). Las páginas WebP ocupan un 46 % menos que los JPEG. Una revista de 40 págs pasa de 37,6 MB (PDF + JPEG) a 15,8 MB, y la importación tarda unos 60 s.
+
+**Paso a PROD** (pendiente de la validación de Carlos):
+1. Backup de la BD y de MinIO; tags `flipbook-prod-{backend,frontend}:rollback-pre-doc1`.
+2. Token `flipbook-prod`: el hash en `/srv/apps/docproc/config/clients.json` y `DOCPROC_URL`, `DOCPROC_CLIENT` y `DOCPROC_TOKEN` en `/srv/apps/flipbook/.env`.
+3. Merge ff a `redesign/editor-v2` y `docker compose -f docker-compose.prod.yml -p flipbook-prod up -d --build backend pdf-worker frontend`.
+4. nginx de `revistas.cetrix.com.mx` a 110m.
+5. Backfill: primero `--dry-run`, luego la ejecución real y al final `--orphans`.
+
+**Rollback.** Volver a las imágenes `rollback-pre-doc1`. Las ediciones ya migradas siguen funcionando con el código antiguo, porque las URL `.webp` se sirven igual.
