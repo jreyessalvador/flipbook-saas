@@ -114,3 +114,23 @@ def optimize_pdf(pdf_bytes: bytes, render_pages: bool = True, timeout: int = 20 
     except Exception:
         delete(job_id)
         raise
+
+
+def pdf_to_images(pdf_bytes: bytes, pages: str = "all", fmt: str = "webp", dpi: int = 150,
+                  quality: int = 85, max_side: int = None, timeout: int = 20 * 60):
+    """PDF (una hoja '3', rangos '1-4,7' o 'all') -> imagenes webp | jpeg | png.
+
+    Devuelve lista de (numero_pagina, bytes, content_type, ancho, alto). Disponible
+    para cualquier proyecto (p. ej. portadas, miniaturas, exportar hojas sueltas).
+    """
+    params = {"pages": pages, "format": fmt, "dpi": dpi, "quality": quality}
+    if max_side:
+        params["max_side"] = max_side
+    job_id = submit("pdf_to_images", [("documento.pdf", pdf_bytes, "application/pdf")], params)
+    try:
+        job = wait(job_id, timeout=timeout)
+        ctype = {"webp": "image/webp", "png": "image/png"}.get(fmt, "image/jpeg")
+        return [(pg["n"], fetch(job_id, pg["file"]), ctype, pg["width_px"], pg["height_px"])
+                for pg in job["result"]["page_images"]]
+    finally:
+        delete(job_id)
