@@ -2208,7 +2208,7 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 - Solo frontend. Rollback: imagen `flipbook-prod-frontend:rollback-pre-vid1`.
 - Pendiente propuesto (VID-2): soporte `Range`/206 en `/api/assets/serve` (hoy 200 completo en DEV y PROD → sin salto en la barra y Safari/iPhone suele no reproducir mp4).
 
-## §31 — DOC-1: importación PDF vía servicio compartido cetrix-docproc (2026-10-11) — EN DEV
+## §31 — DOC-1: importación PDF vía servicio compartido cetrix-docproc (2026-10-11) — EN PRODUCCIÓN
 
 **Por qué.** Con el límite de 50 MB y el PDF guardado tal cual, el disco se llenaría pronto. Carlos pidió un servicio en Contabo 2, reutilizable por todos los proyectos (Revistas, y más adelante MANT y Finkora para escaneos), accesible **solo desde Contabo 1**. Decisión suya: **solo se guarda el PDF optimizado**; el pesado se elimina y las páginas pasan a WebP.
 
@@ -2235,11 +2235,14 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 
 **Medido (DyN).** PDF de 38,8 MB → 9,2 MB (48 págs); 23,9 → 8,4 MB (40 págs); 11,5 → 1,9 MB (16 págs). Las páginas WebP ocupan un 46 % menos que los JPEG. Una revista de 40 págs pasa de 37,6 MB (PDF + JPEG) a 15,8 MB, y la importación tarda unos 60 s.
 
-**Paso a PROD** (pendiente de la validación de Carlos):
-1. Backup de la BD y de MinIO; tags `flipbook-prod-{backend,frontend}:rollback-pre-doc1`.
-2. Token `flipbook-prod`: el hash en `/srv/apps/docproc/config/clients.json` y `DOCPROC_URL`, `DOCPROC_CLIENT` y `DOCPROC_TOKEN` en `/srv/apps/flipbook/.env`.
-3. Merge ff a `redesign/editor-v2` y `docker compose -f docker-compose.prod.yml -p flipbook-prod up -d --build backend pdf-worker frontend`.
-4. nginx de `revistas.cetrix.com.mx` a 110m.
-5. Backfill: primero `--dry-run`, luego la ejecución real y al final `--orphans`.
+**En PRODUCCIÓN (11-oct-2026)**, tras la validación de Carlos en DEV («funciona muy bien y la nitidez es buena»). PROD = DEV = `redesign/editor-v2` @ `601c6b6`.
+- Respaldos: `~/backups/flipbook-prod-pre-doc1-2026-10-11-1253.dump`, `flipbook-prod-minio-pre-doc1-2026-10-11-1253.tar.gz` y `flipbook-prod-env-pre-doc1-2026-10-11-1253`. Imágenes `flipbook-prod-{backend,frontend,pdf-worker}:rollback-pre-doc1`.
+- Cliente docproc `flipbook-prod`: el token está solo en `/srv/apps/flipbook/.env`; el backend no lo recibe, únicamente el pdf-worker.
+- nginx de `revistas.cetrix.com.mx` a 110m (copia previa en `/etc/nginx/backups/*pre-doc1*`).
+- Backfill PROD: DyN 34 (PDF 38,8 → 9,2 MB), Celia y Víctor (8,6 → 6,7 MB), Daniel de Faveri (11,5 → 1,9 MB) y Protagonistas de Portada 38 (23,9 → 8,4 MB). En total, de 122,9 MB (PDF + JPEG) a 48,2 MB (PDF optimizado + WebP).
+- Limpieza: `--orphans` borró 50 JPEG (19 MB) de dos ediciones eliminadas antes del lote, 8cbd6e23 y 4a53caa5. También se borraron 2 PDFs de importación sin referencia (37,9 MB, de importaciones antiguas o eliminadas). El bucket queda en 144,2 MB.
+- Integridad: 114 referencias, 0 rotas, 0 JPEG de páginas referenciados. Las páginas públicas se sirven como `image/webp`; la home y `/health` responden 200 y no hay errores 5xx.
+
+**Extra (pedido de Carlos, 11-oct):** nueva operación `pdf_to_images` en docproc. Convierte un PDF a webp, jpeg o png: una hoja (`"3"`), rangos (`"1-4,7"`) o el libro entero (`"all"`), con ppp y lado máximo configurables. Helper `docproc.pdf_to_images()` en `services/docproc.py`. Revistas no la usa todavía; queda disponible para miniaturas y portadas (L7a) o para otros proyectos.
 
 **Rollback.** Volver a las imágenes `rollback-pre-doc1`. Las ediciones ya migradas siguen funcionando con el código antiguo, porque las URL `.webp` se sirven igual.
