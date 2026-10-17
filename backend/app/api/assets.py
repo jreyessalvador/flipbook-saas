@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -10,6 +10,8 @@ import time
 import logging
 from io import BytesIO
 import os
+import re
+from email.utils import format_datetime
 
 from app.db.session import get_db
 from app.api.auth import get_current_user
@@ -240,24 +242,150 @@ async def list_user_assets(
     except S3Error as e:
         raise HTTPException(status_code=500, detail=f"Error MinIO: {str(e)}")
 
-@router.get("/serve/{object_name:path}")
-async def serve_asset(
-    object_name: str
-):
+# --- VID-2: servicio de objetos con soporte HTTP Range (RFC 9110 §14) ---------
+# Safari/iOS exige 206 para reproducir mp4 y permite saltar en la barra de
+# progreso; ademas evita transferir el archivo completo si solo se ve un tramo.
+_RANGE_RE = re.compile(r"^bytes=(\d{0,15})-(\d{0,15})$")
 
+
+class _RangeNotSatisfiable(Exception):
+    pass
+
+
+def _parse_byte_range(header: Optional[str], size: int):
+    """Devuelve (inicio, fin) inclusivos para un unico tramo valido.
+
+    None  -> sin Range utilizable: se ignora la cabecera y se sirve 200 completo
+             (unidad desconocida, multi-rango o sintaxis invalida; lo permite la RFC).
+    Lanza _RangeNotSatisfiable -> 416.
     """
-    Proxy: el backend descarga de MinIO y sirve al navegador.
-    Fabric.js puede cargar la imagen sin problemas de CORS.
+    if not header:
+        return None
+    m = _RANGE_RE.match(header.strip())
+    if not m:
+        return None
+    first, last = m.group(1), m.group(2)
+    if first == "" and last == "":
+        return None
+    if first == "":  # sufijo: ultimos N bytes
+        n = int(last)
+        if n == 0 or size == 0:
+            raise _RangeNotSatisfiable()
+        return max(size - n, 0), size - 1
+    start = int(first)
+    if last == "":
+        end = size - 1
+    else:
+        end = int(last)
+        if end < start:
+            return None
+        end = min(end, size - 1)
+    if start >= size:
+        raise _RangeNotSatisfiable()
+    return start, end
+
+
+def _etag_matches(header: str, etag: str) -> bool:
+    """If-None-Match: comparacion debil (RFC 9110 §8.8.3.2)."""
+    if header.strip() == "*":
+        return True
+    wanted = etag.removeprefix("W/")
+    return any(t.strip().removeprefix("W/") == wanted for t in header.split(","))
+
+
+def _if_range_ok(header: str, etag: str, last_modified: str) -> bool:
+    """If-Range: solo valida con ETag fuerte o fecha exacta; si no, se ignora Range."""
+    h = header.strip()
+    if h.startswith("W/"):
+        return False
+    if h.startswith('"'):
+        return h == etag
+    return h == last_modified
+
+
+def _iter_object(resp, chunk_size: int = 64 * 1024):
+    """Genera los bytes y SIEMPRE cierra/libera la conexion con MinIO."""
+    try:
+        for chunk in resp.stream(chunk_size):
+            yield chunk
+    finally:
+        resp.close()
+        resp.release_conn()
+
+
+@router.api_route("/serve/{object_name:path}", methods=["GET", "HEAD"])
+def serve_asset(object_name: str, request: Request):
+    """
+    Proxy: el backend descarga de MinIO y sirve al navegador (mismo origen,
+    sin problemas de CORS para Fabric/Konva). Soporta Range (206/416), HEAD,
+    ETag/If-None-Match (304) e If-Range. Es `def` (no async) para que las
+    llamadas bloqueantes a MinIO corran en el threadpool y no frenen el loop.
     """
     try:
-        response = minio_client.get_object(BUCKET_NAME, object_name)
-        content_type = response.headers.get("Content-Type", "image/jpeg")
+        st = minio_client.stat_object(BUCKET_NAME, object_name)
+    except (S3Error, ValueError) as e:
+        if isinstance(e, ValueError) or getattr(e, "code", "") in ("NoSuchKey", "NoSuchBucket", "NoSuchObject"):
+            raise HTTPException(status_code=404, detail="Asset no encontrado")
+        logger.error("serve_asset stat %s: %s", object_name, e)
+        raise HTTPException(status_code=502, detail="Almacenamiento no disponible")
 
-        def stream():
-            for chunk in response.stream(32 * 1024):
-                yield chunk
+    size = int(st.size or 0)
+    raw_etag = (st.etag or "").strip('"')
+    etag = f'"{raw_etag}"' if raw_etag else ""
+    last_modified = format_datetime(st.last_modified, usegmt=True) if st.last_modified else ""
+    content_type = st.content_type or "image/jpeg"
 
-        return StreamingResponse(stream(), media_type=content_type)
+    # Las portadas renderizadas (L7a) llevan el id de version en la clave: nunca cambian.
+    immutable = "/covers/" in object_name
+    validators = {"Accept-Ranges": "bytes",
+                  "Cache-Control": "public, max-age=31536000, immutable" if immutable else "no-cache"}
+    if etag:
+        validators["ETag"] = etag
+    if last_modified:
+        validators["Last-Modified"] = last_modified
 
+    # Precondicion antes que Range (RFC 9110 §13.2.2)
+    inm = request.headers.get("if-none-match")
+    if inm and etag and _etag_matches(inm, etag):
+        return Response(status_code=304, headers=validators)
+
+    range_header = request.headers.get("range")
+    if range_header:
+        if_range = request.headers.get("if-range")
+        if if_range and not _if_range_ok(if_range, etag, last_modified):
+            range_header = None  # el recurso cambio: se sirve completo
+    try:
+        rng = _parse_byte_range(range_header, size)
+    except _RangeNotSatisfiable:
+        return Response(status_code=416, headers={**validators, "Content-Range": f"bytes */{size}"})
+
+    if rng is None:
+        status, start, length = 200, 0, size
+        headers = {**validators, "Content-Length": str(size)}
+    else:
+        start, end = rng
+        length = end - start + 1
+        status = 206
+        headers = {**validators, "Content-Length": str(length),
+                   "Content-Range": f"bytes {start}-{end}/{size}"}
+
+    if request.method == "HEAD" or length == 0:
+        return Response(status_code=status, headers={**headers, "Content-Type": content_type})
+
+    try:
+        # If-Match: si el objeto se reemplazo entre stat y get (misma clave), no mezclar bytes
+        resp = minio_client.get_object(
+            BUCKET_NAME, object_name,
+            offset=start, length=(length if status == 206 else 0),
+            request_headers=({"If-Match": etag} if etag else None))
     except S3Error as e:
-        raise HTTPException(status_code=404, detail="Asset no encontrado")
+        if e.code in ("NoSuchKey", "NoSuchObject"):
+            raise HTTPException(status_code=404, detail="Asset no encontrado")
+        if e.code == "PreconditionFailed":
+            raise HTTPException(status_code=503, detail="Recurso actualizandose, reintenta",
+                                headers={"Retry-After": "1"})
+        logger.error("serve_asset get %s: %s", object_name, e)
+        raise HTTPException(status_code=502, detail="Almacenamiento no disponible")
+
+    return StreamingResponse(_iter_object(resp), status_code=status,
+                             media_type=content_type, headers=headers)
