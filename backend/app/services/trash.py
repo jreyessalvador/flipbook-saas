@@ -117,9 +117,11 @@ def purge_publication(db, pub) -> dict:
         db.rollback()
     # Lote L7a: portadas renderizadas (cover-400/800 y OG) de TODAS las versiones de la edicion
     try:
-        from app.services.render_jobs import cover_object_keys
+        from app.services.render_jobs import cover_prefix
+        from app.api.assets import minio_client as _mc, BUCKET_NAME as _bucket
         for (vid,) in db.execute(text("SELECT id FROM publication_versions WHERE publication_id = :id"), {"id": pub.id}).all():
-            candidates |= set(cover_object_keys(pub.tenant_id, vid))
+            for o in _mc.list_objects(_bucket, prefix=cover_prefix(pub.tenant_id, vid), recursive=True):
+                candidates.add(o.object_name)
     except Exception:
         db.rollback()
     pub_id = str(pub.id)

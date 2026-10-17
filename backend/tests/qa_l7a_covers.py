@@ -5,7 +5,7 @@ Ejecutar DENTRO del contenedor backend de DEV, con el worker de Contabo 2 en mar
   docker exec flipbook-dev-backend python /tmp/qa_l7a.py
 Usa la Empresa Demo. Re-ejecutable: purga lo que crea (atexit).
 """
-import sys, io, json, time, uuid, atexit, urllib.request, urllib.error
+import sys, io, re, json, time, uuid, atexit, urllib.request, urllib.error
 sys.path.insert(0, "/app")
 from datetime import timedelta
 from PIL import Image
@@ -14,7 +14,7 @@ from app.core.security import token_with_current_version as create_access_token
 from app.db.session import SessionLocal
 from app.models.publication import Publication
 from app.models.render_job import RenderJob
-from app.services.render_jobs import request_cover, cover_object_keys
+from app.services.render_jobs import request_cover, cover_prefix
 from app.services.trash import purge_publication, utcnow
 from app.api.assets import minio_client, BUCKET_NAME
 
@@ -105,6 +105,10 @@ def wait_cover(pid, version, limit=120):
     return pub_row(pid)
 
 
+def listing(tenant, version):
+    return [o.object_name for o in minio_client.list_objects(BUCKET_NAME, prefix=cover_prefix(tenant, version), recursive=True)]
+
+
 def exists(key):
     try: minio_client.stat_object(BUCKET_NAME, key); return True
     except Exception: return False
@@ -167,7 +171,7 @@ js = manual_job(PID, "cover", stale_v)
 b, h = multipart(OKFILES)
 st, r, _ = call("POST", f"/api/internal/render/jobs/{js}/cover-result", headers={**GOOD, **h}, data=b)
 ok(st == 200 and r.get("applied") is False, f"version no vigente -> applied=false ({st} {r})")
-ok(not any(exists(k) for k in cover_object_keys(pub_row(PID)["tenant_id"], stale_v)), "version no vigente: sin objetos huerfanos en MinIO")
+ok(listing(pub_row(PID)["tenant_id"], stale_v) == [], "version no vigente: sin objetos huerfanos en MinIO")
 st, _, _ = call("POST", f"/api/internal/render/jobs/{js}/cover-result", headers={**GOOD, **h}, data=b); ok(st == 404, f"un trabajo terminado no admite otra subida -> {st}")
 
 # --- Extremo a extremo con el worker real -----------------------------------
@@ -183,8 +187,9 @@ ok(it is not None and "/covers/" not in (it["cover_url"] or "") and it["cover_ur
 r = wait_cover(PID, V1)
 ok(bool(r["cover_key"]) and r["cover_version_id"] == V1, "el worker renderiza la portada y se asignan los punteros")
 if r["cover_key"]:
-    t = r["tenant_id"]; k400, k800, kog = cover_object_keys(t, V1)
-    ok(r["cover_key"] == k400 and r["og_key"] == kog, "claves de MinIO con id de version")
+    t = r["tenant_id"]; k400 = r["cover_key"]; k800 = k400.replace("/cover-400.webp", "/cover-800.webp"); kog = r["og_key"]
+    ok(re.fullmatch(rf"tenant-.+/covers/{V1}/[0-9a-f]{{8}}/cover-400\.webp", k400) and kog.endswith("/og-1200x630.jpg") and kog.rsplit("/", 1)[0] == k400.rsplit("/", 1)[0],
+       "claves de MinIO: version + subcarpeta del trabajo (cache inmutable seguro)")
     def img(k):
         o = minio_client.get_object(BUCKET_NAME, k); d = o.read(); o.close(); o.release_conn()
         return d, Image.open(io.BytesIO(d))
@@ -206,6 +211,7 @@ if r["cover_key"]:
     ok(str(again.version_id) == V1 and SessionLocal().query(RenderJob).filter(RenderJob.version_id == V1, RenderJob.kind == "cover").count() == 1, "request_cover es idempotente (reutiliza el trabajo)")
 
     # --- Republicar: se limpian punteros y, al terminar, se borra la portada anterior
+    V1_KEYS = [k400, k800, kog]
     st, pub2, _ = call("POST", f"/api/publications/{PID}/publish", OW)
     V2 = pub2["version_id"]; versions.add(V2)
     r2 = pub_row(PID)
@@ -214,7 +220,26 @@ if r["cover_key"]:
     r2 = wait_cover(PID, V2)
     ok(r2["cover_version_id"] == V2 and r2["cover_key"] != k400, "la nueva version tiene su propia portada")
     time.sleep(1)
-    ok(not any(exists(k) for k in cover_object_keys(t, V1)), "la portada de la version anterior se elimina de MinIO")
+    ok(not any(exists(k) for k in V1_KEYS), "la portada de la version anterior se elimina de MinIO")
+
+    # --- Re-renderizar la MISMA version (p. ej. para incorporar un fotograma de video):
+    #     claves nuevas (la cache inmutable no puede servir la portada vieja) y se borra la anterior
+    V2_KEYS = [r2["cover_key"], r2["cover_key"].replace("/cover-400.webp", "/cover-800.webp"), r2["og_key"]]
+    db = SessionLocal(); pubo = db.query(Publication).filter(Publication.id == PID).first()
+    verobj = db.get(__import__("app.models.publication_version", fromlist=["x"]).PublicationVersion, V2)
+    same = request_cover(db, pubo, verobj); n_before = db.query(RenderJob).filter(RenderJob.version_id == V2, RenderJob.kind == "cover").count()
+    same_id = str(same.id)
+    ok(n_before == 1 and str(same.version_id) == V2, "sin force se reutiliza el trabajo terminado (no hay trabajo nuevo)")
+    forced = request_cover(db, pubo, verobj, force=True); fid = str(forced.id); db.close()
+    ok(fid != same_id, "con force se crea un trabajo nuevo para la misma version")
+    t0 = time.time(); r3 = pub_row(PID)
+    while time.time() - t0 < 120 and r3["cover_key"] == r2["cover_key"]:
+        time.sleep(2); r3 = pub_row(PID)
+    ok(r3["cover_key"] != r2["cover_key"] and r3["cover_version_id"] == V2, "el re-render asigna claves nuevas")
+    time.sleep(1)
+    ok(not any(exists(k) for k in V2_KEYS), "re-render: las imagenes anteriores se eliminan de MinIO")
+    it3 = catalog_item(PID)
+    ok(it3 and it3["cover_url"] == f"/api/assets/serve/{r3['cover_key']}", "el catalogo sirve la portada nueva (URL distinta, sin cache vieja)")
 
 # --- Regresion del panel de PDF: los trabajos de portada no aparecen --------
 st, info, _ = call("GET", f"/api/publications/{PID}/pdf", ED)
@@ -232,10 +257,10 @@ ok(jj and jj["status"] == "done", f"el PDF se genera correctamente ({jj and jj['
 
 # --- Purga: borra tambien las portadas de MinIO ------------------------------
 final = pub_row(PID); tenant = final["tenant_id"]
-keys = [k for v in versions for k in cover_object_keys(tenant, v)]
-live_before = [k for k in keys if exists(k)]
+live_before = [k for v in versions for k in listing(tenant, v)]
 db = SessionLocal(); pb = db.query(Publication).filter(Publication.id == PID).first(); purge_publication(db, pb); db.close(); created.remove(PID)
-ok(len(live_before) >= 3 and not any(exists(k) for k in keys), f"purgar la edicion borra sus portadas de MinIO ({len(live_before)} objetos antes, 0 despues)")
+live_after = [k for v in versions for k in listing(tenant, v)]
+ok(len(live_before) >= 3 and live_after == [], f"purgar la edicion borra sus portadas de MinIO ({len(live_before)} objetos antes, {len(live_after)} despues)")
 
 print("\nRESULTADO:", "TODO OK" if not FAILS else f"{len(FAILS)} FALLOS: {FAILS}")
 sys.exit(1 if FAILS else 0)

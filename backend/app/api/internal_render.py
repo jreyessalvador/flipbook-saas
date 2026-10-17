@@ -145,14 +145,15 @@ async def cover_result(job_id: str, request: Request, db: Session = Depends(get_
 
     pub = db.query(Publication).filter(Publication.id == job.publication_id).first()
     ensure_bucket()
-    k400, k800, kog = cover_object_keys(job.tenant_id, job.version_id)
+    k400, k800, kog = cover_object_keys(job.tenant_id, job.version_id, job.id)
     for field, key in (("cover_400", k400), ("cover_800", k800), ("og", kog)):
         minio_client.put_object(BUCKET_NAME, key, BytesIO(blobs[field]), len(blobs[field]),
                                 content_type=COVER_FILES[field][1])
-    stale_version = None
+    new_keys = [k400, k800, kog]
+    old_keys = []
+    if pub is not None and pub.cover_key:  # portada anterior (otra version o un re-render de esta)
+        old_keys = [pub.cover_key, pub.cover_key.replace("/cover-400.webp", "/cover-800.webp")] + ([pub.og_key] if pub.og_key else [])
     if pub is not None and pub.published_version_id == job.version_id:
-        if pub.cover_version_id and pub.cover_version_id != job.version_id:
-            stale_version = pub.cover_version_id
         pub.cover_key, pub.og_key, pub.cover_version_id = k400, kog, job.version_id
         applied = True
     else:
@@ -160,8 +161,9 @@ async def cover_result(job_id: str, request: Request, db: Session = Depends(get_
     job.result_key, job.size_bytes = k400, sum(len(b) for b in blobs.values())
     job.status, job.finished_at, job.error = "done", utcnow(), None
     db.commit()
-    # limpieza best-effort: portada de la version anterior, o la recien subida si no se aplico
-    for key in (cover_object_keys(job.tenant_id, stale_version) if stale_version else []) + ([] if applied else [k400, k800, kog]):
+    # limpieza best-effort: las imagenes que ya no referencia nadie (la portada anterior si se
+    # aplico la nueva; las recien subidas si no se aplico)
+    for key in ([k for k in old_keys if k not in new_keys] if applied else new_keys):
         try:
             minio_client.remove_object(BUCKET_NAME, key)
         except Exception:

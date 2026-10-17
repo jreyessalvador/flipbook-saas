@@ -137,7 +137,7 @@ def _first_page(snap: dict):
     return pages[0] if pages else None
 
 
-def request_cover(db, pub, version, user_id=None):
+def request_cover(db, pub, version, user_id=None, force=False):
     """Encola el render de la portada (hoja 1) de una version publicada.
 
     El trabajo lleva SOLO la hoja 1 (snapshot recortado): el worker no pinta ni
@@ -150,7 +150,7 @@ def request_cover(db, pub, version, user_id=None):
     existing = (
         db.query(RenderJob)
         .filter(RenderJob.publication_id == pub.id, RenderJob.version_id == version.id, RenderJob.kind == "cover",
-                RenderJob.status.in_(["queued", "running", "done"]))
+                RenderJob.status.in_(["queued", "running"] if force else ["queued", "running", "done"]))
         .first()
     )
     if existing is not None:
@@ -182,6 +182,13 @@ def cleanup_cover_jobs(db) -> int:
     return n
 
 
-def cover_object_keys(tenant_id, version_id) -> list:
-    base = f"tenant-{tenant_id}/covers/{version_id}"
+def cover_prefix(tenant_id, version_id) -> str:
+    return f"tenant-{tenant_id}/covers/{version_id}/"
+
+
+def cover_object_keys(tenant_id, version_id, job_id) -> list:
+    """Claves de un renderizado concreto. Cada trabajo escribe en su propia subcarpeta
+    (…/{version}/{job8}/): las portadas se sirven con cache inmutable de un ano, asi que
+    re-renderizar la misma version NUNCA puede reutilizar la clave anterior."""
+    base = f"{cover_prefix(tenant_id, version_id)}{str(job_id)[:8]}"
     return [f"{base}/cover-400.webp", f"{base}/cover-800.webp", f"{base}/og-1200x630.jpg"]
