@@ -7,6 +7,8 @@ hoja (JPEG) -> monta el PDF con pikepdf (imagenes sin recomprimir + enlaces
 clicables de hotspots/videos/embeds) -> lo sube. Un trabajo a la vez.
 """
 import io
+import subprocess
+import tempfile
 import os
 import sys
 import time
@@ -181,9 +183,75 @@ def make_cover_files(shot_jpeg):
     }
 
 
+# --- Fotograma de video para portadas/PDF -------------------------------------
+# El Chromium del worker NO decodifica H.264 (casi todos los mp4), asi que el
+# fotograma se extrae aqui con un ffmpeg estatico montado en solo lectura. El
+# video es contenido de usuario: se decodifica unicamente en este contenedor
+# aislado (sin internet, raiz de solo lectura, sin capacidades), nunca en Contabo 1.
+FFMPEG = "/usr/local/bin/ffmpeg"
+ASSET_PREFIX = "/api/assets/serve/"
+POSTER_SUFFIX = ".poster.jpg"
+POSTER_MAX_VIDEO = 120 * 1024 * 1024      # tope de descarga por video (tmpfs de 768 MB)
+
+
+def video_srcs(data):
+    """Rutas /api/assets/serve/... de los videos de las hojas que no traen miniatura propia."""
+    out = []
+    for pg in data.get("pages") or []:
+        for el in pg.get("elements") or []:
+            props = el.get("props") or {}
+            if el.get("kind") != "video" or props.get("poster"):
+                continue
+            src = props.get("src") or ""
+            if src.startswith(PUBLIC):
+                src = src[len(PUBLIC):]
+            if src.startswith(ASSET_PREFIX) and ".." not in src and src not in out:
+                out.append(src)
+    return out
+
+
+def extract_poster(src_path):
+    """Primer fotograma del video como JPEG (<= 1280 px de ancho), o None si no se puede."""
+    if not os.path.exists(FFMPEG):
+        return None
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            vf, out = os.path.join(d, "v.bin"), os.path.join(d, "f.jpg")
+            size = 0
+            with requests.get(GW + src_path, stream=True, timeout=(10, 60)) as r:
+                if r.status_code != 200:
+                    return None
+                with open(vf, "wb") as f:
+                    for chunk in r.iter_content(1 << 20):
+                        size += len(chunk)
+                        if size > POSTER_MAX_VIDEO:
+                            return None
+                        f.write(chunk)
+            p = subprocess.run(
+                [FFMPEG, "-nostdin", "-hide_banner", "-v", "error", "-protocol_whitelist", "file", "-i", vf,
+                 "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-q:v", "3", "-y", out],
+                capture_output=True, timeout=60)
+            if p.returncode != 0 or not os.path.exists(out):
+                return None
+            with open(out, "rb") as f:
+                jpg = f.read()
+            return jpg if jpg[:3] == b"\xff\xd8\xff" and len(jpg) < 3_000_000 else None
+    except Exception as e:  # el render sigue con el marcador de video
+        log("poster no disponible", src_path[-40:], repr(e)[:120])
+        return None
+
+
 def render(job, browser):
     data = api("GET", f"/api/internal/render/jobs/{job['job_id']}/data").json()
     w, h = data["page_width"] * PX_PER_MM, data["page_height"] * PX_PER_MM
+    posters = {}
+    for sp in video_srcs(data):
+        beat()
+        jpg = extract_poster(sp)
+        if jpg:
+            posters[sp] = jpg
+    if video_srcs(data):
+        log(f"fotogramas de video: {len(posters)}/{len(video_srcs(data))}")
     ctx = browser.new_context(viewport={"width": int(w) + 20, "height": int(h) + 20}, device_scale_factor=DSF,
                               java_script_enabled=True, service_workers="block",
                               # PROD sirve la SPA con CSP script-src 'self' (SEC-2): sin esto,
@@ -199,6 +267,12 @@ def render(job, browser):
                 url = GW + url[len(PUBLIC):]
             if not url.startswith(GW):
                 return route.abort()          # nada fuera del gateway (sin internet de todos modos)
+            path = url[len(GW):].split("?", 1)[0]
+            if path.endswith(POSTER_SUFFIX):  # fotograma de un video: lo sirve el worker, no el gateway
+                jpg = posters.get(path[: -len(POSTER_SUFFIX)])
+                if jpg:
+                    return route.fulfill(status=200, content_type="image/jpeg", body=jpg)
+                return route.fulfill(status=404, body="")
             headers = dict(route.request.headers)
             if "/api/internal/" in url:
                 headers["x-render-token"] = TOKEN

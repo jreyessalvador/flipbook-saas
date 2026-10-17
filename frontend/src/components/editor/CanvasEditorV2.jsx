@@ -84,7 +84,10 @@ function RenderMediaPoster({ el, kind, label, accent = '#14213d' }) {
     const thumb = el.props?.poster
       ? (el.props.poster.startsWith('http') ? el.props.poster : `${API_URL}${el.props.poster}`)
       : (kind === 'embed' && (el.props?.provider || 'youtube') === 'youtube' && el.props?.video_id
-        ? `${API_URL}/api/internal/render/yt/${encodeURIComponent(el.props.video_id)}` : null);
+        ? `${API_URL}/api/internal/render/yt/${encodeURIComponent(el.props.video_id)}`
+        // Video propio: el worker extrae el primer fotograma con ffmpeg (el Chromium del
+        // render no decodifica H.264) y lo sirve en <src>.poster.jpg; si no hay, 404 y marcador.
+        : (kind === 'video' && el.props?.src?.startsWith('/api/assets/serve/') ? `${API_URL}${el.props.src}.poster.jpg` : null));
     const p = new Promise((resolve) => {
       let timer = null;
       const done = (x) => { window.clearTimeout(timer); if (!cancelled && x) setImg(x); resolve(); };
