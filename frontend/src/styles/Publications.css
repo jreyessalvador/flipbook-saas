@@ -585,3 +585,18 @@
 /* Lote L5: acciones de cabecera (Papelera + Nueva edición) */
 .publications-header-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .btn-trash-link { display: inline-flex; align-items: center; }
+
+/* Orden manual de las fichas (= orden del kiosco, izquierda -> derecha) */
+.order-hint{margin:0 0 1rem;padding:.65rem .9rem;background:#eef4fb;border:1px solid #cfe0f3;border-radius:8px;color:#274060;font-size:.88rem;line-height:1.45}
+.card-header{position:relative}
+.card-order{position:absolute;top:8px;left:8px;right:8px;z-index:5;display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(20,33,61,.88);border-radius:8px;color:#fff;font-size:.78rem;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.card-order-grip{cursor:grab;font-size:1.15rem;line-height:1;padding:2px 6px;border-radius:5px;user-select:none;touch-action:none}
+.card-order-grip:hover{background:rgba(255,255,255,.18)}
+.card-order-grip:active{cursor:grabbing}
+.card-order-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:5px;min-width:30px;min-height:28px;cursor:pointer;font-size:.8rem}
+.card-order-btn:hover:not(:disabled){background:rgba(255,255,255,.3)}
+.card-order-btn:disabled{opacity:.35;cursor:not-allowed}
+.card-order-btn:focus-visible,.card-order-grip:focus-visible{outline:2px solid #c9a24b;outline-offset:1px}
+.card-order-pos{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.publication-card.is-dragging{opacity:.45}
+.publication-card.is-over{outline:3px dashed #c9a24b;outline-offset:3px}

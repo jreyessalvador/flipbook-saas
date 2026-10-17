@@ -71,9 +71,11 @@ const LandingPage = () => {
         }
         map.get(key).items.push(p);
       });
-    // La edicion mas reciente (fecha de publicacion) va primera: es el «Último número» de la balda
+    // Orden fijado por la empresa (izquierda -> derecha); la ultima, a la derecha, es el «Último número».
+    // Sin orden manual (nulo) se cae a la fecha de publicacion, de mas antigua a mas reciente.
     const when = (p) => Date.parse(p.published_at || p.updated_at || p.created_at || 0) || 0;
-    return [...map.values()].map((g) => ({ ...g, items: [...g.items].sort((a, b) => when(b) - when(a)) }));
+    const pos = (p) => (p.sort_index == null ? Number.MAX_SAFE_INTEGER : p.sort_index);
+    return [...map.values()].map((g) => ({ ...g, items: [...g.items].sort((a, b) => pos(a) - pos(b) || when(a) - when(b)) }));
   }, [publications, category]);
 
   const handleLoginSubmit = async (e) => {
@@ -255,7 +257,7 @@ const LandingPage = () => {
                   </div>
                   {g.path && <Link to={g.path}>Ver colección →</Link>}
                 </div>
-                <Bookshelf items={g.items.slice(0, 8)} featuredFirst label={`Ediciones de ${g.name}`} />
+                <Bookshelf items={g.items.slice(-8)} flagId={g.items[g.items.length - 1]?.id} label={`Ediciones de ${g.name}`} />
               </section>
             ))
           )}

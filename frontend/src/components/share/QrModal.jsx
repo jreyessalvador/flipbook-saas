@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { shortReaderUrl, slugify } from './shareLinks';
+import { shortReaderUrl, slugify, withSrc } from './shareLinks';
 import './share.css';
 
 // Modal "QR": QR del Reader publico, descargable en PNG (alta resolucion,
@@ -10,7 +10,7 @@ const QR_OPTS = { errorCorrectionLevel: 'M', margin: 2, color: { dark: '#0f1b33'
 const QrModal = ({ pub, onClose }) => {
   // Lote S1: el QR apunta al enlace corto (menos modulos = se escanea mejor
   // impreso pequeno, y no se rompe si la edicion se renombra o se mueve).
-  const url = shortReaderUrl(pub);
+  const url = withSrc(shortReaderUrl(pub), 'qr'); // origen QR en las estadisticas
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
 

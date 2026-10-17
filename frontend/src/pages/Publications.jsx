@@ -38,6 +38,10 @@ const Publications = () => {
   const [pdfFor, setPdfFor] = useState(null); // Lote F
   const [qrFor, setQrFor] = useState(null);
   const importPollRef = useRef(null);
+  // Orden manual de las fichas (= orden del kiosco, izquierda -> derecha)
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const [orderNote, setOrderNote] = useState('');
   
   const [newPublication, setNewPublication] = useState({
     title: '',
@@ -86,6 +90,27 @@ const Publications = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const persistOrder = async (next) => {
+    const before = publications;
+    setPublications(next);
+    try {
+      await collectionAPI.setOrder(collectionId, next.map((p) => p.id));
+      setOrderNote('Orden guardado: así se verá en el kiosco, de izquierda a derecha.');
+    } catch (err) {
+      setPublications(before);
+      setOrderNote('');
+      setError('No se pudo guardar el orden. Inténtalo de nuevo.');
+    }
+  };
+  const placeAt = (id, targetIndex) => {
+    const from = publications.findIndex((p) => p.id === id);
+    if (from < 0 || targetIndex < 0 || targetIndex >= publications.length || from === targetIndex) return;
+    const next = [...publications];
+    const [item] = next.splice(from, 1);
+    next.splice(targetIndex, 0, item);
+    persistOrder(next);
   };
 
   const handlePageSizeChange = (size) => {
@@ -316,6 +341,12 @@ const Publications = () => {
       </div>
 
       {error && <div className="error-message">{error}</div>}
+      {canEdit && publications.length > 1 && (
+        <p className="order-hint" role="status">
+          <strong>Orden del kiosco:</strong> las fichas se muestran de izquierda a derecha y la última (la de más a la derecha) es el «Último número».
+          Arrastra una ficha por su asa <span aria-hidden="true">⠿</span> o usa ◀ ▶ para colocarla. {orderNote}
+        </p>
+      )}
       {importNotice && <div className={`import-notice import-notice-${importNotice.type}`}>{importNotice.text}</div>}
 
       {publications.length === 0 ? (
@@ -332,9 +363,35 @@ const Publications = () => {
         </div>
       ) : (
         <div className="publications-grid">
-          {publications.map(pub => (
-            <div key={pub.id} className="publication-card">
+          {publications.map((pub, idx) => (
+            <div
+              key={pub.id}
+              className={`publication-card${dragId === pub.id ? ' is-dragging' : ''}${overId === pub.id && dragId && dragId !== pub.id ? ' is-over' : ''}`}
+              onDragOver={canEdit && dragId ? (e) => { e.preventDefault(); if (overId !== pub.id) setOverId(pub.id); } : undefined}
+              onDrop={canEdit && dragId ? (e) => { e.preventDefault(); placeAt(dragId, idx); setDragId(null); setOverId(null); } : undefined}
+            >
               <div className="card-header">
+                {canEdit && publications.length > 1 && (
+                  <div className="card-order">
+                    <span
+                      className="card-order-grip"
+                      draggable
+                      title="Arrastra para cambiar el orden en el kiosco"
+                      aria-label={`Arrastrar “${pub.title}” para cambiar su posición`}
+                      onDragStart={(e) => {
+                        const card = e.currentTarget.closest('.publication-card');
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', pub.id);
+                        if (card) e.dataTransfer.setDragImage(card, 24, 24);
+                        setDragId(pub.id);
+                      }}
+                      onDragEnd={() => { setDragId(null); setOverId(null); }}
+                    >⠿</span>
+                    <button type="button" className="card-order-btn" disabled={idx === 0} onClick={() => placeAt(pub.id, idx - 1)} title="Mover a la izquierda" aria-label="Mover a la izquierda">◀</button>
+                    <span className="card-order-pos" title="Posición en el kiosco (1 = la más a la izquierda)">{idx + 1} / {publications.length}</span>
+                    <button type="button" className="card-order-btn" disabled={idx === publications.length - 1} onClick={() => placeAt(pub.id, idx + 1)} title="Mover a la derecha" aria-label="Mover a la derecha">▶</button>
+                  </div>
+                )}
                 {pub.cover_image_url ? (
                   <img
                     src={pub.cover_image_url.startsWith('http') ? pub.cover_image_url : `${API_URL}${pub.cover_image_url}`}
@@ -429,8 +486,11 @@ const Publications = () => {
                     {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => setPdfFor(pub)} title="Descargar la edición en PDF (tal cual se ve, con enlaces clicables)">
                       <Icon name="download" size={15} style={{ marginRight: 6 }} />PDF
                     </button>}
-                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => openMove(pub)} title="Mover a otra colección">
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" style={{ gridColumn: '1 / -1' }} onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
+                    </button>}
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => navigate(`/publications/${pub.id}/estadisticas`)} title="Lecturas, páginas, países, dispositivos y más (sin cookies)">
+                      <Icon name="chart" size={15} style={{ marginRight: 6 }} />Estadísticas
                     </button>}
                     {isAdmin && <button 
                       className="btn-danger publication-action"

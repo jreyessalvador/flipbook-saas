@@ -17,7 +17,7 @@ const PublicCollection = ({ embed = false }) => {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('recent');
+  const [sort, setSort] = useState('shelf');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -44,10 +44,19 @@ const PublicCollection = ({ embed = false }) => {
     if (!data) return [];
     const q = norm(query.trim());
     const list = data.editions.filter((p) => !q || norm(`${p.title} ${p.edition_label || ''}`).includes(q));
+    const pos = (p) => (p.sort_index == null ? Number.MAX_SAFE_INTEGER : p.sort_index);
+    const byShelf = (a, b) => pos(a) - pos(b) || stamp(a) - stamp(b);
     return [...list].sort(sort === 'name'
       ? (a, b) => norm(a.title).localeCompare(norm(b.title)) || stamp(b) - stamp(a)
-      : (a, b) => stamp(b) - stamp(a));
+      : sort === 'recent' ? (a, b) => stamp(b) - stamp(a) : byShelf);
   }, [data, query, sort]);
+
+  // «Último número»: la ultima edicion del orden de la estanteria (la mas a la derecha)
+  const lastId = useMemo(() => {
+    if (!data || data.editions.length < 2) return null;
+    const pos = (p) => (p.sort_index == null ? Number.MAX_SAFE_INTEGER : p.sort_index);
+    return [...data.editions].sort((a, b) => pos(a) - pos(b) || stamp(a) - stamp(b)).slice(-1)[0]?.id ?? null;
+  }, [data]);
 
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const current = Math.min(page, pages);
@@ -88,6 +97,7 @@ const PublicCollection = ({ embed = false }) => {
               <div className="shelf-tools">
                 <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar edición…" aria-label="Buscar edición" />
                 <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Ordenar ediciones">
+                  <option value="shelf">Orden de la estantería</option>
                   <option value="recent">Más recientes primero</option>
                   <option value="name">Nombre (A–Z)</option>
                 </select>
@@ -97,7 +107,7 @@ const PublicCollection = ({ embed = false }) => {
             {slice.length === 0 ? (
               <div className="kiosk-state">No hay ediciones que coincidan con «{query}».</div>
             ) : (
-              <Bookshelf items={slice} layout="grid" embed={embed} label={`Ediciones de ${data.collection.name}`} />
+              <Bookshelf items={slice} layout="grid" flagId={lastId} embed={embed} label={`Ediciones de ${data.collection.name}`} />
             )}
 
             {pages > 1 && (

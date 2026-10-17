@@ -32,6 +32,11 @@ import copy
 router = APIRouter()
 
 
+def _next_sort_index(db, collection_id):
+    from app.api.collections import next_sort_index
+    return next_sort_index(db, collection_id)
+
+
 @router.get("/stats/summary")
 def get_publications_stats(
     db: Session = Depends(get_db),
@@ -211,6 +216,7 @@ def create_publication(
         total_pages=total_pages,
         tenant_id=current_user.effective_tenant_id,
         collection_id=collection.id,
+        sort_index=_next_sort_index(db, collection.id),
         created_by=current_user.id
     )
     from app.core.slugs import unique_publication_slug
@@ -282,6 +288,7 @@ async def import_pdf_publication(
         status="processing", total_pages=0, pdf_url=build_asset_url(source_key),
         is_public=False, tenant_id=current_user.effective_tenant_id, created_by=current_user.id,
         collection_id=collection.id,
+        sort_index=_next_sort_index(db, collection.id),
     )
     from app.core.slugs import unique_publication_slug
     publication.slug = unique_publication_slug(db, collection.id, publication.title)
@@ -315,7 +322,7 @@ def list_publications(
         col = get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
         query = query.filter(Publication.collection_id == col.id)
     publications = query\
-        .order_by(Publication.updated_at.desc(), Publication.id.desc())\
+        .order_by(Publication.sort_index.asc().nullslast(), Publication.created_at.asc(), Publication.id.asc())\
         .offset(skip)\
         .limit(limit)\
         .all()
@@ -486,6 +493,8 @@ def move_publication(
     if publication.collection_id != target.id:
         from app.core.slugs import unique_publication_slug
         publication.slug = unique_publication_slug(db, target.id, publication.slug or publication.edition_label or publication.title, exclude_id=publication.id)
+        from app.api.collections import next_sort_index
+        publication.sort_index = next_sort_index(db, target.id)  # entra al final de la coleccion destino
     publication.collection_id = target.id
     db.commit()
     db.refresh(publication)
@@ -543,6 +552,7 @@ def clone_publication(
         seo_indexable=source.seo_indexable,
         tenant_id=tenant_id,
         collection_id=collection.id,
+        sort_index=_next_sort_index(db, collection.id),
         edition_label=edition_label,
         created_by=current_user.id,
     )

@@ -1,13 +1,35 @@
-/* Estanteria publica del kiosco (balda azul marino + dorado, sin madera). Solo vista publica. */
+/* Estanteria publica del kiosco (libreria de madera noble sobre azul marino). Solo vista publica. */
 .shelf{list-style:none;margin:0;padding:0;--gap:28px;--cw:150px}
-.shelf-row{display:flex;align-items:flex-end;gap:var(--gap);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:34px calc(var(--gap)/2) 8px;margin:0 calc(var(--gap)/-2)}
+.shelf-row{display:flex;align-items:flex-end;gap:var(--gap);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:34px calc(var(--gap)/2) 30px;margin:0 calc(var(--gap)/-2)}
 .shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw),1fr));gap:34px var(--gap);padding:0 calc(var(--gap)/2);align-items:end}
 .shelf-item{position:relative;scroll-snap-align:start;min-width:0}
 .shelf-row .shelf-item{flex:0 0 var(--cw)}
 
-/* balda: filete dorado + cara azul con sombra proyectada; cada tramo se solapa medio hueco con el vecino */
-.shelf-stage{position:relative;padding-bottom:16px}
-.shelf-stage::after{content:"";position:absolute;left:calc(var(--gap)/-2);right:calc(var(--gap)/-2);bottom:0;height:15px;background:linear-gradient(180deg,#24365e 0%,#14213d 60%,#0c1526 100%);border-top:2px solid var(--color-gold,#c9a24b);box-shadow:0 12px 20px -8px rgba(0,0,0,.7),0 -1px 10px rgba(201,162,75,.22);pointer-events:none}
+/* balda de madera noble (nogal): tapa con bisel de luz, canto frontal con veta fina y sombra proyectada.
+   Solo capas horizontales (sin veta vertical) para que los tramos de cada portada se unan sin costura. */
+.shelf-stage{position:relative;padding-bottom:20px}
+.shelf-stage::after{content:"";position:absolute;left:calc(var(--gap)/-2);right:calc(var(--gap)/-2);bottom:0;height:20px;pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(255,236,205,.55) 0 1px,transparent 1px),
+    linear-gradient(180deg,rgba(0,0,0,.28) 0 7px,transparent 7px),
+    repeating-linear-gradient(180deg,rgba(255,226,180,.07) 0 1px,rgba(0,0,0,.05) 1px 3px),
+    linear-gradient(180deg,#a8774a 0,#8c5b33 6px,#6a4223 7px,#593519 55%,#43260f 92%,#2a1707 100%);
+  border-bottom:1px solid #1d1005;
+  box-shadow:0 1px 0 rgba(255,220,170,.08) inset,0 16px 22px -8px rgba(0,0,0,.75),0 4px 6px -2px rgba(0,0,0,.5)}
+/* Balda de una fila: la tabla va en el contenedor, a todo lo ancho; los tramos por portada se anulan */
+.shelf-board{position:relative}
+.shelf-board::after{content:"";position:absolute;left:0;right:0;bottom:30px;height:20px;z-index:0;pointer-events:none;border-radius:2px;
+  background:
+    linear-gradient(180deg,rgba(255,236,205,.55) 0 1px,transparent 1px),
+    linear-gradient(180deg,rgba(0,0,0,.28) 0 7px,transparent 7px),
+    repeating-linear-gradient(180deg,rgba(255,226,180,.07) 0 1px,rgba(0,0,0,.05) 1px 3px),
+    linear-gradient(180deg,#a8774a 0,#8c5b33 6px,#6a4223 7px,#593519 55%,#43260f 92%,#2a1707 100%);
+  border-bottom:1px solid #1d1005;
+  box-shadow:0 1px 0 rgba(255,220,170,.08) inset,0 16px 22px -8px rgba(0,0,0,.75),0 4px 6px -2px rgba(0,0,0,.5)}
+.shelf-board .shelf-row{position:relative;z-index:1}
+.shelf-board .shelf-stage::after{display:none}
+/* sombra de contacto de cada libro sobre la tapa */
+.shelf-stage::before{content:"";position:absolute;left:2%;right:2%;bottom:13px;height:8px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,0,0,.55),transparent 70%);filter:blur(2px);pointer-events:none}
 
 .shelf-flag{position:absolute;left:0;top:-24px;font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-gold,#c9a24b);white-space:nowrap}
 

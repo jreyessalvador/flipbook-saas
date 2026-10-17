@@ -52,6 +52,8 @@ class Publication(Base):
     cover_version_id = Column(UUID(as_uuid=True), nullable=True)
     # Fecha en que se publico la version vigente (migracion 0015): alimenta la cinta «NUEVO» del kiosco.
     published_at = Column(DateTime(timezone=True), nullable=True)
+    # Migracion 0016: orden manual dentro de la coleccion (ascendente; la mas reciente = la ultima = a la derecha)
+    sort_index = Column(Integer, nullable=True)
 
     # Publicacion inmutable actualmente vigente para el Reader (seccion 5)
     published_version_id = Column(UUID(as_uuid=True), ForeignKey("publication_versions.id"), nullable=True)

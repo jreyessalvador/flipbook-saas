@@ -130,6 +130,7 @@ def _catalog_item(pub, snapshot, collection, tenant, category) -> dict:
         "created_at": pub.created_at.isoformat() if pub.created_at else None,
         "updated_at": pub.updated_at.isoformat() if pub.updated_at else None,
         "published_at": pub.published_at.isoformat() if getattr(pub, "published_at", None) else None,
+        "sort_index": pub.sort_index,
         "cover_url": _cover_urls(pub, snapshot)[0],
         "cover_url_2x": _cover_urls(pub, snapshot)[1],  # Lote L7a (None si aun no hay render)
         "collection": {
@@ -164,7 +165,7 @@ def list_public_publications(category: Optional[str] = None, db: Session = Depen
     stmt = _public_catalog_stmt()
     if category:
         stmt = stmt.where(Category.slug == category)
-    stmt = stmt.order_by(Publication.updated_at.desc())
+    stmt = stmt.order_by(Publication.sort_index.asc().nullslast(), Publication.published_at.asc().nullslast(), Publication.updated_at.asc())
     return [_catalog_item(*row) for row in db.execute(stmt).all()]
 
 
@@ -198,7 +199,7 @@ def get_public_collection(tenant_slug: str, collection_slug: str, db: Session = 
     rows = db.execute(
         _public_catalog_stmt()
         .where(and_(Tenant.subdomain == tenant_slug, Collection.slug == collection_slug))
-        .order_by(Publication.updated_at.desc())
+        .order_by(Publication.sort_index.asc().nullslast(), Publication.published_at.asc().nullslast(), Publication.updated_at.asc())
     ).all()
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Colección no encontrada o sin ediciones públicas")
@@ -421,3 +422,100 @@ def resolve_short_link(code: str, request: Request, db: Session = Depends(get_db
     if request.url.query:
         target = f"{target}?{request.url.query}"
     return RedirectResponse(target, status_code=302, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+@router.post("/events", status_code=204, include_in_schema=False)
+async def reader_event(request: Request, db: Session = Depends(get_db)):
+    """Lote L6: evento anonimo de lectura (sendBeacon del Reader). Sin cookies, sin IP/UA guardados.
+
+    Siempre responde 204 (no revela si se registro): DNT / Sec-GPC, bots, ediciones no publicas
+    o cuerpo invalido se descartan en silencio. Limite por IP via Redis.
+    """
+    import json
+    from datetime import datetime, timezone
+    from sqlalchemy import update
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from fastapi import Response
+    from app.models.reader_event import ReaderEvent
+    from app.services import reader_stats as rs
+    from app.services.short_links import is_bot
+
+    quiet = Response(status_code=204)
+    h = request.headers
+    if h.get("dnt") == "1" or h.get("sec-gpc") == "1":
+        return quiet
+    ua = h.get("user-agent", "")
+    if is_bot(ua):
+        return quiet
+    ip = h.get("x-real-ip") or (request.client.host if request.client else "")
+    if not ip or not rs.rate_ok(ip):
+        return quiet
+    try:
+        raw = await request.body()
+        if len(raw) > 2048:
+            return quiet
+        data = json.loads(raw.decode("utf-8", "ignore") or "{}")
+        pid = uuid.UUID(str(data.get("p")))
+        ev = data.get("e")
+        if ev not in rs.EVENTS:
+            return quiet
+    except Exception:
+        return quiet
+
+    pub = db.query(Publication.id, Publication.tenant_id, Publication.total_pages).join(Tenant, Tenant.id == Publication.tenant_id) \
+        .filter(Publication.id == pid, Publication.is_public == True, Publication.published_version_id.isnot(None),
+                func.coalesce(Tenant.status, "active") == "active").first()
+    if not pub:
+        return quiet
+
+    now = datetime.now(timezone.utc)
+    day = now.date()
+    device, browser, os_ = rs.classify_ua(ua)
+    base = dict(tenant_id=pub.tenant_id, publication_id=pub.id, day=day, visitor=rs.visitor_hash(ip, ua, str(pid), day),
+                event=ev, embed=bool(data.get("m")), device=device, browser=browser, os=os_)
+
+    def page_of(v):
+        try:
+            n = int(v)
+        except Exception:
+            return None
+        return n if 1 <= n <= max(int(pub.total_pages or 0), 1) else None
+
+    own = (h.get("host") or "").split(":")[0].lower()
+    rows = []
+    if ev == "open":
+        src = str(data.get("s") or "").lower()
+        ref = rs.host_of(data.get("r"))
+        if ref and own and (ref == own or ref.endswith("." + own) or own.endswith("." + ref)):
+            ref = None  # navegacion interna del propio sitio: no es un origen
+        rows.append(dict(base, country=rs.country_of(ip), src=src if rs.SRC_RE.match(src) else None, ref_host=ref))
+        stmt = pg_insert(ReaderEvent).values(rows[0]).on_conflict_do_nothing(
+            index_elements=["publication_id", "day", "visitor"], index_where=(ReaderEvent.event == "open"))
+        res = db.execute(stmt.returning(ReaderEvent.id))
+        if res.first() is not None:  # primera apertura de ese visitante hoy -> cuenta como lectura
+            db.execute(update(Publication).where(Publication.id == pid)
+                       .values(views_count=func.coalesce(Publication.views_count, 0) + 1, updated_at=Publication.updated_at))
+        db.commit()
+        return quiet
+    if ev == "view":
+        for pg in list(data.get("g") or [])[:2]:
+            n = page_of(pg)
+            if n:
+                rows.append(dict(base, page=n))
+    elif ev == "time":
+        try:
+            ms = max(0, min(int(data.get("t")), rs.MAX_MS))
+        except Exception:
+            return quiet
+        pgs = [n for n in (page_of(x) for x in list(data.get("g") or [])[:2]) if n]
+        if ms >= 300 and pgs:
+            share = ms // len(pgs)
+            rows.extend(dict(base, page=n, ms=share) for n in pgs)
+    elif ev == "click":
+        act = data.get("a")
+        if act in rs.ACTS:
+            rows.append(dict(base, act=act, target=rs.host_of(data.get("x")) if act == "url" else None))
+    if rows:
+        db.execute(pg_insert(ReaderEvent).values(rows))
+        db.commit()
+    return quiet

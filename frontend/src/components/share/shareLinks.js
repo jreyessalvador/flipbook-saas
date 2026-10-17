@@ -15,21 +15,25 @@ export const publicReaderUrl = (pubOrId) => {
 export const shortReaderUrl = (pub) =>
   (pub && pub.short_path ? `${window.location.origin}${pub.short_path}` : publicReaderUrl(pub));
 
+// Marca el origen del enlace (?src=) para que las estadisticas distingan QR, WhatsApp, etc.
+export const withSrc = (url, src) => `${url}${url.includes('?') ? '&' : '?'}src=${src}`;
+
 export const isShareable = (pub) =>
   pub?.status === 'published' && pub?.is_public === true;
 
 export const shareChannels = (pub) => {
-  const url = shortReaderUrl(pub);
+  const base = shortReaderUrl(pub);
   const title = pub.title || 'Revista digital';
-  const text = `${title} — léela aquí: ${url}`;
   const e = encodeURIComponent;
+  const u = (src) => withSrc(base, src);                 // cada canal marca su origen (?src=)
+  const text = (src) => `${title} — léela aquí: ${u(src)}`;
   return [
-    { key: 'whatsapp', label: 'WhatsApp', icon: 'message', href: `https://wa.me/?text=${e(text)}` },
-    { key: 'telegram', label: 'Telegram', icon: 'send', href: `https://t.me/share/url?url=${e(url)}&text=${e(title)}` },
-    { key: 'email', label: 'Correo', icon: 'mail', href: `mailto:?subject=${e(title)}&body=${e(text)}` },
-    { key: 'facebook', label: 'Facebook', icon: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${e(url)}` },
-    { key: 'x', label: 'X (Twitter)', icon: 'x', href: `https://twitter.com/intent/tweet?url=${e(url)}&text=${e(title)}` },
-    { key: 'linkedin', label: 'LinkedIn', icon: 'linkedin', href: `https://www.linkedin.com/sharing/share-offsite/?url=${e(url)}` },
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'message', href: `https://wa.me/?text=${e(text('wa'))}` },
+    { key: 'telegram', label: 'Telegram', icon: 'send', href: `https://t.me/share/url?url=${e(u('tg'))}&text=${e(title)}` },
+    { key: 'email', label: 'Correo', icon: 'mail', href: `mailto:?subject=${e(title)}&body=${e(text('mail'))}` },
+    { key: 'facebook', label: 'Facebook', icon: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${e(u('fb'))}` },
+    { key: 'x', label: 'X (Twitter)', icon: 'x', href: `https://twitter.com/intent/tweet?url=${e(u('tw'))}&text=${e(title)}` },
+    { key: 'linkedin', label: 'LinkedIn', icon: 'linkedin', href: `https://www.linkedin.com/sharing/share-offsite/?url=${e(u('li'))}` },
   ];
 };
 

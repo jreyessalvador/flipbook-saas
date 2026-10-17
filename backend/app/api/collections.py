@@ -11,7 +11,8 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, case
+from pydantic import BaseModel
+from sqlalchemy import func, case, update
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -57,6 +58,12 @@ def get_collection_in_tenant(db: Session, collection_id, tenant_id) -> Collectio
     return col
 
 
+def next_sort_index(db: Session, collection_id) -> int:
+    """Posicion al final de la coleccion (las ediciones nuevas entran al final / a la derecha)."""
+    m = db.query(func.max(Publication.sort_index)).filter(Publication.collection_id == collection_id).scalar()
+    return int(m or 0) + 1
+
+
 def get_default_collection(db: Session, tenant_id) -> Collection:
     col = db.query(Collection).filter(Collection.tenant_id == tenant_id, Collection.is_default.is_(True)).first()
     if col:
@@ -93,7 +100,7 @@ def _serialize(db: Session, cols: List[Collection]) -> List[dict]:
     # Portada de la coleccion = portada de su edicion mas reciente que tenga imagen
     from app.api.publications import _attach_cover_thumbnails
     latest = db.query(Publication).filter(Publication.collection_id.in_(ids))\
-        .order_by(Publication.updated_at.desc()).all()
+        .order_by(Publication.sort_index.desc().nullslast(), Publication.updated_at.desc()).all()
     _attach_cover_thumbnails(db, latest)
     cover_by_col = {}
     for pub in latest:
@@ -193,3 +200,33 @@ def delete_collection(collection_id: str, db: Session = Depends(get_db), current
         raise HTTPException(status_code=409, detail=f"La colección tiene {trashed} edición(es) en la papelera. Restáuralas y muévelas, o elimínalas definitivamente antes.")
     db.delete(col)
     db.commit()
+
+
+class EditionOrder(BaseModel):
+    ids: List[uuid.UUID]
+
+
+@router.put("/collections/{collection_id}/order")
+def set_edition_order(collection_id: str, data: EditionOrder, db: Session = Depends(get_db),
+                      current_user: User = Depends(require_role("editor"))):
+    """Fija el orden de las ediciones de una coleccion (izquierda -> derecha en el kiosco).
+
+    `ids` es el orden deseado. Las ediciones de la coleccion que no vengan en la lista
+    conservan su orden relativo y quedan al final. No toca `updated_at`.
+    """
+    col = get_collection_in_tenant(db, collection_id, current_user.effective_tenant_id)
+    if len(set(data.ids)) != len(data.ids):
+        raise HTTPException(status_code=422, detail="Ids duplicados")
+    rows = db.query(Publication.id).filter(Publication.collection_id == col.id,
+                                           Publication.tenant_id == current_user.effective_tenant_id) \
+        .order_by(Publication.sort_index.asc().nullslast(), Publication.created_at.asc()).all()
+    existing = [r[0] for r in rows]
+    unknown = set(data.ids) - set(existing)
+    if unknown:
+        raise HTTPException(status_code=422, detail="Hay ediciones que no pertenecen a esta coleccion")
+    final = list(data.ids) + [i for i in existing if i not in set(data.ids)]
+    for pos, pid in enumerate(final, start=1):
+        db.execute(update(Publication).where(Publication.id == pid)
+                   .values(sort_index=pos, updated_at=Publication.updated_at))
+    db.commit()
+    return {"collection_id": str(col.id), "order": [str(i) for i in final]}

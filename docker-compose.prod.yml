@@ -97,6 +97,9 @@ services:
     environment: *backend-env
     ports:
       - "127.0.0.1:4400:8000"
+    volumes:
+      # L6: base de paises DB-IP Lite (solo lectura). Se descarga con scripts/update-geo-db.sh
+      - ./data/geo:/app/data/geo:ro
     depends_on:
       postgresql:
         condition: service_healthy

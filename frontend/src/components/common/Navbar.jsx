@@ -62,6 +62,11 @@ const Navbar = () => {
         >
           Colecciones
         </button>
+        {can(user, 'editor') && (
+          <button className={isActive('/estadisticas')} onClick={() => navigate('/estadisticas')}>
+            Estadísticas
+          </button>
+        )}
         {can(user, 'admin') && (
           <button className={isActive('/team')} onClick={() => navigate('/team')}>
             Equipo

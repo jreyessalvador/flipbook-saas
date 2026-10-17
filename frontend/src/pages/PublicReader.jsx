@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { useReaderStats, trackReaderClick } from '../services/readerStats';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { computeSpreadViews } from '../components/editor/CanvasEditorV2';
@@ -121,6 +122,7 @@ const PublicReader = ({ embed = false }) => {
   const activateHotspot = (hotspot, sourcePage) => {
     const props = hotspot?.props || {};
     const action = props.action;
+    trackReaderClick(publication?.id, action, props.value, embed);
     const sortedPages = [...pages].sort((a, b) => a.page_number - b.page_number);
     const target = action === 'page' ? sortedPages.find((page) => page.id === props.target_page_id)
       : action === 'next' ? sortedPages.find((page) => page.page_number === sourcePage.page_number + 1)
@@ -286,6 +288,13 @@ const PublicReader = ({ embed = false }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [goNext, goPrev]);
+
+  // Estadisticas de lectura (sin cookies): hojas que se estan viendo ahora
+  const statPages = useMemo(() => {
+    const v = spreadViews[currentSpreadIndex];
+    return [v?.left, v?.right].filter(Boolean).map((pg) => pg.page_number);
+  }, [spreadViews, currentSpreadIndex]);
+  useReaderStats(publication?.id, embed, statPages);
 
   if (loading) {
     return (

@@ -7,6 +7,7 @@ export const collectionAPI = {
   update: async (id, data) => (await api.put(`/api/collections/${id}`, data)).data,
   remove: async (id) => { await api.delete(`/api/collections/${id}`); },
   categories: async () => (await api.get('/api/categories')).data,
+  setOrder: async (id, ids) => (await api.put(`/api/collections/${id}/order`, { ids })).data,
   moveEdition: async (publicationId, collectionId) =>
     (await api.post(`/api/publications/${publicationId}/move`, { collection_id: collectionId })).data,
 };

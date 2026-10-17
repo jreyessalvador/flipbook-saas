@@ -10,6 +10,7 @@ import Collections from './pages/Collections';
 const Team = lazy(() => import('./pages/Team'));
 const PageViewer = lazy(() => import('./components/editor/PageViewer'));
 const EditionSettings = lazy(() => import('./pages/EditionSettings'));
+const EditionStats = lazy(() => import('./pages/EditionStats'));
 const Trash = lazy(() => import('./pages/Trash'));
 const RenderBook = lazy(() => import('./pages/RenderBook'));
 const MiCuenta = lazy(() => import('./pages/MiCuenta'));
@@ -97,6 +98,10 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Lote L6: estadisticas de lectura (por edicion y generales) */}
+          <Route path="/publications/:id/estadisticas" element={<ProtectedRoute><><Navbar /><EditionStats /></></ProtectedRoute>} />
+          <Route path="/estadisticas" element={<ProtectedRoute><><Navbar /><EditionStats /></></ProtectedRoute>} />
 
           <Route
             path="/publications/:id/view"
