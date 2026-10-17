@@ -35,7 +35,7 @@ const BookshelfCover = ({ pub, featured = false, embed = false, priority = false
             <img
               src={src}
               srcSet={src2x ? `${src} 400w, ${src2x} 800w` : undefined}
-              sizes={featured ? '(max-width: 640px) 46vw, 220px' : '(max-width: 640px) 46vw, 160px'}
+              sizes="(max-width: 640px) 46vw, 160px"
               alt=""
               width={400}
               height={Math.round((400 * h) / w)}

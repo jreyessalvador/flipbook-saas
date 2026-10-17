@@ -1,10 +1,9 @@
 /* Estanteria publica del kiosco (balda azul marino + dorado, sin madera). Solo vista publica. */
-.shelf{list-style:none;margin:0;padding:0;--gap:28px;--cw:150px;--cw-featured:212px}
+.shelf{list-style:none;margin:0;padding:0;--gap:28px;--cw:150px}
 .shelf-row{display:flex;align-items:flex-end;gap:var(--gap);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:34px calc(var(--gap)/2) 8px;margin:0 calc(var(--gap)/-2)}
 .shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw),1fr));gap:34px var(--gap);padding:0 calc(var(--gap)/2);align-items:end}
 .shelf-item{position:relative;scroll-snap-align:start;min-width:0}
 .shelf-row .shelf-item{flex:0 0 var(--cw)}
-.shelf-row .shelf-item.is-featured{flex-basis:var(--cw-featured)}
 
 /* balda: filete dorado + cara azul con sombra proyectada; cada tramo se solapa medio hueco con el vecino */
 .shelf-stage{position:relative;padding-bottom:16px}
@@ -41,9 +40,9 @@
 @media (hover:none),(max-width:640px){.shelf-hover{display:none}.shelf-caption{display:block}}
 
 /* tablet: 4 portadas por balda; movil: 2 (desplazamiento horizontal con snap) */
-@media (max-width:1024px){.shelf{--cw:140px;--cw-featured:176px}}
+@media (max-width:1024px){.shelf{--cw:140px}}
 @media (max-width:640px){
-  .shelf{--gap:16px;--cw:calc((100vw - 32px - var(--gap))/2);--cw-featured:var(--cw)}
+  .shelf{--gap:16px;--cw:calc((100vw - 32px - var(--gap))/2)}
   .shelf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .shelf-flag{font-size:.62rem}
 }
