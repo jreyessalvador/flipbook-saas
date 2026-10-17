@@ -2246,3 +2246,48 @@ Pentest controlado del acceso de clientes y correcciones (en PRODUCCIÓN):
 **Extra (pedido de Carlos, 11-oct):** nueva operación `pdf_to_images` en docproc. Convierte un PDF a webp, jpeg o png: una hoja (`"3"`), rangos (`"1-4,7"`) o el libro entero (`"all"`), con ppp y lado máximo configurables. Helper `docproc.pdf_to_images()` en `services/docproc.py`. Revistas no la usa todavía; queda disponible para miniaturas y portadas (L7a) o para otros proyectos.
 
 **Rollback.** Volver a las imágenes `rollback-pre-doc1`. Las ediciones ya migradas siguen funcionando con el código antiguo, porque las URL `.webp` se sirven igual.
+
+## 32. Lote VID-2 — HTTP Range / HEAD / ETag en `/api/assets/serve` (16-oct-2026, DEV)
+
+**Problema (hallazgo de VID-1):** el endpoint respondía siempre `200` con el archivo entero y nunca cerraba la conexión de MinIO. Consecuencias: no se podía saltar en la barra del vídeo, Safari/iPhone suele NO reproducir mp4 sin `206`, y se transfería el archivo completo aunque se viera un tramo.
+
+**Qué hace ahora** (`backend/app/api/assets.py`, solo backend; nginx ya dejaba pasar `Range`):
+- `Range: bytes=a-b | a- | -n` de un tramo → `206` + `Content-Range` + `Content-Length` exactos; fin mayor que el tamaño se recorta; no satisfacible → `416` + `Content-Range: bytes */N`; sintaxis inválida, multi-rango o unidad desconocida → se ignora y se sirve `200` completo (RFC 9110 §14).
+- `HEAD` (cabeceras sin cuerpo), `ETag` + `Last-Modified`, `If-None-Match` → `304`, `If-Range` (ETag fuerte o fecha exacta; si no coincide, `200` completo).
+- `Accept-Ranges: bytes`. `Cache-Control: no-cache` (revalida barato con 304) salvo las portadas `/covers/` (clave con id de versión): `public, max-age=31536000, immutable`.
+- `get_object` con `If-Match: <etag>`: si el objeto se reemplaza entre `stat` y `get` (misma clave, p. ej. DOC-1) no se mezclan bytes → `503 Retry-After: 1`.
+- La conexión con MinIO se cierra/libera SIEMPRE (`finally`), también si el cliente aborta; la función es `def` (threadpool) para no bloquear el event loop con llamadas bloqueantes.
+
+**QA:** `backend/tests/qa_vid2_range.py` (solo lectura, compara bytes con MinIO): 34 PASS — 6 rangos válidos con bytes idénticos, 3 `416`, 6 sintaxis inválidas → `200`, If-Range ×3, If-None-Match ×2, HEAD, 404, regresión JPG y estabilidad del pool de conexiones tras 200 abortos. Por el borde real de DEV: `Range: bytes=1000-1999` → `206` correcto.
+
+**Pendiente de Carlos antes de PROD:** abrir un vídeo de una edición en **iPhone/Safari** (dev-revistas) y comprobar que reproduce y que se puede saltar. PROD: solo rebuild del backend (`docker-compose.prod.yml -p flipbook-prod`), tag `rollback-pre-vid2`. Parche de referencia: `~/backups/flipbook-patches/vid2-range-serve.patch` (C1).
+
+## 33. Lote L7a — Portada completa renderizada + imagen Open Graph (16-oct-2026, DEV)
+
+**Problema:** `cover_url` era la imagen de mayor área de la hoja 1 (se perdían logo, titulares y capas; ~460 KB). Reutiliza el motor de render del lote F (§24-25).
+
+**Diseño**
+- Nuevo tipo de trabajo `render_jobs.kind = 'cover'` en la MISMA cola. Al publicar (`POST /publish`) se encola con un snapshot recortado a la **hoja 1** (el worker no pinta el resto). Publicar nunca falla por esto (try/except) y responde al instante.
+- El worker de Contabo 2 (`workers/render/worker.py`, ya desplegado en `render-dev`) captura la hoja con Chromium y sube por `POST /api/internal/render/jobs/{id}/cover-result` (multipart): `cover-400.webp` (≤ 40 KB), `cover-800.webp` (2x, ≤ 120 KB) y `og-1200x630.jpg` (≤ 300 KB; portada centrada sobre degradado azul marino con sombra y filete dorado, sin texto: el contenedor no tiene fuentes).
+- Almacén: `tenant-{t}/covers/{version_id}/…`. Punteros en `publications` (`cover_key`, `og_key`, `cover_version_id`, migración **0015**): el catálogo solo los usa si `cover_version_id == published_version_id`, así una portada vieja nunca se sirve tras republicar; mientras el worker termina, fallback a la imagen del snapshot. Al aplicarse la nueva se borra de MinIO la portada de la versión anterior; si la versión ya no es la vigente, las imágenes se descartan.
+- Catálogo público: `cover_url` (400) + `cover_url_2x` (800); `og:image` = `og-1200x630.jpg` con `og:image:width/height/type` y `twitter:card=summary_large_image`.
+- Seguridad: misma triple barrera que el resto de la API interna; el resultado se valida por firma (`RIFF…WEBP`, `FFD8FF`), tamaño y trabajo `running` de tipo `cover`; `/result` (PDF) rechaza trabajos de portada y viceversa.
+- Aislamiento de reglas: los trabajos de portada quedan fuera del listado de PDF del panel, de la caché de PDF, del tope de exportaciones activas por empresa y de `cleanup_exports`; tienen su propia limpieza (`cleanup_cover_jobs`, 7 días). La purga de una edición borra también sus portadas.
+- `scripts/cover_backfill.py [--dry-run] [--limit N]`: encola las ediciones ya publicadas (re-ejecutable). DEV: 5 ediciones en ~40 s.
+
+**QA:** `qa_l7a_covers.py` — 35 PASS (barreras, validaciones de subida, versión no vigente, extremo a extremo con el worker real, republicación, idempotencia, regresión del listado de PDF, purga). Regresión completa en verde: C 26 · RBAC 37 · L5 50 · L4 32 · EQ-1 23 · F 26 · VID-2 34. (S1 22/23: la edición de prueba «PRUEBA DOC-1 (borrar)», creada a mano el 11-oct, no tiene enlace corto; es un residuo de DEV, no del lote.)
+
+**Pasar a PROD:** backup BD, migración 0015, rebuild backend, **actualizar `/srv/flipbook-worker/app/worker.py` en C2 y reiniciar `render-prod`** (la carpeta `app/` es compartida con `render-dev`; el worker nuevo es compatible con trabajos sin `kind`), después `cover_backfill`. Rollback: tag de imagen + `worker.py.bak-pre-l7a-*` en C2.
+
+## 34. Estantería pública del kiosco (16-oct-2026, DEV)
+
+**Decisiones de Carlos (28-sep):** solo vista pública (el panel interno conserva las tarjetas); balda azul marino + dorado, sin madera ni fondos rosados.
+- `components/public/Bookshelf.jsx` + `BookshelfCover.jsx` + `styles/Bookshelf.css`. `layout="row"` (landing: una balda por colección con el **último número** destacado y etiqueta «Último número», scroll horizontal con snap) y `layout="grid"` (página de colección).
+- Portada con lomo y canto de hojas; al pasar el ratón se inclina (solo puntero fino, respeta `prefers-reduced-motion`) y muestra título/edición/págs.; en móvil/táctil el título va debajo. Escritorio 6 visibles, tablet 4, móvil 2.
+- Cinta **«NUEVO» automática**: `publications.published_at` (migración 0015, se fija al publicar; relleno para las ya publicadas) < 15 días. `published_at` va en el catálogo público.
+- Imágenes: `srcSet` 400w/800w, `loading=lazy` salvo las 2 primeras (`fetchpriority=high`), `width/height` (sin CLS). Foco visible en dorado.
+- Página de colección `/r/{empresa}/{colección}`: buscador (sin acentos), orden (recientes / A–Z) y paginación de 24. Versión insertable `/embed/r/{empresa}/{colección}` (sin cabecera ni migas; las ediciones abren en `/embed/…`; pie con enlace a Cetrix Revistas). `frame-ancestors` ya está cubierto por `location /embed/` de `frontend/nginx.conf`.
+- **Verificación:** Playwright (imagen `mcr.microsoft.com/playwright:v1.55.0-noble`, script en `~/dev/pwcheck/shelf.mjs` de C1): 25 PASS — 2 baldas/5 portadas, «Último número» una vez por balda y mayor que el resto (212 vs 150 px), 2 portadas por vista a 360 px, **0 px de desbordamiento horizontal** en landing y colección (escritorio y 360 px), todas las imágenes cargan y son las renderizadas, buscador/orden, embed, 0 errores de consola. No medido aún: Lighthouse (objetivo móvil ≥ 90, plan §4) y revisión visual por Carlos.
+
+## 35. Alta de MANT y Finkora en cetrix-docproc (16-oct-2026)
+Clientes `mant-prod` (red `docproc-c-mant-prod`, 10.254.13.0/29) y `finkora-prod` (`docproc-c-finkora-prod`, 10.254.14.0/29), ops `optimize/ocr/images_to_pdf/pdf_to_images`, máx. 50 MB, 10 trabajos pendientes. Tokens solo en `/srv/apps/nexus-cmms/.env` y `/srv/apps/finflow/.env` (`DOCPROC_URL/CLIENT/TOKEN`); en `clients.json` solo el sha256. Verificado: cada cliente autentica (200), token falso 401, redes aisladas entre sí y sin internet. **Falta** (código de cada producto, no pedido): unir sus contenedores a la red `external` y usar el cliente (`services/docproc.py` de flipbook o equivalente Node).
