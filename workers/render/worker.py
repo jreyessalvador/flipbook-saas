@@ -15,7 +15,7 @@ import traceback
 import pikepdf
 import requests
 from pikepdf import Array, Dictionary, Name
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 from playwright.sync_api import sync_playwright
 
 GW = os.environ["GATEWAY"].rstrip("/")                 # http://10.253.43.1:8462
@@ -128,6 +128,59 @@ def build_pdf(data, shots):
     return out.getvalue(), n_links
 
 
+# --- Lote L7a: portada completa + imagen Open Graph ----------------------------
+NAVY_DARK, NAVY, GOLD = (12, 21, 38), (20, 33, 61), (201, 162, 75)   # paleta Cetrix Revistas
+
+
+def _webp_under(im, width, max_bytes):
+    """WebP del ancho pedido; baja la calidad hasta quedar bajo max_bytes."""
+    r = im.resize((width, max(1, round(im.height * width / im.width))), Image.LANCZOS)
+    data = b""
+    for q in (86, 80, 74, 68, 62, 56, 50, 44, 38, 32):
+        buf = io.BytesIO()
+        r.save(buf, "WEBP", quality=q, method=6)
+        data = buf.getvalue()
+        if len(data) <= max_bytes:
+            break
+    return data
+
+
+def _og_image(im):
+    """1200x630: portada centrada sobre degradado azul marino, sombra y filete dorado."""
+    W, H = 1200, 630
+    bg = Image.new("RGB", (W, H), NAVY_DARK)
+    d = ImageDraw.Draw(bg)
+    for y in range(H):
+        t = y / (H - 1)
+        d.line([(0, y), (W, y)], fill=tuple(int(NAVY_DARK[i] + (NAVY[i] - NAVY_DARK[i]) * t) for i in range(3)))
+    scale = min((H - 70) / im.height, (W - 160) / im.width)
+    cw, ch = max(1, int(im.width * scale)), max(1, int(im.height * scale))
+    cover = im.resize((cw, ch), Image.LANCZOS)
+    x, y = (W - cw) // 2, (H - 6 - ch) // 2
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rectangle([x + 8, y + 12, x + cw + 8, y + ch + 12], fill=(0, 0, 0, 150))
+    bg = Image.alpha_composite(bg.convert("RGBA"), shadow.filter(ImageFilter.GaussianBlur(14))).convert("RGB")
+    bg.paste(cover, (x, y))
+    ImageDraw.Draw(bg).rectangle([0, H - 6, W, H], fill=GOLD)
+    data = b""
+    for q in (88, 82, 76, 70, 64):
+        buf = io.BytesIO()
+        bg.save(buf, "JPEG", quality=q, optimize=True, progressive=True)
+        data = buf.getvalue()
+        if len(data) <= 300 * 1024:
+            break
+    return data
+
+
+def make_cover_files(shot_jpeg):
+    im = Image.open(io.BytesIO(shot_jpeg)).convert("RGB")
+    return {
+        "cover_400": ("cover-400.webp", _webp_under(im, 400, 40 * 1024), "image/webp"),
+        "cover_800": ("cover-800.webp", _webp_under(im, 800, 120 * 1024), "image/webp"),
+        "og": ("og-1200x630.jpg", _og_image(im), "image/jpeg"),
+    }
+
+
 def render(job, browser):
     data = api("GET", f"/api/internal/render/jobs/{job['job_id']}/data").json()
     w, h = data["page_width"] * PX_PER_MM, data["page_height"] * PX_PER_MM
@@ -185,15 +238,22 @@ def main():
             browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-background-networking"])
             try:
                 data, shots = render(job, browser)
-                pdf_bytes, n_links = build_pdf(data, shots)
-                up = api("POST", f"/api/internal/render/jobs/{job['job_id']}/result", data=pdf_bytes,
-                         headers={"Content-Type": "application/pdf", "X-Page-Count": str(len(shots))}, timeout=300)
-                up.raise_for_status()
-                log(f"OK {len(shots)} pag, {n_links} enlaces, {len(pdf_bytes)/1048576:.1f} MB en {time.time()-t0:.1f}s")
+                if job.get("kind") == "cover":
+                    files = make_cover_files(shots[0])
+                    up = api("POST", f"/api/internal/render/jobs/{job['job_id']}/cover-result", files=files, timeout=120)
+                    up.raise_for_status()
+                    log("OK portada", {k: len(v[1]) for k, v in files.items()}, f"{time.time()-t0:.1f}s", up.text[:60])
+                else:
+                    pdf_bytes, n_links = build_pdf(data, shots)
+                    up = api("POST", f"/api/internal/render/jobs/{job['job_id']}/result", data=pdf_bytes,
+                             headers={"Content-Type": "application/pdf", "X-Page-Count": str(len(shots))}, timeout=300)
+                    up.raise_for_status()
+                    log(f"OK {len(shots)} pag, {n_links} enlaces, {len(pdf_bytes)/1048576:.1f} MB en {time.time()-t0:.1f}s")
             except Exception as e:
                 log("ERROR", job["job_id"], repr(e)[:300]); traceback.print_exc()
                 try:
-                    api("POST", f"/api/internal/render/jobs/{job['job_id']}/fail", json={"error": f"Error al generar el PDF ({type(e).__name__})"}, timeout=30)
+                    what = "la portada" if job.get("kind") == "cover" else "el PDF"
+                    api("POST", f"/api/internal/render/jobs/{job['job_id']}/fail", json={"error": f"Error al generar {what} ({type(e).__name__})"}, timeout=30)
                 except Exception:
                     pass
             finally:

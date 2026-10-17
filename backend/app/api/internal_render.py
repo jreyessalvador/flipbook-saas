@@ -63,7 +63,7 @@ def claim(db: Session = Depends(get_db), _=Depends(require_worker)):
     job = db.query(RenderJob).filter(RenderJob.id == row[0]).first()
     job.status, job.claimed_at, job.attempts = "running", utcnow(), (job.attempts or 0) + 1
     db.commit()
-    return {"job_id": str(job.id), "render_path": f"/render/{job.id}", "page_count": job.page_count,
+    return {"job_id": str(job.id), "kind": job.kind or "pdf", "render_path": f"/render/{job.id}", "page_count": job.page_count,
             "page_width": job.page_width, "page_height": job.page_height, "title": job.title}
 
 
@@ -84,6 +84,8 @@ def job_data(job_id: str, db: Session = Depends(get_db), _=Depends(require_worke
 async def job_result(job_id: str, request: Request, db: Session = Depends(get_db), _=Depends(require_worker)):
     from app.api.assets import minio_client, BUCKET_NAME, ensure_bucket
     job = _running_job(db, job_id)
+    if (job.kind or "pdf") != "pdf":
+        raise HTTPException(status_code=404, detail="Not Found")
     body = await request.body()
     if not body.startswith(b"%PDF") or len(body) > settings.RENDER_MAX_PDF_BYTES:
         raise HTTPException(status_code=422, detail="PDF no valido")
@@ -97,6 +99,74 @@ async def job_result(job_id: str, request: Request, db: Session = Depends(get_db
         pass
     db.commit()
     return {"ok": True}
+
+
+# Lote L7a: resultado de un trabajo de portada (tres imagenes, validadas por firma y tamano)
+COVER_FILES = {
+    "cover_400": ("cover-400.webp", "image/webp", 120 * 1024),
+    "cover_800": ("cover-800.webp", "image/webp", 400 * 1024),
+    "og": ("og-1200x630.jpg", "image/jpeg", 600 * 1024),
+}
+COVER_MAX_REQUEST = 1_200_000
+
+
+def _valid_cover_file(field: str, data: bytes) -> bool:
+    if field in ("cover_400", "cover_800"):
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    return data[:3] == b"\xff\xd8\xff"
+
+
+@router.post("/jobs/{job_id}/cover-result")
+async def cover_result(job_id: str, request: Request, db: Session = Depends(get_db), _=Depends(require_worker)):
+    """El worker sube cover-400.webp, cover-800.webp y og-1200x630.jpg (multipart).
+    Solo para trabajos 'cover' en curso. Si la edicion sigue en esa misma version
+    publicada, se actualizan sus punteros; si ya se republico, las imagenes se descartan."""
+    from app.api.assets import minio_client, BUCKET_NAME, ensure_bucket
+    from app.models.publication import Publication
+    from app.services.render_jobs import cover_object_keys
+    job = _running_job(db, job_id)
+    if job.kind != "cover" or job.version_id is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        if int(request.headers.get("content-length") or 0) > COVER_MAX_REQUEST:
+            raise HTTPException(status_code=413, detail="Demasiado grande")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Solicitud no valida")
+    form = await request.form()
+    blobs = {}
+    for field, (_name, _ctype, limit) in COVER_FILES.items():
+        up = form.get(field)
+        if up is None or not hasattr(up, "read"):
+            raise HTTPException(status_code=422, detail=f"Falta {field}")
+        data = await up.read(limit + 1)
+        if not data or len(data) > limit or not _valid_cover_file(field, data):
+            raise HTTPException(status_code=422, detail=f"{field} no valido")
+        blobs[field] = data
+
+    pub = db.query(Publication).filter(Publication.id == job.publication_id).first()
+    ensure_bucket()
+    k400, k800, kog = cover_object_keys(job.tenant_id, job.version_id)
+    for field, key in (("cover_400", k400), ("cover_800", k800), ("og", kog)):
+        minio_client.put_object(BUCKET_NAME, key, BytesIO(blobs[field]), len(blobs[field]),
+                                content_type=COVER_FILES[field][1])
+    stale_version = None
+    if pub is not None and pub.published_version_id == job.version_id:
+        if pub.cover_version_id and pub.cover_version_id != job.version_id:
+            stale_version = pub.cover_version_id
+        pub.cover_key, pub.og_key, pub.cover_version_id = k400, kog, job.version_id
+        applied = True
+    else:
+        applied = False  # ya hay una version mas nueva (o se despublico): no se usa
+    job.result_key, job.size_bytes = k400, sum(len(b) for b in blobs.values())
+    job.status, job.finished_at, job.error = "done", utcnow(), None
+    db.commit()
+    # limpieza best-effort: portada de la version anterior, o la recien subida si no se aplico
+    for key in (cover_object_keys(job.tenant_id, stale_version) if stale_version else []) + ([] if applied else [k400, k800, kog]):
+        try:
+            minio_client.remove_object(BUCKET_NAME, key)
+        except Exception:
+            pass
+    return {"ok": True, "applied": applied}
 
 
 @router.post("/jobs/{job_id}/fail")

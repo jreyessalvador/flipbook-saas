@@ -27,6 +27,11 @@ def cleanup_exports_task():
     db = SessionLocal()
     try:
         n = cleanup_exports(db)
+        try:
+            from app.services.render_jobs import cleanup_cover_jobs
+            n += cleanup_cover_jobs(db)
+        except Exception:
+            db.rollback()
         logger.info("Limpieza de PDFs exportados: %d eliminados", n)
         return {"removed": n}
     finally:

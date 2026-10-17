@@ -66,6 +66,23 @@ def _cover_from_snapshot(snapshot: Optional[dict]) -> Optional[str]:
     return cover_url
 
 
+def _cover_urls(pub, snapshot) -> tuple:
+    """(cover_url, cover_url_2x). Portada COMPLETA renderizada (L7a) si existe y
+    corresponde a la version vigente; si no, la imagen de mayor area del snapshot."""
+    key = getattr(pub, "cover_key", None)
+    if key and getattr(pub, "cover_version_id", None) == pub.published_version_id:
+        base = f"/api/assets/serve/{key}"
+        return base, base.replace("/cover-400.webp", "/cover-800.webp")
+    return _cover_from_snapshot(snapshot), None
+
+
+def _og_image(pub) -> Optional[str]:
+    key = getattr(pub, "og_key", None)
+    if key and getattr(pub, "cover_version_id", None) == pub.published_version_id:
+        return f"/api/assets/serve/{key}"
+    return None
+
+
 def _public_catalog_stmt():
     """Publicaciones visibles en el kiosco: publicas, con version publicada y de
     una empresa activa. Devuelve (Publication, snapshot, Collection, Tenant, Category)."""
@@ -112,7 +129,9 @@ def _catalog_item(pub, snapshot, collection, tenant, category) -> dict:
         "total_pages": pub.total_pages,
         "created_at": pub.created_at.isoformat() if pub.created_at else None,
         "updated_at": pub.updated_at.isoformat() if pub.updated_at else None,
-        "cover_url": _cover_from_snapshot(snapshot),
+        "published_at": pub.published_at.isoformat() if getattr(pub, "published_at", None) else None,
+        "cover_url": _cover_urls(pub, snapshot)[0],
+        "cover_url_2x": _cover_urls(pub, snapshot)[1],  # Lote L7a (None si aun no hay render)
         "collection": {
             "id": collection.id,
             "name": collection.name,
@@ -304,7 +323,8 @@ def _open_graph_html(request: Request, row) -> HTMLResponse:
     pub, snapshot, collection, tenant, category = row
     origin = str(request.base_url).rstrip("/")
     reader_url = f"{origin}{_url_path(tenant, collection, pub)}"
-    cover = _cover_from_snapshot(snapshot)
+    og_path = _og_image(pub)
+    cover = og_path or _cover_from_snapshot(snapshot)
     image_url = None
     if cover:
         image_url = cover if cover.startswith(("http://", "https://")) else f"{origin}{cover if cover.startswith('/') else '/' + cover}"
@@ -320,6 +340,9 @@ def _open_graph_html(request: Request, row) -> HTMLResponse:
     image_tags = (
         f'<meta property="og:image" content="{e(image_url)}">\n'
         f'<meta property="og:image:alt" content="{e(title)}">\n'
+        + ('<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n'
+           '<meta property="og:image:type" content="image/jpeg">\n' if og_path else "")
+        +
         f'<meta name="twitter:image" content="{e(image_url)}">\n'
     ) if image_url else ""
     body = f"""<!doctype html>

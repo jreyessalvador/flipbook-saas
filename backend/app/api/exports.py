@@ -53,7 +53,7 @@ def create_pdf(publication_id: str, data: PdfRequest, db: Session = Depends(get_
 @router.get("/{publication_id}/pdf")
 def list_pdfs(publication_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("editor"))):
     pub = _pub(db, publication_id, current_user)
-    jobs = db.query(RenderJob).filter(RenderJob.publication_id == pub.id).order_by(RenderJob.created_at.desc()).limit(5).all()
+    jobs = db.query(RenderJob).filter(RenderJob.publication_id == pub.id, RenderJob.kind == "pdf").order_by(RenderJob.created_at.desc()).limit(5).all()
     return {"has_published": bool(pub.published_version_id), "jobs": [serialize_job(j) for j in jobs]}
 
 
@@ -65,7 +65,7 @@ def download_pdf(publication_id: str, job_id: str, db: Session = Depends(get_db)
         jid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="PDF no encontrado")
-    job = db.query(RenderJob).filter(RenderJob.id == jid, RenderJob.publication_id == pub.id, RenderJob.status == "done").first()
+    job = db.query(RenderJob).filter(RenderJob.id == jid, RenderJob.publication_id == pub.id, RenderJob.kind == "pdf", RenderJob.status == "done").first()
     if not job or not job.result_key:
         raise HTTPException(status_code=404, detail="PDF no encontrado")
     try:

@@ -56,15 +56,15 @@ def request_pdf(db, pub, source: str, user, draft_snapshot: dict = None, version
     # 1) Cache: mismo contenido ya exportado (o en curso)
     existing = (
         db.query(RenderJob)
-        .filter(RenderJob.publication_id == pub.id, RenderJob.snapshot_hash == h, RenderJob.source == source,
-                RenderJob.status.in_(["done", "queued", "running"]))
+        .filter(RenderJob.publication_id == pub.id, RenderJob.kind == "pdf", RenderJob.snapshot_hash == h,
+                RenderJob.source == source, RenderJob.status.in_(["done", "queued", "running"]))
         .order_by(RenderJob.created_at.desc())
         .first()
     )
     if existing is not None:
         return existing, True
     # 2) Anti-abuso: trabajos activos por empresa
-    active = db.query(RenderJob).filter(RenderJob.tenant_id == pub.tenant_id,
+    active = db.query(RenderJob).filter(RenderJob.tenant_id == pub.tenant_id, RenderJob.kind == "pdf",
                                         RenderJob.status.in_(["queued", "running"])).count()
     if active >= settings.RENDER_MAX_ACTIVE_PER_TENANT:
         raise HTTPException(status_code=429, detail="Ya hay varias exportaciones en curso en tu empresa. Espera a que terminen.")
@@ -103,11 +103,11 @@ def cleanup_exports(db) -> int:
     """Borra PDFs caducados (>30 dias) y el exceso por edicion (mas de 5)."""
     from app.api.assets import minio_client, BUCKET_NAME
     removed = 0
-    old = db.query(RenderJob).filter(RenderJob.created_at < utcnow() - timedelta(days=RETENTION_DAYS)).all()
+    old = db.query(RenderJob).filter(RenderJob.kind == "pdf", RenderJob.created_at < utcnow() - timedelta(days=RETENTION_DAYS)).all()
     doomed = list(old)
-    pubs = {j.publication_id for j in db.query(RenderJob.publication_id).distinct()}
+    pubs = {j.publication_id for j in db.query(RenderJob.publication_id).filter(RenderJob.kind == "pdf").distinct()}
     for pid in pubs:
-        jobs = db.query(RenderJob).filter(RenderJob.publication_id == pid).order_by(RenderJob.created_at.desc()).all()
+        jobs = db.query(RenderJob).filter(RenderJob.publication_id == pid, RenderJob.kind == "pdf").order_by(RenderJob.created_at.desc()).all()
         doomed += jobs[KEEP_PER_PUBLICATION:]
     seen = set()
     for job in doomed:
@@ -123,3 +123,65 @@ def cleanup_exports(db) -> int:
         removed += 1
     db.commit()
     return removed
+
+
+# --- Lote L7a: portada completa + imagen OG -----------------------------------
+COVER_JOB_KEEP_DAYS = 7
+
+
+def _first_page(snap: dict):
+    pages = snap.get("pages") or []
+    for pg in pages:
+        if pg.get("page_type") == "front_cover" or pg.get("page_number") == 1:
+            return pg
+    return pages[0] if pages else None
+
+
+def request_cover(db, pub, version, user_id=None):
+    """Encola el render de la portada (hoja 1) de una version publicada.
+
+    El trabajo lleva SOLO la hoja 1 (snapshot recortado): el worker no pinta ni
+    descarga el resto de la revista. Si ya existe un trabajo de portada para esa
+    version (en cola, en curso o terminado) se reutiliza. Devuelve el job o None."""
+    snap = version.snapshot or {}
+    first = _first_page(snap)
+    if first is None:
+        return None
+    existing = (
+        db.query(RenderJob)
+        .filter(RenderJob.publication_id == pub.id, RenderJob.version_id == version.id, RenderJob.kind == "cover",
+                RenderJob.status.in_(["queued", "running", "done"]))
+        .first()
+    )
+    if existing is not None:
+        return existing
+    cover_snap = {**snap, "pages": [first]}
+    job = RenderJob(
+        tenant_id=pub.tenant_id, publication_id=pub.id, version_id=version.id,
+        source="published", kind="cover", status="queued",
+        snapshot=cover_snap, snapshot_hash=snapshot_hash(cover_snap),
+        title=(pub.title or "Revista")[:200],
+        page_width=int(snap.get("page_width") or pub.page_width or 210),
+        page_height=int(snap.get("page_height") or pub.page_height or 297),
+        page_count=1, requested_by=user_id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def cleanup_cover_jobs(db) -> int:
+    """Los trabajos de portada terminados no hacen falta pasados unos dias (los
+    punteros viven en la edicion; las imagenes en MinIO no dependen del job)."""
+    limit = utcnow() - timedelta(days=COVER_JOB_KEEP_DAYS)
+    n = (db.query(RenderJob)
+         .filter(RenderJob.kind == "cover", RenderJob.status.in_(["done", "failed"]), RenderJob.created_at < limit)
+         .delete(synchronize_session=False))
+    db.commit()
+    return n
+
+
+def cover_object_keys(tenant_id, version_id) -> list:
+    base = f"tenant-{tenant_id}/covers/{version_id}"
+    return [f"{base}/cover-400.webp", f"{base}/cover-800.webp", f"{base}/og-1200x630.jpg"]

@@ -45,6 +45,14 @@ class Publication(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
+    # Lote L7a (migracion 0015): portada completa renderizada por el worker (Contabo 2)
+    # de la version publicada vigente. Se limpian al publicar; ver services/render_jobs.py.
+    cover_key = Column(String, nullable=True)           # tenant-x/covers/<version>/cover-400.webp
+    og_key = Column(String, nullable=True)              # tenant-x/covers/<version>/og-1200x630.jpg
+    cover_version_id = Column(UUID(as_uuid=True), nullable=True)
+    # Fecha en que se publico la version vigente (migracion 0015): alimenta la cinta «NUEVO» del kiosco.
+    published_at = Column(DateTime(timezone=True), nullable=True)
+
     # Publicacion inmutable actualmente vigente para el Reader (seccion 5)
     published_version_id = Column(UUID(as_uuid=True), ForeignKey("publication_versions.id"), nullable=True)
 

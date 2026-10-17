@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -676,8 +678,20 @@ def publish_publication(
 
     publication.published_version_id = version.id
     publication.status = "published"
+    publication.published_at = version.created_at or datetime.now(timezone.utc)  # Lote L7a/estanteria
+    # Lote L7a: NO se borran cover_key/og_key/cover_version_id. Siguen apuntando a la
+    # portada de la version anterior: el catalogo las ignora (solo vale la portada cuya
+    # cover_version_id == published_version_id) y usa el fallback hasta que el worker
+    # termine la nueva; al terminar, el worker borra de MinIO la portada anterior.
     link = ensure_short_link(db, publication)  # Lote S1 (por si es anterior a 0012)
     db.commit()
+
+    try:  # Lote L7a: render asincrono de la portada; publicar NUNCA falla por esto
+        from app.services.render_jobs import request_cover
+        request_cover(db, publication, version, current_user.id)
+    except Exception:
+        db.rollback()
+        logging.getLogger("flipbook.publications").exception("No se pudo encolar la portada de %s", publication.id)
 
     return {"version_id": str(version.id), "created_at": version.created_at.isoformat(), "short_path": f"/s/{link.code}"}
 
