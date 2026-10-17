@@ -1,0 +1,63 @@
+/* Estanteria publica del kiosco (balda azul marino + dorado, sin madera). Solo vista publica. */
+.shelf{list-style:none;margin:0;padding:0;--gap:28px;--cw:150px;--cw-featured:212px}
+.shelf-row{display:flex;align-items:flex-end;gap:var(--gap);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:34px calc(var(--gap)/2) 8px;margin:0 calc(var(--gap)/-2)}
+.shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw),1fr));gap:34px var(--gap);padding:0 calc(var(--gap)/2);align-items:end}
+.shelf-item{position:relative;scroll-snap-align:start;min-width:0}
+.shelf-row .shelf-item{flex:0 0 var(--cw)}
+.shelf-row .shelf-item.is-featured{flex-basis:var(--cw-featured)}
+
+/* balda: filete dorado + cara azul con sombra proyectada; cada tramo se solapa medio hueco con el vecino */
+.shelf-stage{position:relative;padding-bottom:16px}
+.shelf-stage::after{content:"";position:absolute;left:calc(var(--gap)/-2);right:calc(var(--gap)/-2);bottom:0;height:15px;background:linear-gradient(180deg,#24365e 0%,#14213d 60%,#0c1526 100%);border-top:2px solid var(--color-gold,#c9a24b);box-shadow:0 12px 20px -8px rgba(0,0,0,.7),0 -1px 10px rgba(201,162,75,.22);pointer-events:none}
+
+.shelf-flag{position:absolute;left:0;top:-24px;font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-gold,#c9a24b);white-space:nowrap}
+
+/* portada con grosor de lomo y canto de hojas */
+.shelf-cover{display:block;position:relative;width:100%;overflow:hidden;border-radius:2px 4px 4px 2px;background:#17243a;color:#94a3b8;text-decoration:none;box-shadow:0 14px 18px -10px rgba(0,0,0,.75),0 2px 5px rgba(0,0,0,.5);transform-origin:left center;transition:transform .25s ease,box-shadow .25s ease}
+.shelf-cover img{display:block;width:100%;height:100%;object-fit:cover}
+.shelf-cover::before{content:"";position:absolute;inset:0 auto 0 0;width:9px;z-index:2;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.45),rgba(255,255,255,.2) 45%,rgba(0,0,0,.1))}
+.shelf-cover::after{content:"";position:absolute;inset:0 0 0 auto;width:3px;z-index:2;pointer-events:none;background:linear-gradient(270deg,rgba(255,255,255,.35),transparent)}
+.shelf-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.shelf-cover:focus-visible{outline:2px solid var(--color-gold,#c9a24b);outline-offset:4px}
+
+/* cinta «NUEVO» automatica (fecha real de publicacion < 15 dias) */
+.shelf-new{position:absolute;top:13px;right:-33px;z-index:3;transform:rotate(45deg);background:var(--color-gold,#c9a24b);color:#0c1526;font-size:.62rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:.18rem 2.2rem;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+/* datos al pasar el raton / enfocar (escritorio) */
+.shelf-hover{position:absolute;inset:auto 0 0 0;z-index:3;display:grid;gap:.1rem;padding:2.4rem .7rem .65rem 1rem;background:linear-gradient(180deg,transparent,rgba(12,21,38,.94));color:#fff;font-size:.78rem;line-height:1.25;opacity:0;transition:opacity .2s}
+.shelf-hover strong{font-size:.85rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.shelf-hover em{font-style:normal;color:var(--color-gold,#c9a24b)}
+.shelf-hover small{color:#cbd5e1}
+.shelf-cover:focus-visible .shelf-hover{opacity:1}
+@media (hover:hover) and (pointer:fine){
+  .shelf-item:hover .shelf-cover,.shelf-cover:focus-visible{transform:perspective(900px) rotateY(-9deg) translateY(-6px);box-shadow:0 22px 26px -12px rgba(0,0,0,.85),0 2px 5px rgba(0,0,0,.5)}
+  .shelf-item:hover .shelf-hover{opacity:1}
+}
+
+/* titulo debajo (movil y pantallas tactiles); en escritorio lo da el hover */
+.shelf-caption{display:none;margin-top:.55rem;min-width:0}
+.shelf-caption strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:.82rem;line-height:1.25;color:#fff;font-weight:650}
+.shelf-caption span{display:block;font-size:.76rem;color:var(--color-gold,#c9a24b);margin-top:.1rem}
+@media (hover:none),(max-width:640px){.shelf-hover{display:none}.shelf-caption{display:block}}
+
+/* tablet: 4 portadas por balda; movil: 2 (desplazamiento horizontal con snap) */
+@media (max-width:1024px){.shelf{--cw:140px;--cw-featured:176px}}
+@media (max-width:640px){
+  .shelf{--gap:16px;--cw:calc((100vw - 32px - var(--gap))/2);--cw-featured:var(--cw)}
+  .shelf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shelf-flag{font-size:.62rem}
+}
+@media (prefers-reduced-motion:reduce){.shelf-cover,.shelf-hover{transition:none}.shelf-item:hover .shelf-cover,.shelf-cover:focus-visible{transform:none}}
+
+/* controles de la pagina de coleccion */
+.shelf-tools{display:flex;flex-wrap:wrap;gap:.75rem 1rem;align-items:center;justify-content:space-between;margin:0 0 2rem}
+.shelf-tools input,.shelf-tools select{background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:.55rem .85rem;font:inherit;font-size:.92rem;min-height:40px}
+.shelf-tools input{flex:1 1 240px;max-width:420px}
+.shelf-tools input::placeholder{color:#94a3b8}
+.shelf-tools input:focus-visible,.shelf-tools select:focus-visible,.shelf-pager button:focus-visible{outline:2px solid var(--color-gold,#c9a24b);outline-offset:2px}
+.shelf-tools select option{color:#0c1526}
+.shelf-pager{display:flex;align-items:center;justify-content:center;gap:1rem;margin:2.5rem 0 0;color:#cbd5e1;font-size:.9rem}
+.shelf-pager button{background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:.5rem 1rem;font:inherit;font-weight:600;cursor:pointer;min-height:40px}
+.shelf-pager button:disabled{opacity:.4;cursor:not-allowed}
+.shelf-embed-foot{margin:2.5rem 0 0;text-align:center;font-size:.8rem}
+.shelf-embed-foot a{color:var(--color-gold,#c9a24b);text-decoration:none;font-weight:600}

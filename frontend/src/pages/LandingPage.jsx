@@ -5,7 +5,7 @@ import { useAuth } from '../services/AuthContext';
 import { API_URL } from '../services/api';
 
 import Icon from '../components/common/Icon';
-import KioskCard from '../components/public/KioskCard';
+import Bookshelf from '../components/public/Bookshelf';
 import '../styles/Kiosk.css';
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -71,7 +71,9 @@ const LandingPage = () => {
         }
         map.get(key).items.push(p);
       });
-    return [...map.values()];
+    // La edicion mas reciente (fecha de publicacion) va primera: es el «Último número» de la balda
+    const when = (p) => Date.parse(p.published_at || p.updated_at || p.created_at || 0) || 0;
+    return [...map.values()].map((g) => ({ ...g, items: [...g.items].sort((a, b) => when(b) - when(a)) }));
   }, [publications, category]);
 
   const handleLoginSubmit = async (e) => {
@@ -253,9 +255,7 @@ const LandingPage = () => {
                   </div>
                   {g.path && <Link to={g.path}>Ver colección →</Link>}
                 </div>
-                <div className="kiosk-grid">
-                  {g.items.slice(0, 8).map((pub) => <KioskCard key={pub.id} pub={pub} />)}
-                </div>
+                <Bookshelf items={g.items.slice(0, 8)} featuredFirst label={`Ediciones de ${g.name}`} />
               </section>
             ))
           )}

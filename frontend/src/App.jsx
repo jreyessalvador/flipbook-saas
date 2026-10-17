@@ -35,6 +35,8 @@ function App() {
           {/* Lote L4: versión insertable (iframe) del lector, sin cabecera del panel */}
           <Route path="/embed/leer/:id" element={<PublicReader embed />} />
           <Route path="/embed/r/:tenant/:collection/:edition" element={<PublicReader embed />} />
+          {/* Estanteria insertable de una coleccion (iframe en la web del cliente) */}
+          <Route path="/embed/r/:tenant/:collection" element={<PublicCollection embed />} />
           {/* Lote F: render interno para exportar PDF (solo lo abre el worker de Contabo 2) */}
           <Route path="/render/:jobId" element={<RenderBook />} />
           <Route path="/login" element={<Login />} />
