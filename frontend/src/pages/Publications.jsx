@@ -486,7 +486,7 @@ const Publications = () => {
                     {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => setPdfFor(pub)} title="Descargar la edición en PDF (tal cual se ve, con enlaces clicables)">
                       <Icon name="download" size={15} style={{ marginRight: 6 }} />PDF
                     </button>}
-                    {canEdit && <button className="btn-secondary publication-action publication-action-slate" style={{ gridColumn: '1 / -1' }} onClick={() => openMove(pub)} title="Mover a otra colección">
+                    {canEdit && <button className="btn-secondary publication-action publication-action-slate publication-action-move" onClick={() => openMove(pub)} title="Mover a otra colección">
                       ⇄ Mover
                     </button>}
                     {canEdit && <button className="btn-secondary publication-action publication-action-slate" onClick={() => navigate(`/publications/${pub.id}/estadisticas`)} title="Lecturas, páginas, países, dispositivos y más (sin cookies)">

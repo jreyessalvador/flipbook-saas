@@ -600,3 +600,6 @@
 .card-order-pos{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
 .publication-card.is-dragging{opacity:.45}
 .publication-card.is-over{outline:3px dashed #c9a24b;outline-offset:3px}
+
+/* «Mover» ocupa toda la fila solo si le toca quedar primero en ella (evita huecos); si no, va junto al botón anterior */
+.card-actions .publication-action-move:nth-child(odd){grid-column:1/-1}
