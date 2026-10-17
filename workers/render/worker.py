@@ -185,7 +185,11 @@ def render(job, browser):
     data = api("GET", f"/api/internal/render/jobs/{job['job_id']}/data").json()
     w, h = data["page_width"] * PX_PER_MM, data["page_height"] * PX_PER_MM
     ctx = browser.new_context(viewport={"width": int(w) + 20, "height": int(h) + 20}, device_scale_factor=DSF,
-                              java_script_enabled=True, service_workers="block")
+                              java_script_enabled=True, service_workers="block",
+                              # PROD sirve la SPA con CSP script-src 'self' (SEC-2): sin esto,
+                              # wait_for_function (que evalua texto) es bloqueado. Es nuestro
+                              # navegador aislado y sin internet, no el de un usuario.
+                              bypass_csp=True)
     try:
         page = ctx.new_page()
 
