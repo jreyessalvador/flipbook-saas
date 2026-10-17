@@ -197,10 +197,9 @@ Soft delete oculta en panel, kiosco, `/r/...`, `/leer/`, stats y cuota; restaura
 
 ## 9. Web profesional (landing comercial)
 
-- Especificación completa, con criterios de aceptación por sección, columna Estado, mapa del sitio, estándares (LCP < 2,5 s, Lighthouse ≥ 90/95/95), 3 fases y checklist de validación: **Claude Doc «Propuesta web Cetrix Revistas»** → https://claude.ai/code/artifact/61a8bab0-d714-4786-b87c-50384a4c6f64
-- Decisiones pendientes de Carlos (en el doc): logos/testimonios autorizados, precios MXN/EUR, revista incrustada en la portada, variante de idioma, revisión legal RGPD/LFPDPPP.
-- Fase 2 de la web depende de L7a + Estantería.
-- Al implementar cada fase: actualizar la columna Estado y marcar la checklist del doc.
+- **Plan de desarrollo vivo (17-oct-2026, sustituye a este resumen):** `docs/PLAN-WEB-COMERCIAL.md` — estado de partida verificado (L7a + Estantería ya en PROD, Lighthouse móvil medido), contradicción detectada en el modelo comercial (B2B sin precios del 13-sep vs. planes Basico/Profesional con precio del 28-sep, sin resolver), gate de 6 decisiones de Carlos, 3 fases con criterios de aceptación (Fase 1 rendimiento/accesibilidad sin bloqueo, Fase 2 contenido comercial bloqueada por el gate, Fase 3 conversión/SEO).
+- Documento de referencia original (intención, no plan vivo): Claude Doc «Propuesta web Cetrix Revistas» → https://claude.ai/code/artifact/61a8bab0-d714-4786-b87c-50384a4c6f64
+- Al implementar cada fase: actualizar la columna Estado en `PLAN-WEB-COMERCIAL.md`.
 
 ---
 
