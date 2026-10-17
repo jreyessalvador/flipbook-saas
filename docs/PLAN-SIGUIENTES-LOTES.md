@@ -37,8 +37,8 @@
 | # | Lote | Por qué en este orden | Toca BD | Tamaño |
 |---|---|---|---|---|
 | 1 | **L5** Descarga PDF por edición + papelera 30 días | ✅ EN PRODUCCIÓN 03-oct-2026 (RECETA §20) | Sí (0011) | M |
-| 2 | **L7a** Miniaturas de portada completas + imagen OG 1200×630 | ✅ EN DEV 16-oct-2026 (RECETA §33; migración real: 0015) | Sí | M |
-| 3 | **Estantería pública** (azul marino + dorado) | ✅ EN DEV 16-oct-2026 (RECETA §34) | Sí (0015: published_at) | M |
+| 2 | **L7a** Miniaturas de portada completas + imagen OG 1200×630 | ✅ EN PRODUCCIÓN 17-oct-2026 (RECETA §33, §36; migración real: 0015) | Sí | M |
+| 3 | **Estantería pública** (azul marino + dorado) | ✅ EN PRODUCCIÓN 17-oct-2026 (RECETA §34, §36) | Sí (0015: published_at) | M |
 | 4 | **PDF → hotspots** (enlaces del PDF importado) | Aprovecha FLIP-3 (brillo en hotspots) | No | S |
 | 5 | **L6** Estadísticas sin cookies + `views_count` | Da datos reales para la web comercial | Sí (0013) | M |
 | 6 | **L8** UI de categorías en Super Admin | API ya existe; solo falta pantalla | No | S |
