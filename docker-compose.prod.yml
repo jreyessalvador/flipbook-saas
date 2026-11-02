@@ -137,10 +137,11 @@ services:
     command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
     healthcheck:
       test: ["CMD-SHELL", "timeout -s KILL 35 celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
-      interval: 60s
+      interval: 120s  # 02-nov-2026: check ligero/menos frecuente (carga CPU Contabo 1)
       timeout: 40s
       retries: 3
       start_period: 60s
+      start_interval: 5s
     cpus: 1.5
     mem_limit: 1536m
     restart: unless-stopped
