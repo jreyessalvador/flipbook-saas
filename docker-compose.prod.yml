@@ -94,6 +94,13 @@ services:
       dockerfile: Dockerfile
     image: flipbook-prod-backend:latest
     container_name: flipbook-prod-backend
+    init: true  # tini como PID 1: recoge huerfanos de healthchecks (incidencia zombis 02-nov-2026)
+    healthcheck:  # sustituye al HEALTHCHECK del Dockerfile (sin timeout interno, dejaba python huerfanos)
+      test: ["CMD-SHELL", "timeout -s KILL 8 python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     environment: *backend-env
     ports:
       - "127.0.0.1:4400:8000"
@@ -115,6 +122,7 @@ services:
   pdf-worker:
     image: flipbook-prod-backend:latest
     container_name: flipbook-prod-pdf-worker
+    init: true  # tini como PID 1: recoge huerfanos de healthchecks (incidencia zombis 02-nov-2026)
     environment:
       <<: *backend-env
       # DOC-1: servicio compartido cetrix-docproc (RECETA §31). Token solo en .env.
@@ -128,9 +136,9 @@ services:
       - docproc-c-flipbook-prod   # red propia: solo este contenedor + broker docproc
     command: celery -A app.workers.celery_app.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=1
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
+      test: ["CMD-SHELL", "timeout -s KILL 35 celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
       interval: 60s
-      timeout: 20s
+      timeout: 40s
       retries: 3
       start_period: 60s
     cpus: 1.5
